@@ -1,0 +1,160 @@
+// js/ui.js
+import { gameContext } from './context.js';
+import { initMap, showMap } from './map.js';
+import { worldPresets } from './world-presets.js';
+import { deer } from './deer.js';
+
+// --- UI MODULE CONSTANTS ---
+
+// Durations
+const MESSAGE_FADE_DURATION_MS = 2000;
+
+// Interaction
+const TAG_INTERACTION_DISTANCE = 4; // Max distance to player for 'Tag Deer' prompt
+
+// Compass
+const COMPASS_DIRECTIONS = ['S', 'SW', 'W', 'NW', 'N', 'NE', 'E', 'SE'];
+
+// UI Elements
+const TOGGLE_EXPAND_ICON = '[-]';
+const TOGGLE_COLLAPSE_ICON = '[+]';
+const EMPTY_JOURNAL_MESSAGE = "Your journal is empty. A successful hunt will add an entry at the end of the day.";
+const INTERACTION_PROMPT_TAG_DEER = 'Press [E] to Tag Deer';
+
+/**
+ * Initializes UI elements and sets up event listeners for collapsible panels, modals, and buttons.
+ */
+export function initUI() {
+    const instructionsHeader = document.getElementById('instructions-header');
+    const instructionsBody = document.getElementById('instructions-body');
+    const instructionsToggle = document.getElementById('instructions-toggle');
+    const scoringGuideHeader = document.getElementById('scoring-guide-header');
+    const scoringGuideBody = document.getElementById('scoring-guide-body');
+    const scoringGuideToggle = document.getElementById('scoring-guide-toggle');
+
+    if (instructionsHeader) {
+        instructionsHeader.addEventListener('click', (event) => {
+            event.stopPropagation();
+            instructionsBody.classList.toggle('collapsed');
+            instructionsToggle.innerHTML = instructionsBody.classList.contains('collapsed') ? TOGGLE_COLLAPSE_ICON : TOGGLE_EXPAND_ICON;
+        });
+    }
+
+    if (scoringGuideHeader) {
+        scoringGuideHeader.addEventListener('click', (event) => {
+            event.stopPropagation();
+            scoringGuideBody.classList.toggle('collapsed');
+            scoringGuideToggle.innerHTML = scoringGuideBody.classList.contains('collapsed') ? TOGGLE_COLLAPSE_ICON : TOGGLE_EXPAND_ICON;
+        });
+    }
+
+    if (gameContext.reportModalBackdrop && gameContext.closeReportButton) {
+        gameContext.closeReportButton.addEventListener('click', () => { gameContext.reportModalBackdrop.style.display = 'none'; });
+    }
+
+    if (gameContext.journalButton) {
+        gameContext.journalButton.addEventListener('click', () => showJournal());
+    }
+
+    if (gameContext.mapButton && gameContext.mapModalBackdrop && gameContext.closeMapButton) {
+        gameContext.mapButton.addEventListener('click', () => showMap());
+        gameContext.closeMapButton.addEventListener('click', () => { gameContext.mapModalBackdrop.style.display = 'none'; });
+    }
+
+    populateWorldSelector();
+
+    // Set up the main menu 'Start Game' button listener
+    if (gameContext.startGameButton) {
+        gameContext.startGameButton.addEventListener('click', async () => {
+            if (gameContext.mainMenu) {
+                gameContext.mainMenu.style.display = 'none';
+            }
+
+            // Show the in-game UI by removing the helper class
+            const gameUiElements = document.querySelectorAll('.initially-hidden');
+            gameUiElements.forEach(el => {
+                el.classList.remove('initially-hidden');
+            });
+
+            const selectedWorldKey = gameContext.worldSelect.value;
+            const worldConfig = worldPresets[selectedWorldKey];
+            
+            // Initialize the game with the selected world and start the animation loop
+            if (gameContext.init && gameContext.animate) {
+                await gameContext.init(worldConfig);
+                gameContext.animate();
+            }
+        });
+    }
+
+    initMap();
+}
+
+/**
+ * Displays a message to the user for a specified duration.
+ * @param {string} text - The message text to display.
+ * @param {number} [duration=MESSAGE_FADE_DURATION_MS] - How long the message stays visible in milliseconds.
+ */
+export function showMessage(text, duration = MESSAGE_FADE_DURATION_MS) {
+    gameContext.messageElement.textContent = text;
+    gameContext.messageElement.style.opacity = 1;
+    setTimeout(() => { gameContext.messageElement.style.opacity = 0; }, duration);
+}
+
+/**
+ * Displays the hunter's journal modal with all recorded entries.
+ */
+function showJournal() {
+    gameContext.reportModalBackdrop.style.display = 'flex';
+    gameContext.reportTitle.textContent = "Hunter's Journal";
+    if (gameContext.journalEntries.length > 0) {
+        gameContext.reportContent.innerHTML = gameContext.journalEntries.map(entry => `<h3>${entry.title}</h3><p>${entry.content}</p>`).join('<hr>');
+    } else {
+        gameContext.reportContent.textContent = EMPTY_JOURNAL_MESSAGE;
+    }
+}
+
+/**
+ * Updates the interaction prompt based on player proximity to a killed deer.
+ */
+export function updateInteraction() {
+    if (deer.state === 'KILLED' && deer.fallen) {
+        if (gameContext.player.position.distanceTo(deer.model.position) < TAG_INTERACTION_DISTANCE) {
+            gameContext.interactionPromptElement.textContent = INTERACTION_PROMPT_TAG_DEER;
+            gameContext.interactionPromptElement.style.display = 'block';
+            gameContext.canTag = true;
+        } else {
+            gameContext.interactionPromptElement.style.display = 'none';
+            gameContext.canTag = false;
+        }
+    } else {
+        gameContext.interactionPromptElement.style.display = 'none';
+        gameContext.canTag = false;
+    }
+}
+
+/**
+ * Populates the world selection dropdown menu from the available presets.
+ */
+function populateWorldSelector() {
+    if (gameContext.worldSelect) {
+        // Clear existing options, in case this is called again
+        gameContext.worldSelect.innerHTML = '';
+        for (const key in worldPresets) {
+            const option = document.createElement('option');
+            option.value = key;
+            option.textContent = key; // Use the key (e.g., "Hardwood Forest") as the display name
+            gameContext.worldSelect.appendChild(option);
+        }
+    }
+}
+
+/**
+ * Updates the compass display based on the player's current rotation.
+ */
+export function updateCompass() {
+    let angle = -gameContext.player.rotation.y * (180 / Math.PI) + 180; // Convert radians to degrees, invert, and offset
+    angle = (angle % 360 + 360) % 360; // Normalize angle to 0-359
+    const index = Math.round(angle / 45) % COMPASS_DIRECTIONS.length;
+    gameContext.compassElement.textContent = COMPASS_DIRECTIONS[index];
+}

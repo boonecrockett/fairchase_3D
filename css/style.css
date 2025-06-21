@@ -1,0 +1,312 @@
+.initially-hidden {
+    display: none !important;
+}
+
+body { 
+    margin: 0; 
+    overflow: hidden; 
+    background-color: #000;
+    font-family: 'Courier New', Courier, monospace;
+}
+canvas { display: block; }
+#crosshair {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 2px;
+    height: 2px;
+    background: white;
+    border-radius: 50%;
+    transform: translate(-50%, -50%);
+    box-shadow: 0 0 5px white, 0 0 10px white;
+}
+.hud {
+    color: white;
+    background-color: rgba(0,0,0,0.6);
+    padding: 15px;
+    border-radius: 8px;
+    border: 1px solid rgba(255,255,255,0.2);
+    text-shadow: 1px 1px 2px black;
+    font-size: 16px;
+}
+.hud-container {
+    position: absolute;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    z-index: 10;
+}
+.top-left {
+    top: 20px;
+    left: 20px;
+}
+.top-right {
+    top: 20px;
+    right: 20px;
+}
+#score-container, #clock-container {
+    font-size: 24px;
+}
+/* Compass HUD */
+#compass-container {
+    position: absolute;
+    top: 20px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 10;
+    padding: 10px 20px;
+}
+#compass-value {
+    font-size: 28px;
+    font-weight: bold;
+}
+.collapsible-container {
+    width: 240px;
+}
+.collapsible-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    cursor: pointer;
+    font-weight: bold;
+}
+.collapsible-toggle {
+    font-family: monospace;
+    font-size: 20px;
+    padding: 0 5px;
+}
+.collapsible-body {
+    margin-top: 10px;
+    max-height: 150px;
+    overflow-y: auto;
+    transition: max-height 0.3s ease-out, margin-top 0.3s ease-out, opacity 0.3s ease-out;
+    line-height: 1.5;
+    opacity: 1;
+}
+.collapsible-body.collapsed {
+    max-height: 0;
+    margin-top: 0;
+    opacity: 0;
+}
+#message, #interaction-prompt {
+    position: absolute;
+    left: 50%;
+    transform: translateX(-50%);
+    font-size: 32px;
+    font-weight: bold;
+    color: #ffdd00;
+    text-align: center;
+    text-shadow: 2px 2px 4px black;
+    z-index: 20;
+}
+#message {
+    top: 60%;
+    opacity: 0;
+    transition: opacity 0.5s ease-out;
+}
+#interaction-prompt {
+    bottom: 20%;
+    display: none;
+    background-color: rgba(0,0,0,0.5);
+    padding: 10px 20px;
+    border-radius: 10px;
+    font-size: 20px;
+}
+#scope-overlay {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: radial-gradient(circle, transparent 48%, black 50%);
+    display: none;
+    pointer-events: none;
+    z-index: 5;
+}
+.crosshair-line {
+    position: absolute;
+    background-color: black;
+}
+.vertical {
+    left: 50%;
+    width: 2px;
+    height: 40%;
+    transform: translateX(-50%);
+}
+.horizontal {
+    top: 50%;
+    height: 2px;
+    width: 40%;
+    transform: translateY(-50%);
+}
+#line-top { top: 0; }
+#line-bottom { bottom: 0; }
+#line-left { left: 0; }
+#line-right { right: 0; }
+#scope-center {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 4px;
+    height: 4px;
+    background-color: black;
+    border-radius: 50%;
+    transform: translate(-50%, -50%);
+}
+/* Main Menu Styles */
+#main-menu {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    background-color: rgba(0, 0, 0, 0.8);
+    border: 2px solid #ffdd00;
+    border-radius: 15px;
+    padding: 30px;
+    color: white;
+    text-align: center;
+    z-index: 50;
+    min-width: 400px;
+    box-shadow: 0 0 20px rgba(255, 221, 0, 0.3);
+}
+
+#main-menu h1 {
+    color: #ffdd00;
+    margin-top: 0;
+    margin-bottom: 30px;
+    font-size: 36px;
+    text-shadow: 2px 2px 4px black;
+}
+
+#main-menu .menu-item {
+    margin: 15px 0;
+    color: white;
+}
+
+#main-menu label {
+    color: white;
+    font-weight: bold;
+    margin-bottom: 8px;
+    display: block;
+}
+
+#main-menu select {
+    background-color: #333;
+    color: white;
+    border: 1px solid #666;
+    border-radius: 5px;
+    padding: 8px;
+    font-size: 16px;
+    width: 100%;
+}
+
+#main-menu button {
+    background-color: #ffdd00;
+    color: black;
+    border: none;
+    padding: 15px 30px;
+    border-radius: 8px;
+    cursor: pointer;
+    font-weight: bold;
+    font-size: 18px;
+    margin-top: 20px;
+    transition: background-color 0.3s ease;
+}
+
+#main-menu button:hover {
+    background-color: #e6c700;
+}
+
+#main-menu input[type="radio"] {
+    margin-right: 8px;
+}
+/* Modal Styles */
+.modal-backdrop {
+    position: absolute;
+    top: 0; left: 0;
+    width: 100%; height: 100%;
+    background-color: rgba(0,0,0,0.7);
+    display: none;
+    justify-content: center;
+    align-items: center;
+    z-index: 30;
+}
+.modal {
+    background-color: #1a1a1a;
+    color: white;
+    padding: 25px;
+    border-radius: 10px;
+    border: 1px solid #444;
+    width: 90%;
+    max-width: 600px;
+    box-shadow: 0 5px 25px rgba(0,0,0,0.5);
+}
+.modal h2 {
+    margin-top: 0;
+    color: #ffdd00;
+}
+#report-content {
+    background-color: rgba(0,0,0,0.3);
+    border-radius: 5px;
+    padding: 15px;
+    min-height: 100px;
+    max-height: 40vh;
+    overflow-y: auto;
+    margin-bottom: 20px;
+    white-space: pre-wrap;
+    line-height: 1.6;
+    font-style: italic;
+}
+.modal .button-group {
+    display: flex;
+    justify-content: flex-end;
+}
+.modal button {
+    background-color: #ffdd00;
+    color: black;
+    border: none;
+    padding: 12px 20px;
+    border-radius: 5px;
+    cursor: pointer;
+    font-weight: bold;
+    font-size: 16px;
+}
+.modal button:disabled {
+    background-color: #555;
+    cursor: not-allowed;
+}
+.modal #close-report-button, .modal #close-map-button {
+    background-color: #555;
+    color: white;
+}
+#map-container {
+    position: relative;
+    width: 100%;
+    padding-bottom: 100%; /* 1:1 Aspect Ratio */
+    margin-bottom: 20px;
+}
+#map-canvas {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background-color: #111;
+    border-radius: 5px;
+}
+#sleep-overlay {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background-color: black;
+    z-index: 100;
+    display: none;
+    opacity: 0;
+    transition: opacity 2s ease-in-out;
+    color: white;
+    justify-content: center;
+    align-items: center;
+    font-size: 48px;
+}
