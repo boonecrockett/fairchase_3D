@@ -61,6 +61,7 @@
  * @property {Function} startSleepSequence - Initiates the end-of-day sleep sequence.
  * @property {Function} isNight - Checks if it's currently night time.
  * @property {Function} handleEndOfDay - Processes end-of-day logic (scoring, journal).
+ * @property {Function} checkTreeCollision - Checks for collisions with trees.
  */
 
 // The one and only game context object, shared across all modules.
@@ -134,5 +135,6 @@ export const gameContext = {
     tagDeer: null,
     startSleepSequence: null,
     isNight: null,
-    handleEndOfDay: null
+    handleEndOfDay: null,
+    checkTreeCollision: null
 };

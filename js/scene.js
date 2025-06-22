@@ -18,8 +18,6 @@ export function setupScene() {
     const width = window.innerWidth || 800;
     const height = window.innerHeight || 600;
     
-    console.log(`Setting up scene with dimensions: ${width}x${height}`);
-
     gameContext.camera = new THREE.PerspectiveCamera(75, width / height, 0.1, 1000);
 
     gameContext.renderer = new THREE.WebGLRenderer({ antialias: true });
@@ -34,8 +32,6 @@ export function setupScene() {
     
     document.body.appendChild(gameContext.renderer.domElement);
     
-    console.log(`Canvas dimensions after setup: ${gameContext.renderer.domElement.width}x${gameContext.renderer.domElement.height}`);
-
     const light = new THREE.DirectionalLight(0xffffff, 1);
     light.position.set(100, 100, 50);
     light.castShadow = true;
@@ -50,7 +46,7 @@ export function setupScene() {
     gameContext.scene.add(light);
 
     // Ambient light to softly illuminate the scene
-    const ambientLight = new THREE.AmbientLight(0x404040, 0.6); // color, intensity
+    const ambientLight = new THREE.AmbientLight(0x404040, 0.69); // color, intensity (increased from 0.6 to 0.69 for 15% brighter shadows)
     gameContext.scene.add(ambientLight);
 
     // Handle window resize events to keep the scene responsive
@@ -60,6 +56,5 @@ export function setupScene() {
         gameContext.camera.aspect = newWidth / newHeight;
         gameContext.camera.updateProjectionMatrix();
         gameContext.renderer.setSize(newWidth, newHeight);
-        console.log(`Resized to: ${newWidth}x${newHeight}`);
     }, false);
 }

@@ -79,6 +79,15 @@ export function initUI() {
             const selectedWorldKey = gameContext.worldSelect.value;
             const worldConfig = worldPresets[selectedWorldKey];
             
+            // Read deer behavior debugging option
+            const deerBehaviorRadio = document.querySelector('input[name="deer-behavior-mode"]:checked');
+            const deerCanFlee = !deerBehaviorRadio || deerBehaviorRadio.value !== 'no-flee';
+            
+            // Pass deer behavior setting to deer system
+            if (deer.setFleeingEnabled) {
+                deer.setFleeingEnabled(deerCanFlee);
+            }
+            
             // Initialize the game with the selected world and start the animation loop
             if (gameContext.init && gameContext.animate) {
                 await gameContext.init(worldConfig);
@@ -137,14 +146,29 @@ export function updateInteraction() {
  * Populates the world selection dropdown menu from the available presets.
  */
 function populateWorldSelector() {
-    if (gameContext.worldSelect) {
-        // Clear existing options, in case this is called again
-        gameContext.worldSelect.innerHTML = '';
-        for (const key in worldPresets) {
+    let worldSelectElement = gameContext.worldSelect;
+    if (!worldSelectElement) {
+        worldSelectElement = document.getElementById('world-select');
+        if (worldSelectElement) {
+            gameContext.worldSelect = worldSelectElement;
+        }
+    }
+    
+    if (worldSelectElement && worldPresets) {
+        worldSelectElement.innerHTML = '';
+        
+        let optionCount = 0;
+        for (const [key, preset] of Object.entries(worldPresets)) {
             const option = document.createElement('option');
             option.value = key;
-            option.textContent = key; // Use the key (e.g., "Hardwood Forest") as the display name
-            gameContext.worldSelect.appendChild(option);
+            option.textContent = key; // Use the key as the display name
+            worldSelectElement.appendChild(option);
+            optionCount++;
+        }
+        
+        // Set default selection to "Hardwood Forest" (with spaces)
+        if (worldSelectElement.querySelector('option[value="Hardwood Forest"]')) {
+            worldSelectElement.value = 'Hardwood Forest';
         }
     }
 }

@@ -2,21 +2,170 @@
 import { gameContext } from './context.js';
 
 // --- AUDIO MODULE CONSTANTS ---
-const GUNSHOT_NOTE = "C1";
-const GUNSHOT_DURATION = "0.5s";
+const FOREST_SOUND_VOLUME = 10; // dB, increased by another 50% from +4dB for maximum audibility
+const RIFLE_SOUND_VOLUME = 0; // dB, normal volume for rifle shot
+const WALK_SOUND_VOLUME = -5; // dB, moderate volume for walking sound
+const RIFLE_SOUND_INSTANCES = 3; // Multiple instances for instant playback
 
 /**
- * Initializes the audio components, specifically the gunshot sound synthesizer.
+ * Initializes the audio components, including rifle shot sound, walk sound, and ambient forest sound.
  */
 export function initAudio() {
-    gameContext.gunshotSound = new Tone.MembraneSynth().toDestination();
+    // Initialize multiple rifle shot sound instances for instant playback
+    gameContext.rifleSounds = [];
+    gameContext.rifleCurrentIndex = 0;
+    
+    for (let i = 0; i < RIFLE_SOUND_INSTANCES; i++) {
+        try {
+            const rifleSound = new Tone.Player({
+                url: "assets/sounds/rifle.mp3",
+                volume: RIFLE_SOUND_VOLUME,
+                autostart: false,
+                onload: () => {
+                    console.log(`Rifle sound ${i + 1} loaded successfully`);
+                }
+            }).toDestination();
+            
+            gameContext.rifleSounds.push(rifleSound);
+        } catch (error) {
+            console.warn(`Failed to initialize rifle sound ${i + 1}:`, error);
+        }
+    }
+    
+    // Initialize walk sound
+    try {
+        gameContext.walkSound = new Tone.Player({
+            url: "assets/sounds/walk.mp3",
+            loop: true,
+            volume: WALK_SOUND_VOLUME,
+            autostart: false
+        }).toDestination();
+    } catch (error) {
+        console.warn("Failed to initialize walk sound:", error);
+    }
+    
+    // Initialize ambient forest sound
+    try {
+        gameContext.forestSound = new Tone.Player({
+            url: "assets/sounds/forest.mp3",
+            loop: true,
+            volume: FOREST_SOUND_VOLUME,
+            autostart: false,
+            onload: () => {
+                console.log("Forest sound loaded successfully");
+                // Try to start the forest sound, but handle autoplay restrictions
+                startForestSoundWithUserInteraction();
+            },
+            onerror: (error) => {
+                console.warn("Forest sound could not be loaded:", error);
+            }
+        }).toDestination();
+        
+    } catch (error) {
+        console.warn("Failed to initialize forest sound:", error);
+    }
 }
 
 /**
- * Plays the gunshot sound effect.
+ * Starts forest sound with proper user interaction handling for browser autoplay policies.
  */
-export function playGunshotSound() {
-    if (gameContext.gunshotSound) {
-        gameContext.gunshotSound.triggerAttackRelease(GUNSHOT_NOTE, GUNSHOT_DURATION);
+function startForestSoundWithUserInteraction() {
+    // Function to start audio after user interaction
+    const startAudio = async () => {
+        try {
+            // Ensure Tone.js context is started
+            if (Tone.context.state !== 'running') {
+                await Tone.start();
+                console.log("Tone.js audio context started");
+            }
+            
+            // Start the forest sound
+            if (gameContext.forestSound && gameContext.forestSound.loaded) {
+                gameContext.forestSound.start();
+                console.log("Forest sound started");
+                
+                // Remove event listeners after successful start
+                document.removeEventListener('click', startAudio);
+                document.removeEventListener('keydown', startAudio);
+            }
+        } catch (error) {
+            console.warn("Could not start forest sound:", error);
+        }
+    };
+    
+    // Add event listeners for user interaction
+    document.addEventListener('click', startAudio, { once: true });
+    document.addEventListener('keydown', startAudio, { once: true });
+    
+    // Also try to start immediately (might work if autoplay is allowed)
+    startAudio();
+}
+
+/**
+ * Plays the rifle shot sound effect.
+ */
+export function playRifleSound() {
+    if (gameContext.rifleSounds && gameContext.rifleSounds.length > 0) {
+        const currentRifleSound = gameContext.rifleSounds[gameContext.rifleCurrentIndex];
+        if (currentRifleSound) {
+            currentRifleSound.start();
+            gameContext.rifleCurrentIndex = (gameContext.rifleCurrentIndex + 1) % gameContext.rifleSounds.length;
+        }
+    }
+}
+
+/**
+ * Starts the ambient forest sound if it's loaded and not already playing.
+ */
+export function startForestSound() {
+    if (gameContext.forestSound && gameContext.forestSound.loaded && gameContext.forestSound.state === 'stopped') {
+        gameContext.forestSound.start();
+    }
+}
+
+/**
+ * Stops the ambient forest sound.
+ */
+export function stopForestSound() {
+    if (gameContext.forestSound && gameContext.forestSound.state === 'started') {
+        gameContext.forestSound.stop();
+    }
+}
+
+/**
+ * Sets the volume of the forest sound.
+ * @param {number} volume - Volume in dB (e.g., -20 for quiet, 0 for normal)
+ */
+export function setForestSoundVolume(volume) {
+    if (gameContext.forestSound) {
+        gameContext.forestSound.volume.value = volume;
+    }
+}
+
+/**
+ * Starts the walk sound if it's loaded and not already playing.
+ */
+export function startWalkSound() {
+    if (gameContext.walkSound && gameContext.walkSound.loaded && gameContext.walkSound.state === 'stopped') {
+        gameContext.walkSound.start();
+    }
+}
+
+/**
+ * Stops the walk sound.
+ */
+export function stopWalkSound() {
+    if (gameContext.walkSound && gameContext.walkSound.state === 'started') {
+        gameContext.walkSound.stop();
+    }
+}
+
+/**
+ * Sets the volume of the walk sound.
+ * @param {number} volume - Volume in dB (e.g., -20 for quiet, 0 for normal)
+ */
+export function setWalkSoundVolume(volume) {
+    if (gameContext.walkSound) {
+        gameContext.walkSound.volume.value = volume;
     }
 }

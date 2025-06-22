@@ -1,10 +1,10 @@
 import * as THREE from 'three';
 import { setupScene } from './scene.js';
-import { createHills, createWater, findDrinkingSpots, createTrees } from './world.js';
+import { createHills, createWater, findDrinkingSpots, createTrees, createBushes } from './world.js';
 import { createPlayer, addPlayerEventListeners, updatePlayer } from './player.js';
 import { deer } from './deer.js';
 import { initUI, showMessage, updateInteraction, updateCompass } from './ui.js';
-import { initAudio, playGunshotSound } from './audio.js';
+import { initAudio, playRifleSound } from './audio.js';
 import { gameContext } from './context.js'; 
 import {
     GAME_TIME_SPEED_MULTIPLIER,
@@ -32,18 +32,16 @@ function getHeightAt(x, z) {
 
 function shoot() {
     if (gameContext.isSleeping) return;
-    playGunshotSound();
+    playRifleSound();
 
     // Use the correct flag to ensure the GLB model is fully loaded and ready.
     if (!gameContext.deer || !gameContext.deer.isModelLoaded) {
-        console.warn("Attempted to shoot before deer model was loaded.");
         showMessage("Deer model not loaded yet", 2000);
         return;
     }
 
     // Check if deer model is actually in the scene
     if (!gameContext.scene.children.includes(gameContext.deer.model)) {
-        console.warn("Deer model not found in scene");
         showMessage("Deer not in scene", 2000);
         return;
     }
@@ -56,14 +54,6 @@ function shoot() {
 
     gameContext.raycaster.setFromCamera({ x: 0, y: 0 }, gameContext.camera);
     const intersects = gameContext.raycaster.intersectObject(gameContext.deer.model, true);
-
-    // Debug logging
-    console.log(`Shoot attempt - Deer position: ${gameContext.deer.model.position.x.toFixed(1)}, ${gameContext.deer.model.position.y.toFixed(1)}, ${gameContext.deer.model.position.z.toFixed(1)}`);
-    console.log(`Player position: ${gameContext.player.position.x.toFixed(1)}, ${gameContext.player.position.y.toFixed(1)}, ${gameContext.player.position.z.toFixed(1)}`);
-    console.log(`Intersects found: ${intersects.length}`);
-    if (intersects.length > 0) {
-        console.log(`First intersection object:`, intersects[0].object.name, intersects[0].object.type);
-    }
 
     // Hide the vitals hitbox again immediately.
     if (vitalsBox) {
@@ -100,7 +90,6 @@ function shoot() {
         }
 
         if (hitName) {
-            console.log(`Hit detected: ${hitName}`);
             
             // Create blood indicator at the hit location
             if (hitPosition) {
@@ -141,17 +130,10 @@ function shoot() {
                     const angle = Math.acos(Math.max(-1, Math.min(1, dotProduct)));
                     const angleInDegrees = angle * (180 / Math.PI);
                     
-                    console.log(`Shot angle analysis:`);
-                    console.log(`- Deer forward direction: ${deerForward.x.toFixed(2)}, ${deerForward.z.toFixed(2)}`);
-                    console.log(`- Direction to player: ${toPlayer.x.toFixed(2)}, ${toPlayer.z.toFixed(2)}`);
-                    console.log(`- Angle between: ${angleInDegrees.toFixed(1)} degrees`);
-                    
                     // If angle is greater than 135 degrees, the shot is from behind (not lethal for vitals)
                     if (angleInDegrees > 135) {
                         isLethalShot = false;
-                        console.log(`Vital shot from behind (${angleInDegrees.toFixed(1)}°) - not lethal`);
                     } else {
-                        console.log(`Vital shot from front/side (${angleInDegrees.toFixed(1)}°) - lethal`);
                     }
                 }
                 
@@ -204,7 +186,6 @@ function shoot() {
                         
                         // Check if 3 wounds = kill
                         if (deer.woundCount >= 3) {
-                            console.log('Deer killed by 3 wounds');
                             gameContext.killInfo = { 
                                 score: 10, // Low score for 3-wound kill
                                 message: "3-Wound Kill", 
@@ -221,7 +202,6 @@ function shoot() {
                         
                         // Check if 3 wounds = kill
                         if (deer.woundCount >= 3) {
-                            console.log('Deer killed by 3 wounds');
                             gameContext.killInfo = { 
                                 score: 10, // Low score for 3-wound kill
                                 message: "3-Wound Kill", 
@@ -244,7 +224,6 @@ function shoot() {
                     
                     // Check if 3 wounds = kill
                     if (deer.woundCount >= 3) {
-                        console.log('Deer killed by 3 wounds');
                         gameContext.killInfo = { 
                             score: 10, // Low score for 3-wound kill
                             message: "3-Wound Kill", 
@@ -261,7 +240,6 @@ function shoot() {
                     
                     // Check if 3 wounds = kill
                     if (deer.woundCount >= 3) {
-                        console.log('Deer killed by 3 wounds');
                         gameContext.killInfo = { 
                             score: 10, // Low score for 3-wound kill
                             message: "3-Wound Kill", 
@@ -326,6 +304,39 @@ async function handleEndOfDay() {
     gameContext.distanceTraveled = 0;
     gameContext.dailyKillInfo = null;
     gameContext.huntLog = {};
+}
+
+/**
+ * Checks for collision between a position and trees in the game world.
+ * @param {THREE.Vector3} position - The position to check for collision
+ * @param {number} radius - The collision radius (default: 1.0)
+ * @returns {THREE.Object3D|null} - The colliding tree object or null if no collision
+ */
+function checkTreeCollision(position, radius = 1.0) {
+    // Safety check: ensure trees exist
+    if (!gameContext.trees || !gameContext.trees.children) {
+        return null;
+    }
+    
+    // Check collision with each tree
+    for (const tree of gameContext.trees.children) {
+        // Calculate 2D distance (ignore Y axis for collision)
+        const distance = new THREE.Vector2(
+            position.x - tree.position.x,
+            position.z - tree.position.z
+        ).length();
+        
+        // Estimate tree collision radius based on scale
+        // Trees typically have a base radius around 1.5-2.0 units when scaled
+        const treeRadius = (tree.scale.x || 1.0) * 1.8;
+        
+        // Check if collision occurs
+        if (distance < treeRadius + radius) {
+            return tree; // Return the colliding tree
+        }
+    }
+    
+    return null; // No collision detected
 }
 
 function startSleepSequence() {
@@ -396,6 +407,7 @@ async function init(worldConfig) {
     createWater(worldConfig);
     findDrinkingSpots();
     await createTrees(worldConfig);
+    await createBushes(worldConfig);
     createPlayer();
     initAudio();
     deer.respawn();
@@ -441,6 +453,7 @@ document.addEventListener('DOMContentLoaded', () => {
     gameContext.startSleepSequence = startSleepSequence;
     gameContext.isNight = isNight;
     gameContext.handleEndOfDay = handleEndOfDay;
+    gameContext.checkTreeCollision = checkTreeCollision;
 
     // Initialize the UI, which will set up the main menu and its listeners
     initUI();

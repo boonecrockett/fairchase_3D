@@ -11,7 +11,9 @@ export class Animal {
         this.mixer = null;
         this.animations = {};
         this.activeAction = null;
-        this.pendingSpawn = false;
+        this.pendingSpawnPosition = null;
+        this.pendingSpawnRotation = null;
+        this.shouldSpawnOnLoad = false;
 
         this.state = 'IDLE';
         this.stateTimer = 0;
@@ -32,8 +34,8 @@ export class Animal {
 
             // Configure the loaded model's scale, position, and rotation.
             loadedScene.scale.set(this.config.scale, this.config.scale, this.config.scale);
-            // Apply 90-degree clockwise rotation for correct travel orientation
-            loadedScene.rotation.y = -Math.PI / 2; // 90 degrees clockwise
+            // No rotation applied - testing natural model orientation
+            // loadedScene.rotation.y = -Math.PI / 2; // 90 degrees clockwise
             loadedScene.position.y = this.config.yOffset || 0;
 
             let bodyMesh = null;
@@ -55,26 +57,25 @@ export class Animal {
                 this.createVitals(bodyMesh);
             }
 
-            // Set up the animation mixer.
-            this.mixer = new THREE.AnimationMixer(loadedScene);
-            gltf.animations.forEach((clip) => {
-                this.animations[clip.name] = clip;
-            });
-            
-            this.isModelLoaded = true;
-            
-            // If the model was spawned before loading completed, add it to scene now
-            if (this.pendingSpawn) {
-                gameContext.scene.add(this.model);
-                this.pendingSpawn = false;
-                console.log(`${this.config.name} model loaded and added to scene`);
-            }
-            
-            // Optional: Play a default animation if one exists.
-            if (gltf.animations.length > 0) {
-                this.playAnimation(gltf.animations[0].name);
+            // Create brain and attach it to the identified body mesh.
+            if (this.config.brain && bodyMesh) {
+                this.createBrain(bodyMesh);
             }
 
+            // Set up the animation mixer.
+            this.mixer = new THREE.AnimationMixer(loadedScene);
+            gltf.animations.forEach((clip, index) => {
+                this.animations[clip.name] = clip;
+            });
+
+            this.model = gltf.scene;
+            this.setupModel();
+            this.isModelLoaded = true;
+            
+            if (this.shouldSpawnOnLoad) {
+                this.spawn(this.pendingSpawnPosition, this.pendingSpawnRotation);
+                this.shouldSpawnOnLoad = false;
+            }
         }, undefined, (error) => {
             console.error(`An error happened loading model: ${path}`, error);
             // Fallback to procedural model if GLB fails to load
@@ -82,13 +83,11 @@ export class Animal {
             this.createLegs();
             this.createHead();
             this.isModelLoaded = true;
-            
-            if (this.pendingSpawn) {
-                gameContext.scene.add(this.model);
-                this.pendingSpawn = false;
-                console.log(`${this.config.name} fallback model created and added to scene`);
-            }
         });
+    }
+
+    setupModel() {
+        // Add any necessary setup logic here
     }
 
     createBody() {
@@ -103,18 +102,39 @@ export class Animal {
         if (this.config.vitals) {
             this.createVitals(body);
         }
+
+        if (this.config.brain) {
+            this.createBrain(body);
+        }
     }
 
     createVitals(parent) {
         const vitalsGeometry = new THREE.BoxGeometry(this.config.vitals.size.x, this.config.vitals.size.y, this.config.vitals.size.z);
-        // The 'visible' property belongs on the mesh, not the material.
         const vitalsMaterial = new THREE.MeshBasicMaterial({ color: this.config.vitals.debugColor });
         const vitals = new THREE.Mesh(vitalsGeometry, vitalsMaterial);
-        vitals.visible = false; // Set visibility on the object itself.
+        vitals.visible = false; // Hidden for normal gameplay
         vitals.position.set(this.config.vitals.offset.x, this.config.vitals.offset.y, this.config.vitals.offset.z);
         vitals.name = 'vitals';
         parent.add(vitals);
         this.model.vitals = vitals;
+    }
+
+    createBrain(parent) {
+        if (!this.config.brain) return; // Only create if brain config exists
+        
+        const brainGeometry = new THREE.BoxGeometry(this.config.brain.size.x, this.config.brain.size.y, this.config.brain.size.z);
+        const brainMaterial = new THREE.MeshBasicMaterial({ 
+            color: this.config.brain.debugColor,
+            transparent: true,
+            opacity: 0.5,
+            wireframe: true
+        });
+        const brain = new THREE.Mesh(brainGeometry, brainMaterial);
+        brain.visible = false; // Hidden for normal gameplay
+        brain.position.set(this.config.brain.offset.x, this.config.brain.offset.y, this.config.brain.offset.z);
+        brain.name = 'brain';
+        parent.add(brain);
+        this.model.brain = brain;
     }
 
     createLegs() {
@@ -148,6 +168,9 @@ export class Animal {
         const headMesh = new THREE.Mesh(headGeometry, headMaterial);
         headGroup.position.y = this.config.head.positionYOffset;
         headGroup.add(headMesh);
+        
+        // Store reference to head for independent rotation (head turning)
+        this.model.head = headGroup;
         
         neck.add(headGroup);
         this.model.add(neck);
@@ -185,10 +208,10 @@ export class Animal {
 
         if (this.isModelLoaded) {
             gameContext.scene.add(this.model);
-            console.log(`${this.config.name} spawned and added to scene`);
         } else {
-            this.pendingSpawn = true;
-            console.log(`${this.config.name} spawn pending model load`);
+            this.pendingSpawnPosition = position;
+            this.pendingSpawnRotation = rotationY;
+            this.shouldSpawnOnLoad = true;
         }
     }
 

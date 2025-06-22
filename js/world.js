@@ -216,27 +216,28 @@ export async function createTrees(worldConfig) {
         for (let i = 0; i < treeCount; i++) {
             const x = Math.random() * worldSize - worldSize / 2;
             const z = Math.random() * worldSize - worldSize / 2;
-            const y = gameContext.getHeightAt(x, z);
+            const terrainHeight = gameContext.getHeightAt(x, z);
 
             let isSubmerged = false;
             for (const water of gameContext.waterBodies) {
                 const distanceToWaterCenter = new THREE.Vector2(x - water.position.x, z - water.position.z).length();
                 const waterRadius = water.geometry.parameters.radius || (water.geometry.parameters.width / 2);
-                if (distanceToWaterCenter < waterRadius && y < water.position.y + 1) {
+                if (distanceToWaterCenter < waterRadius && terrainHeight < water.position.y + 1) {
                     isSubmerged = true;
                     break;
                 }
             }
             if (isSubmerged) continue;
 
-            if (new THREE.Vector3(x, y, z).distanceTo(new THREE.Vector3(0, gameContext.getHeightAt(0, 10), 10)) < TREE_SPAWN_AVOID_PLAYER_RADIUS) {
+            if (new THREE.Vector3(x, terrainHeight, z).distanceTo(new THREE.Vector3(0, gameContext.getHeightAt(0, 10), 10)) < TREE_SPAWN_AVOID_PLAYER_RADIUS) {
                 continue;
             }
 
             const treeInstance = treeModel.clone();
-                                    const scale = (Math.random() * (worldConfig.vegetation.treeScale.max - worldConfig.vegetation.treeScale.min) + worldConfig.vegetation.treeScale.min) * 0.81;
+            const scale = (Math.random() * (worldConfig.vegetation.treeScale.max - worldConfig.vegetation.treeScale.min) + worldConfig.vegetation.treeScale.min) * 0.81;
             treeInstance.scale.set(scale, scale, scale);
-            treeInstance.position.set(x, y, z);
+            // Position tree at terrain height - Y is the vertical axis after terrain rotation
+            treeInstance.position.set(x, terrainHeight, z);
             treeInstance.rotation.y = Math.random() * Math.PI * 2;
             treesGroup.add(treeInstance);
         }
@@ -250,25 +251,25 @@ export async function createTrees(worldConfig) {
         for (let i = 0; i < treeCount; i++) {
             const x = Math.random() * worldSize - worldSize / 2;
             const z = Math.random() * worldSize - worldSize / 2;
-            const y = gameContext.getHeightAt(x, z);
+            const terrainHeight = gameContext.getHeightAt(x, z);
 
             let isSubmerged = false;
             for (const water of gameContext.waterBodies) {
                 const distanceToWaterCenter = new THREE.Vector2(x - water.position.x, z - water.position.z).length();
                 const waterRadius = water.geometry.parameters.radius || (water.geometry.parameters.width / 2);
-                if (distanceToWaterCenter < waterRadius && y < water.position.y + 1) {
+                if (distanceToWaterCenter < waterRadius && terrainHeight < water.position.y + 1) {
                     isSubmerged = true;
                     break;
                 }
             }
             if (isSubmerged) continue;
 
-            if (new THREE.Vector3(x, y, z).distanceTo(new THREE.Vector3(0, gameContext.getHeightAt(0, 10), 10)) < TREE_SPAWN_AVOID_PLAYER_RADIUS) {
+            if (new THREE.Vector3(x, terrainHeight, z).distanceTo(new THREE.Vector3(0, gameContext.getHeightAt(0, 10), 10)) < TREE_SPAWN_AVOID_PLAYER_RADIUS) {
                 continue;
             }
 
             const tree = new THREE.Group();
-                                    const scale = (Math.random() * (worldConfig.vegetation.treeScale.max - worldConfig.vegetation.treeScale.min) + worldConfig.vegetation.treeScale.min) * 0.81;
+            const scale = (Math.random() * (worldConfig.vegetation.treeScale.max - worldConfig.vegetation.treeScale.min) + worldConfig.vegetation.treeScale.min) * 0.81;
 
             const trunkHeight = (TREE_TRUNK_BASE_HEIGHT + Math.random() * TREE_TRUNK_RAND_HEIGHT) * scale;
             const trunkGeometry = new THREE.CylinderGeometry(TREE_TRUNK_SCALE_MIN_RADIUS * scale, TREE_TRUNK_SCALE_MAX_RADIUS * scale, trunkHeight, TREE_TRUNK_SEGMENTS);
@@ -294,8 +295,118 @@ export async function createTrees(worldConfig) {
             canopy.castShadow = true;
             tree.add(canopy);
 
-            tree.position.set(x, y, z);
+            // Position tree at terrain height - Y is the vertical axis after terrain rotation
+            tree.position.set(x, terrainHeight, z);
             treesGroup.add(tree);
         }
+    }
+}
+
+/**
+ * Procedurally generates and places bush thickets in the game world.
+ * Creates small clusters of bushes for natural-looking vegetation.
+ * @param {object} worldConfig - The world configuration, containing vegetation settings.
+ */
+export async function createBushes(worldConfig) {
+    const worldSize = worldConfig.terrain.size || DEFAULT_WORLD_SIZE;
+    // Create fewer bush thickets than trees - about 1/4 the density
+    const thicketCount = Math.floor((worldConfig.vegetation.treeCount || 50) / 4);
+    const bushesGroup = new THREE.Group();
+    gameContext.bushes = bushesGroup;
+    gameContext.scene.add(gameContext.bushes);
+
+    const loader = new GLTFLoader();
+
+    try {
+        const gltf = await loader.loadAsync('assets/landscapes/bush.glb');
+        const bushModel = gltf.scene;
+
+        bushModel.traverse(node => {
+            if (node.isMesh) {
+                node.castShadow = true;
+                node.receiveShadow = true;
+            }
+        });
+
+        for (let i = 0; i < thicketCount; i++) {
+            // Create a thicket center point
+            const centerX = Math.random() * worldSize - worldSize / 2;
+            const centerZ = Math.random() * worldSize - worldSize / 2;
+            const centerHeight = gameContext.getHeightAt(centerX, centerZ);
+
+            // Check if thicket center is submerged
+            let isSubmerged = false;
+            for (const water of gameContext.waterBodies) {
+                const distanceToWaterCenter = new THREE.Vector2(centerX - water.position.x, centerZ - water.position.z).length();
+                const waterRadius = water.geometry.parameters.radius || (water.geometry.parameters.width / 2);
+                if (distanceToWaterCenter < waterRadius && centerHeight < water.position.y + 1) {
+                    isSubmerged = true;
+                    break;
+                }
+            }
+            if (isSubmerged) continue;
+
+            // Avoid player spawn area
+            if (new THREE.Vector3(centerX, centerHeight, centerZ).distanceTo(new THREE.Vector3(0, gameContext.getHeightAt(0, 10), 10)) < TREE_SPAWN_AVOID_PLAYER_RADIUS) {
+                continue;
+            }
+
+            // Create 2-5 bushes in a small cluster around the center point
+            const bushesInThicket = 2 + Math.floor(Math.random() * 4); // 2-5 bushes
+            const thicketRadius = 3 + Math.random() * 4; // 3-7 unit radius
+
+            for (let j = 0; j < bushesInThicket; j++) {
+                // Position bushes randomly within the thicket radius
+                const angle = Math.random() * Math.PI * 2;
+                const distance = Math.random() * thicketRadius;
+                const bushX = centerX + Math.cos(angle) * distance;
+                const bushZ = centerZ + Math.sin(angle) * distance;
+                const bushHeight = gameContext.getHeightAt(bushX, bushZ);
+
+                // Check if this bush position is submerged
+                let bushSubmerged = false;
+                for (const water of gameContext.waterBodies) {
+                    const distanceToWaterCenter = new THREE.Vector2(bushX - water.position.x, bushZ - water.position.z).length();
+                    const waterRadius = water.geometry.parameters.radius || (water.geometry.parameters.width / 2);
+                    if (distanceToWaterCenter < waterRadius && bushHeight < water.position.y + 1) {
+                        bushSubmerged = true;
+                        break;
+                    }
+                }
+                if (bushSubmerged) continue;
+
+                const bushInstance = bushModel.clone();
+                
+                // Create varied bush sizes with weighted distribution
+                // Small bushes (deer body height): 40% chance, scale 0.15-0.3 (reduced by 50%)
+                // Medium bushes: 40% chance, scale 0.3-0.5 (reduced by 50%)
+                // Large bushes: 20% chance, scale 0.5-0.75 (reduced by 50%)
+                let scale;
+                const sizeRandom = Math.random();
+                if (sizeRandom < 0.4) {
+                    // Small bushes - deer can hide behind with head showing
+                    scale = 0.15 + Math.random() * 0.15; // 0.15-0.3 (was 0.3-0.6)
+                } else if (sizeRandom < 0.8) {
+                    // Medium bushes - standard size
+                    scale = 0.3 + Math.random() * 0.2; // 0.3-0.5 (was 0.6-1.0)
+                } else {
+                    // Large bushes - taller cover
+                    scale = 0.5 + Math.random() * 0.25; // 0.5-0.75 (was 1.0-1.5)
+                }
+                
+                bushInstance.scale.set(scale, scale, scale);
+                // Bushes should be smaller than trees - scale between 0.5 and 1.2
+                // const scale = 0.5 + Math.random() * 0.7;
+                // bushInstance.scale.set(scale, scale, scale);
+                // Position bush at terrain height
+                bushInstance.position.set(bushX, bushHeight, bushZ);
+                bushInstance.rotation.y = Math.random() * Math.PI * 2;
+                bushesGroup.add(bushInstance);
+            }
+        }
+
+    } catch (error) {
+        console.error("Failed to load bush model:", error);
+        // No fallback for bushes - they're decorative
     }
 }
