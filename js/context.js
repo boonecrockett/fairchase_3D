@@ -17,6 +17,7 @@
  * @property {THREE.Mesh[]} tracks - Array of deer track meshes.
  * @property {THREE.Mesh[]} bloodDrops - Array of blood drop meshes.
  * @property {number} gameTime - Current in-game time (0-24 hours).
+ * @property {number} gameSpeed - Game speed multiplier.
  * @property {boolean} isSleeping - Flag indicating if the sleep sequence is active.
  * @property {number} score - Player's current score.
  * @property {number} distanceTraveled - Total distance traveled by the player.
@@ -32,6 +33,8 @@
  * @property {THREE.Vector3} wanderTarget - Current wander target for the deer.
  * @property {THREE.Vector3} lastTrackPosition - Position where the last deer track was placed.
  * @property {THREE.Vector3} lastBloodDropPosition - Position where the last blood drop was placed.
+ * @property {number} mapUsageCount - Track smartphone map usage for battery system.
+ * @property {number} maxMapUsage - Maximum map uses per day.
  * @property {HTMLElement} timeValueElement - UI element for displaying game time.
  * @property {HTMLElement} scoreValueElement - UI element for displaying score.
  * @property {HTMLElement} compassElement - UI element for displaying compass heading.
@@ -45,13 +48,19 @@
  * @property {HTMLElement} scopeOverlayElement - UI overlay for the rifle scope.
  * @property {HTMLElement} crosshairElement - UI element for the crosshair.
  * @property {HTMLElement} reportModalBackdrop - Modal backdrop for reports/journal.
- * @property {HTMLElement} reportTitle - Title element of the report modal.
- * @property {HTMLElement} reportContent - Content element of the report modal.
+ * @property {HTMLElement} reportModal - Modal element for reports/journal.
+ * @property {HTMLElement} reportTitle - Title element for reports/journal.
+ * @property {HTMLElement} reportContent - Content element for reports/journal.
  * @property {HTMLElement} closeReportButton - Button to close the report modal.
  * @property {HTMLElement} journalButton - Button to open the journal.
- * @property {HTMLElement} mapButton - Button to open the map.
  * @property {HTMLElement} mapModalBackdrop - Modal backdrop for the map.
+ * @property {HTMLElement} mapModal - Modal element for the map.
  * @property {HTMLElement} closeMapButton - Button to close the map modal.
+ * @property {HTMLElement} endOfDayModalBackdrop - Modal backdrop for end-of-day journal.
+ * @property {HTMLElement} endOfDayModal - Modal element for end-of-day journal.
+ * @property {HTMLElement} endOfDayTitle - Title element for end-of-day journal.
+ * @property {HTMLElement} endOfDayContent - Content element for end-of-day journal.
+ * @property {HTMLElement} continueToNextDayButton - Button to continue to next day.
  * @property {HTMLElement} mapCanvas - The canvas element for the map.
  * @property {Function} init - Initializes a game world with a given configuration.
  * @property {Function} animate - The main animation loop.
@@ -87,9 +96,9 @@ export const gameContext = {
     bloodDrops: [],
 
     // Game state
-    gameTime: 6, // Start at 6 AM
-    isSleeping: false,
-    score: 0,
+    gameTime: 4.5, // Start at 4:30 AM (30 minutes before legal hunting hours)
+    gameSpeed: 1,
+    score: 100,
     distanceTraveled: 0,
     lastPlayerPosition: new THREE.Vector3(),
     canTag: false,
@@ -103,6 +112,9 @@ export const gameContext = {
     wanderTarget: new THREE.Vector3(),
     lastTrackPosition: new THREE.Vector3(),
     lastBloodDropPosition: new THREE.Vector3(),
+    mapUsageCount: 0, // Track smartphone map usage for battery system
+    maxMapUsage: 10,  // Maximum map uses per day
+    isSleeping: false,
 
     // UI Elements - to be populated on DOMContentLoaded
     timeValueElement: null,
@@ -118,13 +130,19 @@ export const gameContext = {
     scopeOverlayElement: null,
     crosshairElement: null,
     reportModalBackdrop: null,
+    reportModal: null,
     reportTitle: null,
     reportContent: null,
     closeReportButton: null,
     journalButton: null,
-    mapButton: null,
     mapModalBackdrop: null,
+    mapModal: null,
     closeMapButton: null,
+    endOfDayModalBackdrop: null,
+    endOfDayModal: null,
+    endOfDayTitle: null,
+    endOfDayContent: null,
+    continueToNextDayButton: null,
     mapCanvas: null,
 
     // Bound functions

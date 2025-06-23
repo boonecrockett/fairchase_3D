@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { setupScene } from './scene.js';
+import { setupScene, updateShadowCamera } from './scene.js';
 import { createHills, createWater, findDrinkingSpots, createTrees, createBushes } from './world.js';
 import { createPlayer, addPlayerEventListeners, updatePlayer } from './player.js';
 import { deer } from './deer.js';
@@ -15,6 +15,7 @@ import {
     SLEEP_SEQUENCE_MAIN_DURATION_MS,
     SLEEP_FADE_OUT_DURATION_MS
 } from './constants.js';
+import { updateSpatialAudioListener } from './spatial-audio.js';
 
 // --- CORE FUNCTIONS (No longer need context passed) ---
 
@@ -91,6 +92,9 @@ function shoot() {
 
         if (hitName) {
             
+            // Mark deer as actually hit to prevent erratic state cycling
+            gameContext.deer.wasActuallyHit = true;
+            
             // Create blood indicator at the hit location
             if (hitPosition) {
                 gameContext.deer.createShotBloodIndicator(hitPosition);
@@ -103,11 +107,30 @@ function shoot() {
                 gameContext.huntLog = {
                     initialSightingDistance: Math.round(distance * 1.09361),
                     firstShotResult: '',
+                    firstShotDistance: Math.round(distance * 1.09361),
+                    hitLocation: '',
                     distanceTrailed: 0,
-                    recoveryShotDistance: null
+                    recoveryShotDistance: null,
+                    totalShotsTaken: 0,
+                    deerInitialPosition: gameContext.deer.model.position.clone()
                 };
             }
 
+            // Increment shot count and record hit location
+            gameContext.huntLog.totalShotsTaken++;
+            
+            // Record hit location for journal
+            if (!gameContext.huntLog.hitLocation) {
+                // First hit - record the location
+                if (hitName === 'vitals') {
+                    gameContext.huntLog.hitLocation = 'Vital organs';
+                } else if (hitName === 'head') {
+                    gameContext.huntLog.hitLocation = 'Head/Brain';
+                } else if (hitName === 'body') {
+                    gameContext.huntLog.hitLocation = 'Body';
+                }
+            }
+            
             if (hitName === 'vitals' || hitName === 'head') {
                 let isLethalShot = true;
                 if (hitName === 'vitals') {
@@ -154,11 +177,12 @@ function shoot() {
                     
                     const maxPenaltyDistance = 250;
                     const distanceFactor = Math.min(distance, maxPenaltyDistance) / maxPenaltyDistance;
-                    const penalty = distanceFactor * (baseScore * 0.75);
+                    const penalty = distanceFactor * (baseScore * 0.5); 
                     shotScore = Math.round(baseScore - penalty);
 
-                    if (distance < 100) {
-                        shotScore += (100 - Math.round(distance * 1.09361));
+                    const distanceInYards = Math.round(distance * 1.09361);
+                    if (distanceInYards < 100) {
+                        shotScore += (100 - distanceInYards);
                     }
 
                     if (wasMoving) {
@@ -257,9 +281,9 @@ function shoot() {
         }
     } else {
         // Handle a clean miss
-        gameContext.score -= 50;
+        gameContext.score -= 20; // Changed from -50 to -20
         gameContext.scoreValueElement.textContent = gameContext.score;
-        showMessage("Missed! -50 Points");
+        showMessage("Missed! -20 Points");
         if (deer.state !== 'WOUNDED' && deer.state !== 'FLEEING') {
             deer.setState('FLEEING');
         }
@@ -282,28 +306,193 @@ function tagDeer() {
     gameContext.killInfo = null;
     gameContext.canTag = false;
     if(gameContext.interactionPromptElement) gameContext.interactionPromptElement.style.display = 'none';
-    deer.respawn();
+    
+    // Wait 10 seconds before spawning a new deer
+    setTimeout(() => {
+        deer.respawn();
+    }, 10000); // 10 seconds delay
 }
 
 async function handleEndOfDay() {
+    // Show the enhanced end-of-day journal modal
+    showEndOfDayJournal();
+}
+
+/**
+ * Shows the comprehensive end-of-day journal with detailed hunt analysis
+ */
+function showEndOfDayJournal() {
     const distanceInMiles = (gameContext.distanceTraveled * 0.000621371).toFixed(2);
-    let journalContent = "The quiet of the woods was its own reward."; // Default message
-
-    if (gameContext.dailyKillInfo) {
-        journalContent = `Travelled ${distanceInMiles} miles. A successful day. Sighted the buck at ${gameContext.dailyKillInfo.initialSightingDistance} yards. First shot was ${gameContext.dailyKillInfo.firstShotResult}. It ran, and I trailed it for ${Math.round(gameContext.dailyKillInfo.distanceTrailed * 1.09361)} yards before taking the final shot, a ${gameContext.dailyKillInfo.message}, from ${gameContext.dailyKillInfo.recoveryShotDistance || gameContext.dailyKillInfo.initialSightingDistance} yards. A clean and ethical hunt.`;
-    } else if (gameContext.huntLog && gameContext.huntLog.firstShotResult === 'Wounded') {
-        journalContent = `Travelled ${distanceInMiles} miles. A disappointing day. Wounded a deer but couldn't recover it after tracking it for ${Math.round(gameContext.huntLog.distanceTrailed * 1.09361)} yards. A hunter's duty is to be better.`;
-    } else {
-        journalContent = `Travelled ${distanceInMiles} miles. The forest was quiet today. No deer harvested, but the time spent in nature is never wasted.`;
-    }
-
-    gameContext.journalEntries.unshift({title: `Day ${gameContext.journalEntries.length + 1}`, content: journalContent});
-    if (gameContext.journalEntries.length > 5) gameContext.journalEntries.pop(); 
     
-    showMessage("A new day has dawned. Check your journal.", 5000);
-    gameContext.distanceTraveled = 0;
-    gameContext.dailyKillInfo = null;
-    gameContext.huntLog = {};
+    // Build comprehensive hunt summary
+    let journalHTML = `<h3>Day ${gameContext.journalEntries.length + 1} Summary</h3>`;
+    
+    // Basic stats
+    journalHTML += `<div class="stat-line"><span class="highlight">Distance Traveled:</span> ${distanceInMiles} miles</div>`;
+    journalHTML += `<div class="stat-line"><span class="highlight">Time in Field:</span> Full hunting day</div>`;
+    
+    if (gameContext.dailyKillInfo || (gameContext.huntLog && gameContext.huntLog.totalShotsTaken > 0)) {
+        journalHTML += `<h3>Hunt Analysis</h3>`;
+        
+        const huntData = gameContext.dailyKillInfo || gameContext.huntLog;
+        const trailingDistance = Math.round(huntData.distanceTrailed * 1.09361);
+        const firstShotDistance = huntData.firstShotDistance || huntData.initialSightingDistance;
+        const finalShotDistance = huntData.recoveryShotDistance || firstShotDistance;
+        const hitLocation = huntData.hitLocation || 'Unknown';
+        const totalShots = huntData.totalShotsTaken || 1;
+        
+        // Initial sighting
+        journalHTML += `<div class="stat-line"><span class="highlight">Initial Sighting:</span> ${huntData.initialSightingDistance} yards</div>`;
+        
+        // Shot analysis
+        journalHTML += `<h3>Shot Analysis</h3>`;
+        journalHTML += `<div class="stat-line"><span class="highlight">Total Shots Taken:</span> ${totalShots}</div>`;
+        journalHTML += `<div class="stat-line"><span class="highlight">First Shot Distance:</span> ${firstShotDistance} yards</div>`;
+        journalHTML += `<div class="stat-line"><span class="highlight">Hit Location:</span> ${hitLocation}</div>`;
+        journalHTML += `<div class="stat-line"><span class="highlight">First Shot Result:</span> <span class="${getResultClass(huntData.firstShotResult)}">${huntData.firstShotResult}</span></div>`;
+        
+        if (finalShotDistance !== firstShotDistance) {
+            journalHTML += `<div class="stat-line"><span class="highlight">Final Shot Distance:</span> ${finalShotDistance} yards</div>`;
+        }
+        
+        // Tracking analysis
+        if (trailingDistance > 0) {
+            journalHTML += `<h3>Tracking Analysis</h3>`;
+            journalHTML += `<div class="stat-line"><span class="highlight">Distance Trailed:</span> ${trailingDistance} yards</div>`;
+            
+            if (trailingDistance > 100) {
+                journalHTML += `<div class="stat-line"><span class="warning">⚠ Extended tracking required - consider shot placement improvement</span></div>`;
+            } else if (trailingDistance < 50) {
+                journalHTML += `<div class="stat-line"><span class="success">✓ Minimal tracking required - excellent shot placement</span></div>`;
+            }
+        }
+        
+        // Ethical assessment
+        journalHTML += `<h3>Ethical Assessment</h3>`;
+        
+        if (gameContext.dailyKillInfo) {
+            // Successful hunt
+            journalHTML += `<div class="stat-line"><span class="success">✓ Clean, ethical harvest completed</span></div>`;
+            
+            if (totalShots === 1) {
+                journalHTML += `<div class="stat-line"><span class="success">✓ One-shot harvest demonstrates excellent marksmanship</span></div>`;
+            } else if (totalShots === 2) {
+                journalHTML += `<div class="stat-line"><span class="warning">⚠ Two shots required - consider practicing shot placement</span></div>`;
+            } else {
+                journalHTML += `<div class="stat-line"><span class="error">⚠ Multiple shots required - significant improvement needed</span></div>`;
+            }
+            
+            if (firstShotDistance <= 100) {
+                journalHTML += `<div class="stat-line"><span class="success">✓ Appropriate shooting distance maintained</span></div>`;
+            } else if (firstShotDistance <= 200) {
+                journalHTML += `<div class="stat-line"><span class="warning">⚠ Long-range shot - ensure adequate practice at this distance</span></div>`;
+            } else {
+                journalHTML += `<div class="stat-line"><span class="error">⚠ Very long-range shot - consider closer approach for ethical hunting</span></div>`;
+            }
+            
+            // Score breakdown if available
+            if (gameContext.dailyKillInfo.message) {
+                journalHTML += `<h3>Performance</h3>`;
+                journalHTML += `<div class="stat-line"><span class="highlight">Result:</span> <span class="success">${gameContext.dailyKillInfo.message}</span></div>`;
+            }
+            
+        } else if (gameContext.huntLog && gameContext.huntLog.firstShotResult && gameContext.huntLog.firstShotResult.includes('Wounded')) {
+            // Wounded but not recovered
+            journalHTML += `<div class="stat-line"><span class="error">✗ Wounded animal not recovered</span></div>`;
+            journalHTML += `<div class="stat-line"><span class="error">✗ Hunter's responsibility to improve shot placement and tracking skills</span></div>`;
+            journalHTML += `<div class="stat-line"><span class="warning">⚠ Consider practicing at shorter distances</span></div>`;
+            journalHTML += `<div class="stat-line"><span class="warning">⚠ Review proper shot placement techniques</span></div>`;
+        }
+        
+        // Lessons learned
+        journalHTML += `<h3>Lessons Learned</h3>`;
+        
+        if (hitLocation.includes('Vital')) {
+            journalHTML += `<div class="stat-line"><span class="success">✓ Excellent shot placement in vital zone</span></div>`;
+        } else if (hitLocation.includes('Head')) {
+            journalHTML += `<div class="stat-line"><span class="success">✓ Precise headshot demonstrates excellent marksmanship</span></div>`;
+        } else if (hitLocation.includes('Body')) {
+            journalHTML += `<div class="stat-line"><span class="warning">⚠ Body shot - aim for vital organs for more ethical harvest</span></div>`;
+        }
+        
+        if (trailingDistance > 200) {
+            journalHTML += `<div class="stat-line"><span class="warning">⚠ Extensive tracking suggests shot placement improvement needed</span></div>`;
+        }
+        
+    } else {
+        // No shots taken
+        journalHTML += `<h3>Hunt Analysis</h3>`;
+        journalHTML += `<div class="stat-line">No deer encountered or shot opportunities taken</div>`;
+        
+        journalHTML += `<h3>Reflection</h3>`;
+        journalHTML += `<div class="stat-line"><span class="highlight">Time in nature is valuable regardless of harvest</span></div>`;
+        journalHTML += `<div class="stat-line">Consider different hunting locations or times</div>`;
+        journalHTML += `<div class="stat-line">Patience and persistence are key hunting virtues</div>`;
+    }
+    
+    // Create simple journal entry for the journal history
+    let simpleJournalContent = "The quiet of the woods was its own reward.";
+    
+    if (gameContext.dailyKillInfo) {
+        const huntData = gameContext.dailyKillInfo;
+        const trailingDistance = Math.round(huntData.distanceTrailed * 1.09361);
+        const firstShotDistance = huntData.firstShotDistance || huntData.initialSightingDistance;
+        const finalShotDistance = huntData.recoveryShotDistance || firstShotDistance;
+        const hitLocation = huntData.hitLocation || 'Unknown';
+        const totalShots = huntData.totalShotsTaken || 1;
+        
+        simpleJournalContent = `Travelled ${distanceInMiles} miles. A successful day. Sighted the buck at ${huntData.initialSightingDistance} yards. First shot was ${huntData.firstShotResult} from ${firstShotDistance} yards, hitting the ${hitLocation.toLowerCase()}.`;
+        
+        if (trailingDistance > 0) {
+            simpleJournalContent += ` The buck ran, and I trailed it for ${trailingDistance} yards before taking the final shot from ${finalShotDistance} yards.`;
+        }
+        
+        simpleJournalContent += ` Total shots taken: ${totalShots}. ${huntData.message || 'A clean and ethical hunt'}.`;
+    } else if (gameContext.huntLog && gameContext.huntLog.firstShotResult && gameContext.huntLog.firstShotResult.includes('Wounded')) {
+        const huntData = gameContext.huntLog;
+        const trailingDistance = Math.round(huntData.distanceTrailed * 1.09361);
+        const firstShotDistance = huntData.firstShotDistance || huntData.initialSightingDistance;
+        const hitLocation = huntData.hitLocation || 'Unknown';
+        const totalShots = huntData.totalShotsTaken || 1;
+        
+        simpleJournalContent = `Travelled ${distanceInMiles} miles. A disappointing day. Wounded a deer with ${huntData.firstShotResult} from ${firstShotDistance} yards, hitting the ${hitLocation.toLowerCase()}. Tracked it for ${trailingDistance} yards but couldn't recover it. Total shots taken: ${totalShots}. A hunter's duty is to be better.`;
+    } else {
+        simpleJournalContent = `Travelled ${distanceInMiles} miles. The forest was quiet today. No deer harvested, but the time spent in nature is never wasted.`;
+    }
+    
+    // Add to journal history
+    gameContext.journalEntries.unshift({title: `Day ${gameContext.journalEntries.length + 1}`, content: simpleJournalContent});
+    if (gameContext.journalEntries.length > 5) gameContext.journalEntries.pop();
+    
+    // Show the enhanced modal
+    gameContext.endOfDayContent.innerHTML = journalHTML;
+    gameContext.endOfDayModalBackdrop.style.display = 'flex';
+    
+    // Reset for next day when continue is clicked
+    if (gameContext.continueToNextDayButton) {
+        gameContext.continueToNextDayButton.onclick = () => {
+            gameContext.endOfDayModalBackdrop.style.display = 'none';
+            gameContext.distanceTraveled = 0;
+            gameContext.dailyKillInfo = null;
+            gameContext.huntLog = {};
+            showMessage("A new day has dawned. Good luck hunting!", 5000);
+        };
+    }
+}
+
+/**
+ * Helper function to get CSS class for shot result
+ */
+function getResultClass(result) {
+    if (!result) return '';
+    
+    if (result.includes('Perfect') || result.includes('Headshot') || result.includes('Recovery')) {
+        return 'success';
+    } else if (result.includes('Wounded')) {
+        return 'error';
+    } else {
+        return 'warning';
+    }
 }
 
 /**
@@ -349,6 +538,8 @@ function startSleepSequence() {
         setTimeout(async () => {
             await handleEndOfDay(); 
             gameContext.gameTime = DAWN_START_HOUR - 0.5;
+            // Reset map usage count for new day
+            gameContext.mapUsageCount = 0;
             gameContext.sleepOverlay.style.opacity = 0;
             setTimeout(() => {
                 gameContext.sleepOverlay.style.display = 'none';
@@ -372,13 +563,160 @@ function updateDayNightCycle() {
     // Update time display in HUD
     updateTimeDisplay();
 
-    // Update scene lighting based on time
-    if (gameContext.scene && gameContext.scene.sun) {
-        const angle = (gameContext.gameTime / HOURS_IN_DAY) * 2 * Math.PI - Math.PI / 2;
-        gameContext.scene.sun.position.set(Math.cos(angle) * 500, Math.sin(angle) * 500, 0);
-        gameContext.scene.sun.intensity = Math.max(0, Math.sin(angle) + 0.5);
-        gameContext.scene.ambientLight.intensity = Math.max(0.2, Math.sin(angle) + 0.3);
+    // Update dynamic lighting based on time of day
+    updateDynamicLighting();
+}
+
+function updateDynamicLighting() {
+    if (!gameContext.scene || !gameContext.scene.sun || !gameContext.scene.ambientLight) return;
+    
+    const timeOfDay = gameContext.gameTime; // 0-24 hours
+    const sun = gameContext.scene.sun;
+    const ambientLight = gameContext.scene.ambientLight;
+    
+    // Calculate sun position (arc across the sky)
+    const sunAngle = ((timeOfDay - 6) / 12) * Math.PI; // 6 AM to 6 PM arc
+    const sunHeight = Math.sin(sunAngle);
+    const sunX = Math.cos(sunAngle) * 300;
+    const sunY = Math.max(10, sunHeight * 200 + 50); // Keep sun above horizon
+    const sunZ = 100;
+    
+    sun.position.set(sunX, sunY, sunZ);
+    
+    // Define lighting phases throughout the day
+    let sunColor, ambientColor, skyColor, sunIntensity, ambientIntensity;
+    
+    if (timeOfDay >= 5 && timeOfDay < 7) {
+        // Sunrise (5-7 AM) - warm orange/pink tones
+        const progress = (timeOfDay - 5) / 2;
+        sunColor = interpolateColor(0x1a1a2e, 0xff6b35, progress); // Dark blue to orange
+        ambientColor = interpolateColor(0x16213e, 0x8b4513, progress); // Dark to warm brown
+        skyColor = adjustColorSaturationAndLuminosity(
+            interpolateColor(0x1a1a2e, 0xff8c69, progress), 0.5, 1.2
+        ); // Dark to salmon with reduced saturation and increased luminosity
+        sunIntensity = 0.3 + progress * 0.5; // 0.3 to 0.8
+        ambientIntensity = 0.2 + progress * 0.3; // 0.2 to 0.5
+        
+    } else if (timeOfDay >= 7 && timeOfDay < 10) {
+        // Early Morning (7-10 AM) - golden hour
+        const progress = (timeOfDay - 7) / 3;
+        sunColor = interpolateColor(0xff6b35, 0xffd700, progress); // Orange to gold
+        ambientColor = interpolateColor(0x8b4513, 0xdaa520, progress); // Brown to goldenrod
+        skyColor = adjustColorSaturationAndLuminosity(
+            interpolateColor(0xff8c69, 0x87ceeb, progress), 0.5, 1.2
+        ); // Salmon to sky blue with reduced saturation and increased luminosity
+        sunIntensity = 0.8 + progress * 0.2; // 0.8 to 1.0
+        ambientIntensity = 0.5 + progress * 0.2; // 0.5 to 0.7
+        
+    } else if (timeOfDay >= 10 && timeOfDay < 15) {
+        // Midday (10 AM - 3 PM) - bright white/blue light
+        const progress = (timeOfDay - 10) / 5;
+        sunColor = interpolateColor(0xffd700, 0xffffff, progress); // Gold to white
+        ambientColor = interpolateColor(0xdaa520, 0xf0f8ff, progress); // Goldenrod to alice blue
+        skyColor = adjustColorSaturationAndLuminosity(
+            interpolateColor(0x87ceeb, 0x4169e1, progress), 0.5, 1.2
+        ); // Sky blue to royal blue with reduced saturation and increased luminosity
+        sunIntensity = 1.0; // Peak brightness
+        ambientIntensity = 0.7; // Peak ambient
+        
+    } else if (timeOfDay >= 15 && timeOfDay < 17) {
+        // Late Afternoon (3-5 PM) - warm white to golden
+        const progress = (timeOfDay - 15) / 2;
+        sunColor = interpolateColor(0xffffff, 0xffd700, progress); // White to gold
+        ambientColor = interpolateColor(0xf0f8ff, 0xdaa520, progress); // Alice blue to goldenrod
+        skyColor = adjustColorSaturationAndLuminosity(
+            interpolateColor(0x4169e1, 0xff8c69, progress), 0.5, 1.2
+        ); // Royal blue to salmon with reduced saturation and increased luminosity
+        sunIntensity = 1.0 - progress * 0.1; // 1.0 to 0.9
+        ambientIntensity = 0.7 - progress * 0.1; // 0.7 to 0.6
+        
+    } else if (timeOfDay >= 17 && timeOfDay < 19) {
+        // Sunset (5-7 PM) - golden to orange/red
+        const progress = (timeOfDay - 17) / 2;
+        sunColor = interpolateColor(0xffd700, 0xff4500, progress); // Gold to orange red
+        ambientColor = interpolateColor(0xdaa520, 0x8b0000, progress); // Goldenrod to dark red
+        skyColor = adjustColorSaturationAndLuminosity(
+            interpolateColor(0xff8c69, 0xff6347, progress), 0.5, 1.2
+        ); // Salmon to tomato with reduced saturation and increased luminosity
+        sunIntensity = 0.9 - progress * 0.4; // 0.9 to 0.5
+        ambientIntensity = 0.6 - progress * 0.2; // 0.6 to 0.4
+        
+    } else if (timeOfDay >= 19 && timeOfDay < 21) {
+        // Dusk (7-9 PM) - deep orange to purple
+        const progress = (timeOfDay - 19) / 2;
+        sunColor = interpolateColor(0xff4500, 0x800080, progress); // Orange red to purple
+        ambientColor = interpolateColor(0x8b0000, 0x483d8b, progress); // Dark red to dark slate blue
+        skyColor = adjustColorSaturationAndLuminosity(
+            interpolateColor(0xff6347, 0x4b0082, progress), 0.5, 1.2
+        ); // Tomato to indigo with reduced saturation and increased luminosity
+        sunIntensity = 0.5 - progress * 0.3; // 0.5 to 0.2
+        ambientIntensity = 0.4 - progress * 0.2; // 0.4 to 0.2
+        
+    } else {
+        // Night (9 PM - 5 AM) - deep blue/purple tones
+        sunColor = 0x191970; // Midnight blue
+        ambientColor = 0x191970; // Midnight blue
+        skyColor = adjustColorSaturationAndLuminosity(0x191970, 0.5, 1.2); // Midnight blue with reduced saturation and increased luminosity
+        sunIntensity = 0.1; // Very dim
+        ambientIntensity = 0.15; // Minimal ambient
     }
+    
+    // Apply the calculated lighting
+    sun.color.setHex(sunColor);
+    sun.intensity = sunIntensity;
+    
+    ambientLight.color.setHex(ambientColor);
+    ambientLight.intensity = ambientIntensity;
+    
+    // Update sky and fog color
+    gameContext.scene.background.setHex(skyColor);
+    if (gameContext.scene.fog) {
+        gameContext.scene.fog.color.setHex(skyColor);
+        // Adjust fog density based on time (more fog at dawn/dusk)
+        const fogFactor = (timeOfDay >= 5 && timeOfDay <= 8) || (timeOfDay >= 17 && timeOfDay <= 20) ? 1.5 : 1.0;
+        gameContext.scene.fog.near = 50 * fogFactor;
+        gameContext.scene.fog.far = 200 * fogFactor;
+    }
+}
+
+/**
+ * Interpolates between two hex colors
+ * @param {number} color1 - First color as hex number
+ * @param {number} color2 - Second color as hex number  
+ * @param {number} factor - Interpolation factor (0-1)
+ * @returns {number} Interpolated color as hex number
+ */
+function interpolateColor(color1, color2, factor) {
+    const c1 = new THREE.Color(color1);
+    const c2 = new THREE.Color(color2);
+    return c1.lerp(c2, factor).getHex();
+}
+
+/**
+ * Adjusts color saturation and luminosity
+ * @param {number} hexColor - Original hex color
+ * @param {number} saturationFactor - Multiplier for saturation (0.5 = 50% saturation)
+ * @param {number} luminosityFactor - Multiplier for luminosity (1.2 = 20% brighter)
+ * @returns {number} Adjusted hex color
+ */
+function adjustColorSaturationAndLuminosity(hexColor, saturationFactor, luminosityFactor) {
+    const color = new THREE.Color(hexColor);
+    
+    // Convert to HSL
+    const hsl = {};
+    color.getHSL(hsl);
+    
+    // Adjust saturation and luminosity
+    hsl.s *= saturationFactor;
+    hsl.l *= luminosityFactor;
+    
+    // Clamp values
+    hsl.s = Math.min(1, Math.max(0, hsl.s));
+    hsl.l = Math.min(1, Math.max(0, hsl.l));
+    
+    // Convert back to RGB and return hex
+    color.setHSL(hsl.h, hsl.s, hsl.l);
+    return color.getHex();
 }
 
 function updateTimeDisplay() {
@@ -393,10 +731,12 @@ function updateTimeDisplay() {
 function animate() {
     requestAnimationFrame(gameContext.animate);
     updateDayNightCycle();
+    updateShadowCamera();
     updatePlayer();
     deer.update(gameContext.deltaTime);
     updateInteraction();
     updateCompass();
+    updateSpatialAudioListener();
     if(gameContext.renderer) gameContext.renderer.render(gameContext.scene, gameContext.camera);
 }
 
@@ -435,13 +775,20 @@ document.addEventListener('DOMContentLoaded', () => {
     gameContext.scopeOverlayElement = document.getElementById('scope-overlay');
     gameContext.crosshairElement = document.getElementById('crosshair');
     gameContext.reportModalBackdrop = document.getElementById('report-modal-backdrop');
+    gameContext.reportModal = document.getElementById('report-modal');
     gameContext.reportTitle = document.getElementById('report-title');
     gameContext.reportContent = document.getElementById('report-content');
     gameContext.closeReportButton = document.getElementById('close-report-button');
     gameContext.journalButton = document.getElementById('journal-button');
     gameContext.mapButton = document.getElementById('map-button');
     gameContext.mapModalBackdrop = document.getElementById('map-modal-backdrop');
+    gameContext.mapModal = document.getElementById('map-modal');
     gameContext.closeMapButton = document.getElementById('close-map-button');
+    gameContext.endOfDayModalBackdrop = document.getElementById('end-of-day-modal-backdrop');
+    gameContext.endOfDayModal = document.getElementById('end-of-day-modal');
+    gameContext.endOfDayTitle = document.getElementById('end-of-day-title');
+    gameContext.endOfDayContent = document.getElementById('end-of-day-content');
+    gameContext.continueToNextDayButton = document.getElementById('continue-to-next-day-button');
     gameContext.mapCanvas = document.getElementById('map-canvas');
 
     // Assign core functions to the context

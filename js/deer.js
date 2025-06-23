@@ -1,6 +1,8 @@
 import * as THREE from 'three';
 import { gameContext } from './context.js';
 import { Animal } from './animal.js';
+import { updateDeerAudio, triggerDeerBlowSound } from './spatial-audio.js';
+import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 
 // --- DEER CONFIGURATION ---
 const deerConfig = {
@@ -11,7 +13,7 @@ const deerConfig = {
     bodyColor: 0x8B4513,
     bodySize: { x: 2, y: 1, z: 1 },
     heightOffset: 0.0, // Reduced from 0.3 to eliminate floating - deer feet should touch ground
-    worldBoundaryMargin: 20,
+    worldBoundaryMargin: 50, // Increased from 20 to 50 for more room near boundaries
 
     vitals: {
         size: { x: 0.252, y: 0.252, z: 0.252 }, // Shrunk by 10% from 0.28 to 0.252 (0.28 * 0.9)
@@ -53,21 +55,21 @@ const deerConfig = {
     },
 
     // AI Behavior
-    alertDistanceThreshold: 80,
-    fleeDistanceThreshold: 60,
-    wanderMinRadius: 20,
-    wanderMaxRadiusAddition: 50,
+    alertDistanceThreshold: 250,  // Increased from 60 - deer becomes alert at longer distance
+    fleeDistanceThreshold: 150,   // Increased from 35 - deer flees when player gets closer
+    wanderMinRadius: 15,         // Reduced from 20 - deer stays closer to current area
+    wanderMaxRadiusAddition: 40, // Reduced from 50 - less wandering range
     wanderTargetReachThreshold: 5.0,
     stateTimers: {
-        grazing: 5,
-        drinking: 10,
-        fleeing: 12,
+        grazing: 6,              // Increased from 4 - more time spent grazing for 40% total time
+        drinking: 8,             // Reduced from 10 - less time spent drinking
+        fleeing: 4,              // Updated from 3 to 4 - deer runs away for 4 seconds after alert
     },
     speeds: {
-        wandering: 3.42,   // Reverted back to original value
-        thirsty: 7.125,    // Reduced by 5% from 7.5
-        fleeing: 27.0,     // Keep fleeing speed unchanged
-        wounded: 13.5,     // Keep wounded speed unchanged for escape realism
+        wandering: 4.0,          // Increased from 3.42 - deer moves more, easier to spot
+        thirsty: 7.5,            // Increased from 7.125 - more movement when seeking water
+        fleeing: 27.0,           // Keep fleeing speed unchanged
+        wounded: 13.5,           // Keep wounded speed unchanged for escape realism
     },
     rotationSpeed: 2.5, // Radians per second for smooth turning
     legAnimationSpeeds: {
@@ -88,15 +90,15 @@ const deerConfig = {
     // Tracking
     tracking: {
         trackColor: 0x4B3621,
-        trackShapeRadius: 0.1536, // Reduced by another 20% from 0.192 for smaller tracks
+        trackShapeRadius: 0.18, // Increased from 0.1536 - slightly larger, more visible tracks
         trackOpacityStart: 1.0,
-        trackFadeDurationS: 4500, // Increased from 600 to last more than one game day (4320s)
-        trackCreationDistanceThreshold: 2.0,
+        trackFadeDurationS: 5400, // Increased from 4500 - tracks last longer
+        trackCreationDistanceThreshold: 1.8, // Reduced from 2.0 - more frequent tracks
         bloodDropColor: 0x880000,
-        bloodDropSize: 0.13, // Increased by 30% from 0.1 to 0.13
-        bloodOpacityStart: 0.8,
-        bloodFadeDurationS: 4500, // Increased from 900 to last more than one game day (4320s)
-        bloodDropCreationDistanceThreshold: 1.5,
+        bloodDropSize: 0.15, // Increased from 0.13 - more visible blood drops
+        bloodOpacityStart: 0.9, // Increased from 0.8 - more visible blood
+        bloodFadeDurationS: 5400, // Increased from 4500 - blood lasts longer
+        bloodDropCreationDistanceThreshold: 1.3, // Reduced from 1.5 - more frequent blood drops
     },
 
     // Spawning
@@ -130,7 +132,7 @@ class Deer extends Animal {
 
         this.fallen = false;
         this.woundCount = 0; // Track number of wounds for 3-wound kill logic
-        this.setState('WANDERING'); // Initialize state to wandering
+        this.setState('IDLE'); // Initialize state to IDLE
         
         // Debugging option to disable fleeing behavior
         this.fleeingEnabled = true; // Default: deer can flee normally
@@ -153,6 +155,33 @@ class Deer extends Animal {
         this.idleBehaviorTimer = 0;
         this.idleBehaviorDuration = 3 + Math.random() * 4; // Random duration 3-7 seconds
 
+        // Movement detection tracking for stealth system
+        this.lastPlayerPosition = new THREE.Vector3();
+        this.playerMovementStartTime = 0;
+        this.isTrackingPlayerMovement = false;
+        this.hasDetectedMovingPlayer = false;
+        this.MOVEMENT_DETECTION_THRESHOLD = 1.0; // Reduced from 4.0 to 1.0 seconds - deer detects movement faster
+        this.MOVEMENT_DISTANCE_THRESHOLD = 0.05; // Reduced from 0.3 to 0.05 - more sensitive to player movement
+        this.movementSampleCount = 0;
+        this.REQUIRED_MOVEMENT_SAMPLES = 2; // Reduced from 5 to 2 - require less consistent movement to detect
+
+        this.wasActuallyHit = false; // Flag to track if deer was actually hit
+
+        this.stuckDetectionHistory = [];
+        this.stuckDetectionMaxHistory = 60; // Track last 60 positions (about 1 second at 60fps)
+        this.stuckThreshold = 0.2; // If deer hasn't moved more than 0.2 units in 1 second, it might be stuck
+        this.lastStuckCheckTime = 0;
+        this.stuckCheckInterval = 1.0; // Check every 1 second (less frequent)
+        this.emergencyEscapeActive = false;
+        this.consecutiveStuckChecks = 0; // Require multiple consecutive stuck detections
+        this.requiredStuckChecks = 3; // Must be stuck for 3 consecutive checks before activating escape
+
+        this.previousState = 'IDLE'; // Initialize for spatial audio state change detection
+        this.alertTurnDirection = false; // Reset alert turning behavior
+        this.alertStartTime = 0;
+        this.hasAlertedPlayer = false; // Track if deer has blown alarm for current detection event
+        this.alertMovementDelay = 2.5; // Total delay before deer can move after becoming alert (0.5s sound delay + 2s movement delay)
+
         this.updateIdleBehavior = function(delta) {
             // Only update idle behavior when deer is actually stationary
             if (!this.isMoving && (this.state === 'WANDERING' || this.state === 'THIRSTY')) {
@@ -163,12 +192,12 @@ class Deer extends Animal {
                     
                     // Weighted random selection of idle behaviors
                     const rand = Math.random();
-                    if (rand < 0.4) {
-                        this.currentIdleBehavior = 'grazing'; // 40% chance
-                    } else if (rand < 0.7) {
-                        this.currentIdleBehavior = 'alert'; // 30% chance
+                    if (rand < 0.6) {
+                        this.currentIdleBehavior = 'grazing'; // 60% chance
+                    } else if (rand < 0.8) {
+                        this.currentIdleBehavior = 'alert'; // 20% chance
                     } else if (rand < 0.9) {
-                        this.currentIdleBehavior = 'idle'; // 20% chance
+                        this.currentIdleBehavior = 'idle'; // 10% chance
                     } else {
                         this.currentIdleBehavior = 'pawing'; // 10% chance
                     }
@@ -213,6 +242,92 @@ class Deer extends Animal {
         
         this.wanderTarget.x = Math.max(-boundary, Math.min(boundary, this.wanderTarget.x));
         this.wanderTarget.z = Math.max(-boundary, Math.min(boundary, this.wanderTarget.z));
+    }
+
+    setState(newState) {
+        const oldState = this.state;
+        
+        // Add debug logging for state changes
+        if (this.state !== newState) {
+            console.log(`Deer state change: ${this.state} -> ${newState}`);
+        }
+        
+        // Critical bug fix: Prevent any state changes if deer is locked in KILLED state
+        if (this.stateLockedToKilled && oldState === 'KILLED' && newState !== 'KILLED') {
+            console.warn('Deer: Prevented state change from KILLED - deer is locked in death state');
+            return;
+        }
+        
+        // Critical bug fix: Prevent deer from entering KILLED state unless actually hit
+        if (newState === 'KILLED') {
+            // Only allow KILLED state if deer was previously WOUNDED or if explicitly hit
+            if (oldState !== 'WOUNDED' && !this.wasActuallyHit) {
+                console.warn('Deer: Prevented invalid transition to KILLED state from', oldState);
+                return; // Block invalid transition to KILLED
+            }
+        }
+        
+        super.setState(newState);
+        gameContext.deerState = newState; // For legacy access
+
+        // Special debug logging for ALERT state
+        if (newState === 'ALERT' && oldState !== 'ALERT') {
+            console.log('Deer is now ALERT - should trigger deer blow sound');
+            console.log('Deer has transitioned to ALERT state'); // Added console log
+            this.alertStartTime = gameContext.clock.getElapsedTime(); // Record when deer became alert
+            if (!this.hasAlertedPlayer) {
+                triggerDeerBlowSound(this); // Trigger deer blow sound immediately
+                this.hasAlertedPlayer = true;
+            }
+        }
+
+        // Reset alert turn direction when leaving ALERT state
+        if (oldState === 'ALERT' && newState !== 'ALERT') {
+            this.alertTurnDirection = false;
+        }
+        
+        // Reset alert flag when deer flees or returns to calm states
+        if (newState === 'FLEEING' || newState === 'WANDERING' || newState === 'GRAZING') {
+            this.hasAlertedPlayer = false; // Reset alert flag for future encounters
+        }
+
+        if (newState === 'WANDERING') {
+            const wanderAngle = Math.random() * 2 * Math.PI;
+            const wanderRadius = this.config.wanderMinRadius + Math.random() * this.config.wanderMaxRadiusAddition;
+            
+            const originalTarget = new THREE.Vector3(
+                this.model.position.x + Math.cos(wanderAngle) * wanderRadius,
+                this.model.position.y,
+                this.model.position.z + Math.sin(wanderAngle) * wanderRadius
+            );
+            
+            const boundary = gameContext.worldSize / 2 - 20;
+            
+            this.wanderTarget.set(
+                Math.max(-boundary, Math.min(boundary, originalTarget.x)),
+                originalTarget.y,
+                Math.max(-boundary, Math.min(boundary, originalTarget.z))
+            );
+        }
+        
+        if (newState === 'KILLED') {
+            // Only start death sequence if not already started AND deer was actually hit
+            if (!this.deathSequenceStarted && this.wasActuallyHit) {
+                this.deathSequenceStarted = true;
+                this.startDeathSequence();
+            }
+        }
+        
+        // Reset hit flag after state change
+        if (newState !== 'WOUNDED' && newState !== 'KILLED') {
+            this.wasActuallyHit = false;
+        }
+        
+        // Reset alert turn direction when leaving ALERT state
+        if (oldState === 'ALERT' && newState !== 'ALERT') {
+            this.alertTurnDirection = false;
+            this.hasAlertedPlayer = false; // Reset alert flag
+        }
     }
 
     respawn() {
@@ -280,44 +395,19 @@ class Deer extends Animal {
         // If we couldn't find a safe position after max attempts, use the last position anyway
         // This prevents infinite loops, though it's very unlikely to happen
         if (!safePosition) {
-            console.warn(`Could not find safe deer spawn position after ${maxAttempts} attempts, using last position`);
             safePosition = new THREE.Vector3(x, y, z);
         }
 
         this.spawn(safePosition, Math.PI); // Facing the player
         
         this.generateNewWanderTarget();
-    }
-
-    setState(newState) {
-        super.setState(newState);
-        gameContext.deerState = newState; // For legacy access
-
-        if (newState === 'WANDERING') {
-            const wanderAngle = Math.random() * 2 * Math.PI;
-            const wanderRadius = this.config.wanderMinRadius + Math.random() * this.config.wanderMaxRadiusAddition;
-            this.wanderTarget.set(
-                this.model.position.x + Math.sin(wanderAngle) * wanderRadius,
-                0, // y is determined by terrain height
-                this.model.position.z + Math.cos(wanderAngle) * wanderRadius
-            );
-            
-            // Ensure wander target stays within world boundaries
-            const worldSize = gameContext.terrain ? gameContext.terrain.geometry.parameters.width : 1000;
-            const boundary = worldSize / 2 - this.config.worldBoundaryMargin;
-            
-            this.wanderTarget.x = Math.max(-boundary, Math.min(boundary, this.wanderTarget.x));
-            this.wanderTarget.z = Math.max(-boundary, Math.min(boundary, this.wanderTarget.z));
-        }
         
-        if (newState === 'KILLED') {
-            // Only start death sequence if not already started
-            if (!this.deathSequenceStarted) {
-                this.deathSequenceStarted = true;
-                this.startDeathSequence();
-            }
-        }
-        
+        // Immediately play blow sound when new deer spawns, regardless of distance
+        // This alerts the player that a new deer has appeared on the map
+        setTimeout(() => {
+            triggerDeerBlowSound(this);
+            console.log('New deer spawned and blow sound triggered');
+        }, 500); // Small delay to ensure deer is fully spawned
     }
 
     fallDown() {
@@ -325,26 +415,16 @@ class Deer extends Animal {
         
         this.fallen = true;
         
-        // Simple, reliable death animation - no complex rotation
-        const fallDuration = 800; // Shorter animation
+        // Simple death animation - just rotate the deer to lay on its side
+        const fallDuration = 800;
         const startTime = Date.now();
         
-        // Store original position and rotation
-        const originalPosition = {
-            x: this.model.position.x,
-            y: this.model.position.y,
-            z: this.model.position.z
-        };
+        // Store original rotation
         const originalRotation = {
             x: this.model.rotation.x,
             y: this.model.rotation.y,
             z: this.model.rotation.z
         };
-        
-        // Calculate safe final position - on the ground with minimal offset
-        const groundHeight = gameContext.getHeightAt(originalPosition.x, originalPosition.z);
-        const safeHeight = groundHeight + 0.1; // Just 0.1 units above ground to prevent clipping
-        const finalY = Math.max(safeHeight, originalPosition.y);
         
         const animateFall = () => {
             const elapsed = Date.now() - startTime;
@@ -353,35 +433,18 @@ class Deer extends Animal {
             // Smooth easing
             const easeOut = 1 - Math.pow(1 - progress, 2);
             
-            // ONLY rotate around Z axis to lay on side - no other rotation
-            this.model.rotation.x = originalRotation.x; // Keep original X rotation
-            this.model.rotation.y = originalRotation.y; // Keep original Y rotation  
-            this.model.rotation.z = originalRotation.z + (Math.PI / 2) * easeOut; // Only Z rotation to 90 degrees
-            
-            // Keep X and Z position absolutely fixed
-            this.model.position.x = originalPosition.x;
-            this.model.position.z = originalPosition.z;
-            
-            // Animate Y position to safe height (never below ground)
-            this.model.position.y = originalPosition.y + (finalY - originalPosition.y) * easeOut;
-            
-            // Double-check ground collision every frame
-            const currentGround = gameContext.getHeightAt(this.model.position.x, this.model.position.z);
-            const minY = currentGround + 0.1;
-            if (this.model.position.y < minY) {
-                this.model.position.y = minY;
-            }
+            // Rotate around Z axis to lay on side
+            this.model.rotation.x = originalRotation.x;
+            this.model.rotation.y = originalRotation.y;  
+            this.model.rotation.z = originalRotation.z + (Math.PI / 2) * easeOut;
             
             if (progress < 1) {
                 requestAnimationFrame(animateFall);
             } else {
-                // Final position - absolutely ensure deer is above ground
-                this.model.rotation.z = originalRotation.z + Math.PI / 2; // Exactly 90 degrees
-                this.model.position.x = originalPosition.x;
-                this.model.position.z = originalPosition.z;
-                
-                const finalGround = gameContext.getHeightAt(this.model.position.x, this.model.position.z);
-                this.model.position.y = Math.max(finalGround + 0.1, finalY);
+                // Final position
+                this.model.rotation.x = originalRotation.x;
+                this.model.rotation.y = originalRotation.y;  
+                this.model.rotation.z = originalRotation.z + Math.PI / 2;
             }
         };
         
@@ -597,6 +660,8 @@ class Deer extends Animal {
         const isRunning = this.isMoving && this.currentSpeed >= this.config.speeds.fleeing * 0.7;
         
         switch (this.state) {
+            case 'IDLE':
+                return 'idle';
             case 'WANDERING':
                 if (isWalking) return 'Walk';
                 if (isRunning) return 'Run';
@@ -613,7 +678,7 @@ class Deer extends Animal {
                 return 'Eat'; // Use the actual "Eat" animation from the model
                 
             case 'DRINKING':
-                return 'idle'; // Use idle for drinking (no specific drinking animation available)
+                return 'idle'; // Use idle for drinking (no specific drinking animation)
                 
             case 'ALERT':
                 return 'idle'; // Use idle for alert state
@@ -693,9 +758,9 @@ class Deer extends Animal {
         }
     }
 
-    updateHeadTurning(distanceToPlayer, delta) {
+    updateHeadTurning(distanceToPlayer, delta, playerVisible) {
         // Only turn head if deer has a head component and is in alert/fleeing state
-        if ((this.state === 'ALERT' || this.state === 'FLEEING') && this.model.head) {
+        if ((this.state === 'ALERT' || this.state === 'FLEEING') && this.model.head && playerVisible) {
             // Calculate direction from deer to player
             const directionToPlayer = new THREE.Vector3()
                 .subVectors(gameContext.player.position, this.model.position)
@@ -706,7 +771,7 @@ class Deer extends Animal {
             const deerForward = new THREE.Vector3(0, 0, 1).applyQuaternion(this.model.quaternion);
             const targetAngle = Math.atan2(directionToPlayer.x, directionToPlayer.z) - Math.atan2(deerForward.x, deerForward.z);
             
-            // Normalize angle to [-π, π]
+            // Normalize angle to [-π, π] range
             let normalizedAngle = targetAngle;
             while (normalizedAngle > Math.PI) normalizedAngle -= 2 * Math.PI;
             while (normalizedAngle < -Math.PI) normalizedAngle += 2 * Math.PI;
@@ -756,6 +821,15 @@ class Deer extends Animal {
 
         // Only continue with AI behavior if deer is alive
         if (this.state === 'DEAD') return;
+        
+        // Update spatial audio for this deer
+        updateDeerAudio(this, delta);
+
+        // Track deer movement distance for journal when wounded or fleeing
+        if ((this.state === 'WOUNDED' || this.state === 'FLEEING') && gameContext.huntLog && gameContext.huntLog.deerInitialPosition) {
+            const currentDistance = gameContext.huntLog.deerInitialPosition.distanceTo(this.model.position);
+            gameContext.huntLog.distanceTrailed = Math.max(gameContext.huntLog.distanceTrailed, currentDistance);
+        }
 
         this.timeSinceLastDrink += delta;
 
@@ -769,27 +843,85 @@ class Deer extends Animal {
 
         const distanceToPlayer = this.model.position.distanceTo(gameContext.player.position);
 
-        // Update head turning behavior based on deer state and player proximity
-        this.updateHeadTurning(distanceToPlayer, delta);
+        // Check if player is visible (not concealed by trees or bushes)
+        const playerVisible = this.isPlayerVisible();
 
+        // Track player movement for detection logic
+        const currentPlayerPosition = gameContext.player.position.clone();
+        const playerMoved = this.lastPlayerPosition.distanceTo(currentPlayerPosition) > this.MOVEMENT_DISTANCE_THRESHOLD;
+        
+        if (playerVisible) {
+            if (playerMoved) {
+                // Player is moving - increment sample count
+                this.movementSampleCount++;
+                
+                if (!this.isTrackingPlayerMovement && this.movementSampleCount >= this.REQUIRED_MOVEMENT_SAMPLES) {
+                    // Start tracking movement after enough consecutive movement samples
+                    this.isTrackingPlayerMovement = true;
+                    this.playerMovementStartTime = gameContext.clock.getElapsedTime();
+                    this.hasDetectedMovingPlayer = false;
+                } else if (this.isTrackingPlayerMovement) {
+                    // Continue tracking - check if player has been moving long enough
+                    const movementDuration = gameContext.clock.getElapsedTime() - this.playerMovementStartTime;
+                    if (movementDuration >= this.MOVEMENT_DETECTION_THRESHOLD && !this.hasDetectedMovingPlayer) {
+                        this.hasDetectedMovingPlayer = true;
+                    }
+                }
+            } else {
+                // Player is not moving - reset movement sample count
+                this.movementSampleCount = Math.max(0, this.movementSampleCount - 1);
+                
+                if (this.movementSampleCount === 0 && this.isTrackingPlayerMovement) {
+                    // Player has stopped moving - reset tracking
+                    this.isTrackingPlayerMovement = false;
+                    this.hasDetectedMovingPlayer = false;
+                }
+            }
+        } else {
+            // Player is not visible - reset everything
+            if (this.isTrackingPlayerMovement) {
+                this.isTrackingPlayerMovement = false;
+                this.hasDetectedMovingPlayer = false;
+            }
+            this.movementSampleCount = 0;
+        }
+        
+        // Update last player position for next frame (AFTER movement detection)
+        this.lastPlayerPosition.copy(currentPlayerPosition);
+
+        // Only react to player if they are visible AND have been detected moving for 2 seconds
         if (this.state !== 'FLEEING' && this.state !== 'WOUNDED' && this.state !== 'KILLED') {
-            if (distanceToPlayer < this.config.fleeDistanceThreshold && this.fleeingEnabled) {
+            // Check if deer is in alert delay period
+            const currentTime = gameContext.clock.getElapsedTime();
+            const inAlertDelay = this.state === 'ALERT' && (currentTime - this.alertStartTime < this.alertMovementDelay);
+            
+            if (playerVisible && this.hasDetectedMovingPlayer && distanceToPlayer < this.config.fleeDistanceThreshold && this.fleeingEnabled && !inAlertDelay) {
                 this.setState('FLEEING');
-            } else if (distanceToPlayer < this.config.alertDistanceThreshold) {
+            } else if (playerVisible && this.hasDetectedMovingPlayer && distanceToPlayer < this.config.alertDistanceThreshold) {
                 if (this.state !== 'ALERT') {
                     this.setState('ALERT');
                 }
-            } else if (this.state === 'ALERT') {
-                this.setState('WANDERING');
+            } else if (this.state === 'ALERT' && (!playerVisible || !this.hasDetectedMovingPlayer || distanceToPlayer >= this.config.alertDistanceThreshold)) {
+                // Only allow transition out of ALERT if not in delay period
+                if (!inAlertDelay) {
+                    this.setState('WANDERING');
+                }
             }
         }
 
         switch (this.state) {
+            case 'IDLE':
+                speed = 0;
+                legAnimationSpeed = 0;
+                if (this.stateTimer > 1.0) { // Wait 1 second, then start normal behavior
+                    this.setState(Math.random() < 0.6 ? 'GRAZING' : 'WANDERING'); // 60% chance to graze
+                }
+                break;
             case 'WANDERING':
                 speed = this.config.speeds.wandering * delta;
                 legAnimationSpeed = this.config.legAnimationSpeeds.wandering;
                 if (this.model.position.distanceTo(this.wanderTarget) < this.config.wanderTargetReachThreshold) {
-                    this.setState(Math.random() < 0.5 ? 'GRAZING' : 'WANDERING');
+                    this.setState(Math.random() < 0.6 ? 'GRAZING' : 'WANDERING'); // 60% chance to graze
                 } else {
                     this.smoothRotateTowards(this.wanderTarget, delta);
                     this.moveWithCollisionDetection(speed); // Move while rotating towards target
@@ -830,7 +962,22 @@ class Deer extends Animal {
             case 'ALERT':
                 speed = 0;
                 legAnimationSpeed = 0;
-                this.smoothRotateTowards(gameContext.player.position, delta);
+                
+                // Turn counterclockwise (left) when alert instead of toward player
+                if (!this.alertTurnDirection) {
+                    // Calculate counterclockwise direction (90 degrees left from current facing)
+                    const currentRotation = this.model.rotation.y;
+                    this.alertTargetRotation = currentRotation + Math.PI / 2; // 90 degrees counterclockwise
+                    this.alertTurnDirection = true;
+                }
+                
+                // Smoothly rotate counterclockwise
+                const rotationSpeed = this.config.rotationSpeed * delta;
+                const rotationDiff = this.alertTargetRotation - this.model.rotation.y;
+                
+                if (Math.abs(rotationDiff) > 0.1) {
+                    this.model.rotation.y += Math.sign(rotationDiff) * Math.min(Math.abs(rotationDiff), rotationSpeed);
+                }
                 break;
             case 'FLEEING':
                 speed = this.config.speeds.fleeing * delta;
@@ -904,7 +1051,7 @@ class Deer extends Animal {
             this.model.quaternion.slerp(targetQuaternion, 0.5);
             
             // Generate new wander target closer to center
-            const escapeDistance = Math.min(50, boundary * 0.3); // Move at least 30% toward center
+            const escapeDistance = 50; // Move at least 30% toward center
             this.wanderTarget.set(
                 this.model.position.x + centerDirection.x * escapeDistance,
                 0,
@@ -937,9 +1084,13 @@ class Deer extends Animal {
             
             // Check if deer is moving based on movement history
             const isMoving = this.movementHistory.some(movement => movement > movementThreshold);
+            
+            // Set the deer's isMoving flag for animation purposes
             this.isMoving = isMoving;
         }
-        
+
+        // moveWithCollisionDetection(speed);
+
         // Movement-based blood drops for wounded deer
         if (this.state === 'WOUNDED' && this.model.position.distanceTo(this.lastBloodDropPosition) > this.config.tracking.bloodDropCreationDistanceThreshold) {
             this.createBloodDrop();
@@ -951,6 +1102,142 @@ class Deer extends Animal {
         }
         
         this.lastPosition.copy(this.model.position);
+
+        // Stuck detection
+        const currentTime = gameContext.clock.getElapsedTime();
+        if (currentTime - this.lastStuckCheckTime > this.stuckCheckInterval) {
+            this.lastStuckCheckTime = currentTime;
+            
+            // Only check if we have enough history
+            if (this.stuckDetectionHistory.length > 0) {
+                const oldestPosition = this.stuckDetectionHistory[0];
+                const distanceSinceLastCheck = this.model.position.distanceTo(oldestPosition);
+                
+                // Check if deer is in a moving animation (Walk or Run) but not actually moving
+                const currentAnimation = this.getAnimationForState();
+                const isInMovingAnimation = currentAnimation === 'Walk' || currentAnimation === 'Run';
+                
+                // Enhanced stuck detection - check multiple conditions:
+                // 1. Deer is in moving animation but not moving (original logic)
+                // 2. Deer is WANDERING but can't reach its wander target for extended time
+                // 3. Deer is FLEEING but not moving much (trapped while trying to escape)
+                const isWanderingButStuck = this.state === 'WANDERING' && 
+                    this.model.position.distanceTo(this.wanderTarget) > this.config.wanderTargetReachThreshold &&
+                    distanceSinceLastCheck < this.stuckThreshold;
+                
+                const isFleeingButStuck = this.state === 'FLEEING' && distanceSinceLastCheck < this.stuckThreshold;
+                
+                // Consider deer "stuck" if any of these conditions are met:
+                if ((isInMovingAnimation && distanceSinceLastCheck < this.stuckThreshold) || 
+                    isWanderingButStuck || 
+                    isFleeingButStuck) {
+                    // Deer is stuck - activate emergency escape
+                    this.consecutiveStuckChecks++;
+                    if (this.consecutiveStuckChecks >= this.requiredStuckChecks) {
+                        this.emergencyEscapeActive = true;
+                        console.log(`Deer stuck detected: state=${this.state}, animation=${currentAnimation}, distance=${distanceSinceLastCheck.toFixed(2)}`);
+                    }
+                } else {
+                    // Deer is not stuck - reset emergency escape
+                    this.consecutiveStuckChecks = 0;
+                    this.emergencyEscapeActive = false;
+                }
+            }
+        }
+
+        // Emergency escape
+        if (this.state === 'ALERT') {
+            const currentTime = gameContext.clock.getElapsedTime();
+            if (currentTime - this.alertStartTime > this.alertMovementDelay) {
+                // After alert delay, automatically flee if player is still visible and close
+                if (playerVisible && this.hasDetectedMovingPlayer && distanceToPlayer < this.config.fleeDistanceThreshold && this.fleeingEnabled) {
+                    this.setState('FLEEING');
+                } else if (playerVisible && this.hasDetectedMovingPlayer) {
+                    // Even if not in immediate flee distance, still flee after alert sequence
+                    this.setState('FLEEING');
+                } else {
+                    // Player no longer visible or detected, return to wandering
+                    this.setState('WANDERING');
+                }
+            } else {
+                speed = 0; // Prevent movement during alert delay
+            }
+        }
+
+        // moveWithCollisionDetection(speed);
+
+        // Emergency escape
+        if (this.emergencyEscapeActive) {
+            // Clear stuck detection history immediately to prevent re-triggering
+            this.stuckDetectionHistory = [];
+            
+            // Try to find a safe position by testing multiple directions
+            const testDirections = [
+                new THREE.Vector3(1, 0, 0),   // East
+                new THREE.Vector3(-1, 0, 0),  // West
+                new THREE.Vector3(0, 0, 1),   // North
+                new THREE.Vector3(0, 0, -1),  // South
+                new THREE.Vector3(1, 0, 1).normalize(),   // Northeast
+                new THREE.Vector3(-1, 0, 1).normalize(),  // Northwest
+                new THREE.Vector3(1, 0, -1).normalize(),  // Southeast
+                new THREE.Vector3(-1, 0, -1).normalize()  // Southwest
+            ];
+            
+            let foundSafePosition = false;
+            const escapeDistance = 2.0; // Reduced from 3.0 - less aggressive teleportation
+            
+            for (const direction of testDirections) {
+                // Test movement in this direction
+                const testPosition = this.model.position.clone().add(direction.clone().multiplyScalar(escapeDistance));
+                
+                // Check if this position is safe (no tree collision and within boundaries)
+                const boundary = gameContext.worldSize / 2 - 10;
+                const withinBounds = Math.abs(testPosition.x) < boundary && Math.abs(testPosition.z) < boundary;
+                const noTreeCollision = !gameContext.checkTreeCollision(testPosition, 0.7);
+                
+                if (withinBounds && noTreeCollision) {
+                    // Found a safe position - move deer there gradually, not teleport
+                    const moveDirection = direction.clone().multiplyScalar(escapeDistance * 0.5); // Move half the distance
+                    this.model.position.add(moveDirection);
+                    this.model.position.y = gameContext.getHeightAt(this.model.position.x, this.model.position.z) + this.heightOffset;
+                    
+                    // Generate a new wander target in a safe direction
+                    this.generateNewWanderTarget();
+                    
+                    foundSafePosition = true;
+                    this.emergencyEscapeActive = false;
+                    this.consecutiveStuckChecks = 0; // Reset stuck counter
+                    break;
+                }
+            }
+            
+            // If no safe position found, try moving toward world center (less aggressive)
+            if (!foundSafePosition) {
+                const centerDirection = new THREE.Vector3(0, 0, 0).sub(this.model.position).normalize();
+                const centerMove = centerDirection.multiplyScalar(1.0); // Smaller movement toward center
+                
+                this.model.position.add(centerMove);
+                this.model.position.y = gameContext.getHeightAt(this.model.position.x, this.model.position.z) + this.heightOffset;
+                this.generateNewWanderTarget();
+                
+                this.emergencyEscapeActive = false;
+                this.consecutiveStuckChecks = 0; // Reset stuck counter
+            }
+        }
+
+        // Emergency escape
+        if (this.state === 'ALERT') {
+            const currentTime = gameContext.clock.getElapsedTime();
+            if (currentTime - this.alertStartTime > this.alertMovementDelay) {
+                if (playerVisible && this.hasDetectedMovingPlayer && distanceToPlayer < this.config.fleeDistanceThreshold && this.fleeingEnabled) {
+                    this.setState('FLEEING');
+                }
+            } else {
+                speed = 0; // Prevent movement during alert delay
+            }
+        }
+
+        // moveWithCollisionDetection(speed);
     }
 
     moveWithCollisionDetection(speed) {
@@ -1049,63 +1336,6 @@ class Deer extends Animal {
         }
     }
 
-    /**
-     * Smoothly rotate the deer towards a target position over time
-     * @param {THREE.Vector3} targetPosition - The position to rotate towards
-     * @param {number} delta - Time delta for smooth interpolation
-     * @returns {boolean} - True if rotation is complete, false if still rotating
-     */
-    smoothRotateTowards(targetPosition, delta) {
-        // Calculate the direction to the target
-        const direction = new THREE.Vector3().subVectors(targetPosition, this.model.position);
-        direction.y = 0; // Keep rotation only on Y axis (horizontal)
-        
-        // Prevent rotation if target is too close (prevents oscillation)
-        if (direction.length() < 1.0) {
-            return true; // Consider rotation complete if target is very close
-        }
-        
-        direction.normalize();
-        
-        // Calculate the target rotation angle
-        // Adjust for the deer model's natural orientation (model faces +X instead of -Z)
-        const targetAngle = Math.atan2(-direction.z, direction.x);
-        
-        // Get current rotation angle
-        let currentAngle = this.model.rotation.y;
-        
-        // Normalize angles to [-π, π] range
-        while (currentAngle > Math.PI) currentAngle -= 2 * Math.PI;
-        while (currentAngle < -Math.PI) currentAngle += 2 * Math.PI;
-        
-        let normalizedTargetAngle = targetAngle;
-        while (normalizedTargetAngle > Math.PI) normalizedTargetAngle -= 2 * Math.PI;
-        while (normalizedTargetAngle < -Math.PI) normalizedTargetAngle += 2 * Math.PI;
-        
-        // Calculate the shortest rotation direction
-        let angleDifference = normalizedTargetAngle - currentAngle;
-        if (angleDifference > Math.PI) angleDifference -= 2 * Math.PI;
-        if (angleDifference < -Math.PI) angleDifference += 2 * Math.PI;
-        
-        // Check if we're close enough to the target angle (increased threshold)
-        const rotationThreshold = 0.2; // Increased threshold to prevent oscillation
-        if (Math.abs(angleDifference) < rotationThreshold) {
-            return true; // Rotation complete - don't snap to exact angle to prevent jitter
-        }
-        
-        // Calculate rotation step based on rotation speed and delta
-        const rotationStep = this.config.rotationSpeed * delta;
-        
-        // Apply rotation step in the correct direction
-        if (angleDifference > 0) {
-            this.model.rotation.y += Math.min(rotationStep, angleDifference);
-        } else {
-            this.model.rotation.y += Math.max(-rotationStep, angleDifference);
-        }
-        
-        return false; // Still rotating
-    }
-
     updateHitboxes() {
         this.respawn();
     }
@@ -1160,7 +1390,17 @@ class Deer extends Animal {
         if (this.deathSequenceInProgress) {
             return;
         }
+        
+        // Critical bug fix: Only start death sequence if deer was actually hit
+        if (!this.wasActuallyHit) {
+            console.warn('Deer: Prevented death sequence start - deer was not actually hit');
+            return;
+        }
+        
         this.deathSequenceInProgress = true;
+        
+        // Lock the deer in KILLED state to prevent erratic cycling
+        this.stateLockedToKilled = true;
         
         // Simple death sequence - just play die animation and fall after a short delay
         this.deathAnimationStarted = true;
@@ -1168,10 +1408,139 @@ class Deer extends Animal {
         
         // Start the fall down animation after a short delay to let die animation begin
         setTimeout(() => {
-            if (!this.fallen) { // Only fall if not already fallen
+            if (!this.fallen && this.stateLockedToKilled) { // Only fall if not already fallen and still in valid death state
                 this.fallDown();
             }
         }, 1000); // Wait 1 second before falling
+    }
+
+    /**
+     * Checks if the player is visible to the deer (not concealed by trees, bushes, or terrain)
+     * Uses raycasting to detect if trees, bushes, or terrain block the line of sight
+     * @returns {boolean} - True if player is visible, false if concealed
+     */
+    isPlayerVisible() {
+        if (!gameContext.player || !gameContext.player.position) {
+            return false;
+        }
+
+        // Only check visibility every few frames to improve performance
+        if (!this.lastVisibilityCheck) this.lastVisibilityCheck = 0;
+        const currentTime = gameContext.clock.getElapsedTime();
+        if (currentTime - this.lastVisibilityCheck < 0.2) { // Check only every 200ms
+            return this.lastVisibilityResult !== undefined ? this.lastVisibilityResult : true;
+        }
+        this.lastVisibilityCheck = currentTime;
+
+        // Create a ray from deer's eye level to player's eye level
+        const deerEyePosition = this.model.position.clone();
+        deerEyePosition.y += 2.5; // Deer eye height
+        
+        const playerEyePosition = gameContext.player.position.clone();
+        playerEyePosition.y += 6.0; // Player eye height
+        
+        const direction = new THREE.Vector3().subVectors(playerEyePosition, deerEyePosition).normalize();
+        const distance = deerEyePosition.distanceTo(playerEyePosition);
+        
+        // Use shared raycaster instead of creating new one
+        if (!gameContext.visibilityRaycaster) {
+            gameContext.visibilityRaycaster = new THREE.Raycaster();
+        }
+        gameContext.visibilityRaycaster.set(deerEyePosition, direction);
+        gameContext.visibilityRaycaster.far = distance - 0.5; // Stop just before reaching player
+        
+        // Check terrain first - if blocked by terrain, no need to check trees/bushes
+        let isVisible = true;
+        if (gameContext.terrain) {
+            const terrainIntersections = gameContext.visibilityRaycaster.intersectObject(gameContext.terrain, false);
+            if (terrainIntersections.length > 0) {
+                // Check if terrain intersection is between deer and player (not behind player)
+                const intersectionDistance = deerEyePosition.distanceTo(terrainIntersections[0].point);
+                if (intersectionDistance < distance - 1.0) { // Allow 1 unit buffer
+                    isVisible = false;
+                }
+            }
+        }
+        
+        // Check trees if not already blocked by terrain
+        if (isVisible && gameContext.trees && gameContext.trees.children.length > 0) {
+            const treeIntersections = gameContext.visibilityRaycaster.intersectObjects(gameContext.trees.children, true);
+            if (treeIntersections.length > 0) {
+                isVisible = false;
+            }
+        }
+        
+        // Only check bushes if not already blocked by terrain or trees
+        if (isVisible && gameContext.bushes && gameContext.bushes.children.length > 0) {
+            const bushIntersections = gameContext.visibilityRaycaster.intersectObjects(gameContext.bushes.children, true);
+            if (bushIntersections.length > 0) {
+                isVisible = false;
+            }
+        }
+        
+        // Cache result for performance
+        this.lastVisibilityResult = isVisible;
+        return isVisible;
+    }
+
+    getCurrentIdleBehavior() {
+        // Return animation based on current idle behavior
+        // Only use special idle behaviors when deer is actually stationary in WANDERING/THIRSTY states
+        switch (this.currentIdleBehavior) {
+            case 'grazing':
+                return 'Eat'; // Use the actual "Eat" animation
+            case 'alert':
+                return 'idle'; // Use idle for alert behavior
+            case 'pawing':
+                return 'idle'; // Use idle for pawing (no specific pawing animation)
+            case 'idle':
+            default:
+                return 'idle';
+        }
+    }
+
+    isActivelyTryingToMove() {
+        // Check if deer is in a state where it should be moving
+        return this.state === 'WANDERING' || this.state === 'THIRSTY' || this.state === 'FLEEING' || this.state === 'WOUNDED';
+    }
+
+    /**
+     * Smoothly rotate the deer towards a target position
+     * @param {THREE.Vector3} targetPosition - The position to rotate towards
+     * @param {number} delta - Time delta for smooth rotation
+     */
+    smoothRotateTowards(targetPosition, delta) {
+        // Calculate direction from deer to target
+        const direction = new THREE.Vector3()
+            .subVectors(targetPosition, this.model.position)
+            .normalize();
+        
+        // Calculate target rotation angle
+        const targetAngle = Math.atan2(direction.x, direction.z);
+        
+        // Create target quaternion
+        const targetQuaternion = new THREE.Quaternion();
+        targetQuaternion.setFromAxisAngle(new THREE.Vector3(0, 1, 0), targetAngle);
+        
+        // Smoothly interpolate towards target rotation
+        // Use a rotation speed that feels natural (adjust multiplier as needed)
+        const rotationSpeed = 3.0; // radians per second
+        const maxRotationThisFrame = rotationSpeed * delta;
+        
+        // Calculate how much we need to rotate
+        const currentQuaternion = this.model.quaternion.clone();
+        const rotationNeeded = currentQuaternion.angleTo(targetQuaternion);
+        
+        // Limit rotation to max rotation per frame for smooth movement
+        const rotationAmount = Math.min(rotationNeeded, maxRotationThisFrame);
+        const t = rotationNeeded > 0 ? rotationAmount / rotationNeeded : 0;
+        
+        // Apply smooth rotation
+        this.model.quaternion.slerp(targetQuaternion, t);
+    }
+
+    loadModel(path) {
+        super.loadModel(path);
     }
 }
 

@@ -149,9 +149,10 @@ canvas { display: block; }
     left: 50%;
     width: 4px;
     height: 4px;
-    background-color: black;
+    background-color: #ff4500; /* Fluorescent orange */
     border-radius: 50%;
     transform: translate(-50%, -50%);
+    box-shadow: 0 0 3px #ff4500; /* Subtle glow effect */
 }
 /* Main Menu Styles */
 #main-menu {
@@ -309,4 +310,67 @@ canvas { display: block; }
     justify-content: center;
     align-items: center;
     font-size: 48px;
+}
+
+/* Enhanced End-of-Day Journal Modal */
+.large-modal {
+    max-width: 800px;
+    width: 95%;
+}
+
+.journal-summary {
+    background-color: rgba(0,0,0,0.3);
+    border-radius: 5px;
+    padding: 20px;
+    min-height: 200px;
+    max-height: 60vh;
+    overflow-y: auto;
+    margin-bottom: 20px;
+    line-height: 1.8;
+    font-size: 16px;
+}
+
+.journal-summary h3 {
+    color: #ffdd00;
+    margin-top: 20px;
+    margin-bottom: 10px;
+    border-bottom: 1px solid #444;
+    padding-bottom: 5px;
+}
+
+.journal-summary h3:first-child {
+    margin-top: 0;
+}
+
+.journal-summary .stat-line {
+    margin: 8px 0;
+    padding: 5px 0;
+}
+
+.journal-summary .highlight {
+    color: #ffdd00;
+    font-weight: bold;
+}
+
+.journal-summary .success {
+    color: #4CAF50;
+}
+
+.journal-summary .warning {
+    color: #FF9800;
+}
+
+.journal-summary .error {
+    color: #F44336;
+}
+
+.primary-button {
+    background-color: #4CAF50 !important;
+    color: white !important;
+    font-size: 18px !important;
+    padding: 15px 30px !important;
+}
+
+.primary-button:hover {
+    background-color: #45a049 !important;
 }

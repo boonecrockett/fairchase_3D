@@ -1,11 +1,14 @@
 // js/audio.js
 import { gameContext } from './context.js';
+import { initSpatialAudio } from './spatial-audio.js';
 
 // --- AUDIO MODULE CONSTANTS ---
 const FOREST_SOUND_VOLUME = 10; // dB, increased by another 50% from +4dB for maximum audibility
 const RIFLE_SOUND_VOLUME = 0; // dB, normal volume for rifle shot
 const WALK_SOUND_VOLUME = -5; // dB, moderate volume for walking sound
 const RIFLE_SOUND_INSTANCES = 3; // Multiple instances for instant playback
+const FOREST_FADE_IN_DURATION = 4; // seconds to fade in forest sound
+const FOREST_FADE_IN_START_VOLUME = -40; // dB, very quiet starting volume for fade-in
 
 /**
  * Initializes the audio components, including rifle shot sound, walk sound, and ambient forest sound.
@@ -49,7 +52,7 @@ export function initAudio() {
         gameContext.forestSound = new Tone.Player({
             url: "assets/sounds/forest.mp3",
             loop: true,
-            volume: FOREST_SOUND_VOLUME,
+            volume: FOREST_FADE_IN_START_VOLUME,
             autostart: false,
             onload: () => {
                 console.log("Forest sound loaded successfully");
@@ -64,6 +67,9 @@ export function initAudio() {
     } catch (error) {
         console.warn("Failed to initialize forest sound:", error);
     }
+    
+    // Initialize spatial audio system for directional deer sounds
+    initSpatialAudio();
 }
 
 /**
@@ -79,10 +85,10 @@ function startForestSoundWithUserInteraction() {
                 console.log("Tone.js audio context started");
             }
             
-            // Start the forest sound
+            // Start the forest sound with fade-in
             if (gameContext.forestSound && gameContext.forestSound.loaded) {
-                gameContext.forestSound.start();
-                console.log("Forest sound started");
+                fadeInForestSound();
+                console.log("Forest sound started with fade-in");
                 
                 // Remove event listeners after successful start
                 document.removeEventListener('click', startAudio);
@@ -102,15 +108,22 @@ function startForestSoundWithUserInteraction() {
 }
 
 /**
- * Plays the rifle shot sound effect.
+ * Fades in the forest sound from silent to full volume over the specified duration.
  */
-export function playRifleSound() {
-    if (gameContext.rifleSounds && gameContext.rifleSounds.length > 0) {
-        const currentRifleSound = gameContext.rifleSounds[gameContext.rifleCurrentIndex];
-        if (currentRifleSound) {
-            currentRifleSound.start();
-            gameContext.rifleCurrentIndex = (gameContext.rifleCurrentIndex + 1) % gameContext.rifleSounds.length;
+export function fadeInForestSound() {
+    if (gameContext.forestSound && gameContext.forestSound.loaded) {
+        // Set to starting volume if not already set
+        gameContext.forestSound.volume.value = FOREST_FADE_IN_START_VOLUME;
+        
+        // Start playing if not already started
+        if (gameContext.forestSound.state === 'stopped') {
+            gameContext.forestSound.start();
         }
+        
+        // Fade in to target volume
+        const now = Tone.now();
+        gameContext.forestSound.volume.rampTo(FOREST_SOUND_VOLUME, FOREST_FADE_IN_DURATION, now);
+        console.log("Forest sound fading in over", FOREST_FADE_IN_DURATION, "seconds");
     }
 }
 
@@ -119,7 +132,7 @@ export function playRifleSound() {
  */
 export function startForestSound() {
     if (gameContext.forestSound && gameContext.forestSound.loaded && gameContext.forestSound.state === 'stopped') {
-        gameContext.forestSound.start();
+        fadeInForestSound();
     }
 }
 
@@ -139,6 +152,19 @@ export function stopForestSound() {
 export function setForestSoundVolume(volume) {
     if (gameContext.forestSound) {
         gameContext.forestSound.volume.value = volume;
+    }
+}
+
+/**
+ * Plays the rifle shot sound effect.
+ */
+export function playRifleSound() {
+    if (gameContext.rifleSounds && gameContext.rifleSounds.length > 0) {
+        const currentRifleSound = gameContext.rifleSounds[gameContext.rifleCurrentIndex];
+        if (currentRifleSound) {
+            currentRifleSound.start();
+            gameContext.rifleCurrentIndex = (gameContext.rifleCurrentIndex + 1) % gameContext.rifleSounds.length;
+        }
     }
 }
 

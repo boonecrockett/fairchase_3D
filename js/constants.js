@@ -72,12 +72,12 @@ export const SLEEP_FADE_OUT_DURATION_MS = 2000;
  * Maximum fog density during the night.
  * @type {number}
  */
-export const FOG_DENSITY_NIGHT = 0.015;
+export const FOG_DENSITY_NIGHT = 0.012; // Reduced by 20% from 0.015
 /**
  * Maximum fog density during the day.
  * @type {number}
  */
-export const FOG_DENSITY_DAY = 0.005;
+export const FOG_DENSITY_DAY = 0.004; // Reduced by 20% from 0.005
 /**
  * Lerp factor for smooth fog density transitions between day and night.
  * Smaller values result in smoother, slower transitions.
@@ -101,4 +101,3 @@ export const WORLD_WIDTH_SEGMENTS = 100;
  * @type {number}
  */
 export const WORLD_DEPTH_SEGMENTS = 100;
-

@@ -2,12 +2,14 @@ import * as THREE from 'three';
 import { gameContext } from './context.js';
 import { MOUSE_SENSITIVITY as MOUSE_SENSITIVITY_NORMAL } from './constants.js';
 import { startWalkSound, stopWalkSound } from './audio.js';
+import { showSmartphoneMap } from './map.js';
+import { updateSpatialAudioListener } from './spatial-audio.js';
 
 // --- Player Module Constants ---
 const PLAYER_EYE_HEIGHT = 6.0; // Player camera height relative to player group's origin
 const INITIAL_PLAYER_X = 0;
 const INITIAL_PLAYER_Z = 10;
-const PLAYER_MOVE_SPEED = 5.5; // Increased by 10% from 5.0 to 5.5
+const PLAYER_MOVE_SPEED = 6.05; // Increased by another 10% from 5.5 to 6.05
 const MOUSE_SENSITIVITY_SCOPED = 0.0005; // Restored to normal scoped sensitivity
 const CAMERA_FOV_NORMAL = 60; // Reduced from 75 for a more natural perspective
 const CAMERA_FOV_SCOPED = 15;
@@ -89,6 +91,9 @@ export function updatePlayer() {
     velocity.normalize().multiplyScalar(PLAYER_MOVE_SPEED * delta);
 
     if (velocity.lengthSq() > 0) {
+        // Store previous position for velocity calculation
+        const previousPosition = gameContext.player.position.clone();
+        
         // Check for tree collision before moving
         const newPosition = gameContext.player.position.clone().add(velocity);
         const collision = gameContext.checkTreeCollision(newPosition, 0.8); // Player collision radius
@@ -116,6 +121,13 @@ export function updatePlayer() {
                 // If both directions blocked, don't move
             }
         }
+        
+        gameContext.distanceTraveled += velocity.length();
+        
+        // Calculate player velocity for spatial audio Doppler effects
+        gameContext.player.velocity = gameContext.player.position.clone().sub(previousPosition).divideScalar(delta);
+        
+        updateSpatialAudioListener(gameContext.player.position, gameContext.player.velocity);
     }
 
     // Update player height based on terrain
@@ -124,7 +136,6 @@ export function updatePlayer() {
 
     // Track distance traveled
     if (gameContext.lastPlayerPosition.distanceTo(gameContext.player.position) > 0) {
-        gameContext.distanceTraveled += gameContext.lastPlayerPosition.distanceTo(gameContext.player.position);
         gameContext.lastPlayerPosition.copy(gameContext.player.position);
 
         // Create human tracks
@@ -233,6 +244,7 @@ function onKeyDown(event) {
         case 'KeyA': moveLeft = true; break;
         case 'KeyD': moveRight = true; break;
         case 'KeyE': if (gameContext.canTag) gameContext.tagDeer(); break;
+        case 'KeyM': showSmartphoneMap(); break; // Open smartphone-style map
     }
 }
 
