@@ -249,12 +249,12 @@ class Deer extends Animal {
         
         // Add debug logging for state changes
         if (this.state !== newState) {
-            console.log(`Deer state change: ${this.state} -> ${newState}`);
+            // console.log(`Deer state change: ${this.state} -> ${newState}`); // Logging disabled
         }
         
         // Critical bug fix: Prevent any state changes if deer is locked in KILLED state
         if (this.stateLockedToKilled && oldState === 'KILLED' && newState !== 'KILLED') {
-            console.warn('Deer: Prevented state change from KILLED - deer is locked in death state');
+            // console.warn('Deer: Prevented state change from KILLED - deer is locked in death state'); // Logging disabled
             return;
         }
         
@@ -262,7 +262,7 @@ class Deer extends Animal {
         if (newState === 'KILLED') {
             // Only allow KILLED state if deer was previously WOUNDED or if explicitly hit
             if (oldState !== 'WOUNDED' && !this.wasActuallyHit) {
-                console.warn('Deer: Prevented invalid transition to KILLED state from', oldState);
+                // console.warn('Deer: Prevented invalid transition to KILLED state from', oldState); // Logging disabled
                 return; // Block invalid transition to KILLED
             }
         }
@@ -272,8 +272,8 @@ class Deer extends Animal {
 
         // Special debug logging for ALERT state
         if (newState === 'ALERT' && oldState !== 'ALERT') {
-            console.log('Deer is now ALERT - should trigger deer blow sound');
-            console.log('Deer has transitioned to ALERT state'); // Added console log
+            // console.log('Deer is now ALERT - should trigger deer blow sound'); // Logging disabled
+            // console.log('Deer has transitioned to ALERT state'); // Logging disabled
             this.alertStartTime = gameContext.clock.getElapsedTime(); // Record when deer became alert
             if (!this.hasAlertedPlayer) {
                 triggerDeerBlowSound(this); // Trigger deer blow sound immediately
@@ -406,7 +406,7 @@ class Deer extends Animal {
         // This alerts the player that a new deer has appeared on the map
         setTimeout(() => {
             triggerDeerBlowSound(this);
-            console.log('New deer spawned and blow sound triggered');
+            // console.log('New deer spawned and blow sound triggered'); // Logging disabled
         }, 500); // Small delay to ensure deer is fully spawned
     }
 
@@ -1135,7 +1135,7 @@ class Deer extends Animal {
                     this.consecutiveStuckChecks++;
                     if (this.consecutiveStuckChecks >= this.requiredStuckChecks) {
                         this.emergencyEscapeActive = true;
-                        console.log(`Deer stuck detected: state=${this.state}, animation=${currentAnimation}, distance=${distanceSinceLastCheck.toFixed(2)}`);
+                        // console.log(`Deer stuck detected: state=${this.state}, animation=${currentAnimation}, distance=${distanceSinceLastCheck.toFixed(2)}`); // Logging disabled
                     }
                 } else {
                     // Deer is not stuck - reset emergency escape
@@ -1393,7 +1393,7 @@ class Deer extends Animal {
         
         // Critical bug fix: Only start death sequence if deer was actually hit
         if (!this.wasActuallyHit) {
-            console.warn('Deer: Prevented death sequence start - deer was not actually hit');
+            // console.warn('Deer: Prevented death sequence start - deer was not actually hit'); // Logging disabled
             return;
         }
         

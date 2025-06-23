@@ -149,7 +149,7 @@ export function findDrinkingSpots() {
     gameContext.drinkingSpots = [];
 
     if (!gameContext.terrain || !gameContext.waterBodies || gameContext.waterBodies.length === 0) {
-        console.warn("Cannot find drinking spots without terrain and water.");
+        // console.warn("Cannot find drinking spots without terrain and water."); // Logging disabled
         gameContext.drinkingSpots.push(FALLBACK_DRINKING_SPOT_POSITION.clone());
         return;
     }
@@ -184,7 +184,7 @@ export function findDrinkingSpots() {
     }
 
     if (gameContext.drinkingSpots.length === 0) {
-        console.warn("No valid drinking spots found after scanning terrain, adding a fallback.");
+        // console.warn("No valid drinking spots found after scanning terrain, adding a fallback."); // Logging disabled
         gameContext.drinkingSpots.push(FALLBACK_DRINKING_SPOT_POSITION.clone());
     }
 }
@@ -242,7 +242,7 @@ export async function createTrees(worldConfig) {
             treesGroup.add(treeInstance);
         }
     } catch (error) {
-        console.error("Failed to load tree model, falling back to procedural trees.", error);
+        // console.error("Failed to load tree model, falling back to procedural trees.", error); // Logging disabled
         
         // --- Procedural Fallback ---
         const canopyMaterial = new THREE.MeshLambertMaterial({ color: worldConfig.vegetation.canopyColor });
@@ -406,7 +406,7 @@ export async function createBushes(worldConfig) {
         }
 
     } catch (error) {
-        console.error("Failed to load bush model:", error);
+        // console.error("Failed to load bush model:", error); // Logging disabled
         // No fallback for bushes - they're decorative
     }
 }

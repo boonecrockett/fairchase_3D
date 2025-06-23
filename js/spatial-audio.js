@@ -17,7 +17,7 @@ const SOUND_PATHS = {
  * Initializes the spatial audio system with 3D positioned sounds
  */
 export function initSpatialAudio() {
-    console.log('Initializing spatial audio system...');
+    // console.log('Initializing spatial audio system...'); // Logging disabled
     
     // Initialize spatial audio context
     gameContext.spatialAudio = {
@@ -29,9 +29,9 @@ export function initSpatialAudio() {
         // Initialize sound pools for different deer sounds
         initDeerSoundPools();
         
-        console.log('Spatial audio system initialized successfully');
+        // console.log('Spatial audio system initialized successfully'); // Logging disabled
     } catch (error) {
-        console.warn('Failed to initialize spatial audio:', error);
+        // console.warn('Failed to initialize spatial audio:', error); // Logging disabled
     }
 }
 
@@ -54,10 +54,10 @@ function initDeerSoundPools() {
                     volume: getSoundVolume(soundType),
                     autostart: false,
                     onload: () => {
-                        console.log(`${soundType} ${i + 1} loaded successfully`);
+                        // console.log(`${soundType} ${i + 1} loaded successfully`); // Logging disabled
                     },
                     onerror: (error) => {
-                        console.warn(`Failed to load ${soundType} ${i + 1}:`, error);
+                        // console.warn(`Failed to load ${soundType} ${i + 1}:`, error); // Logging disabled
                     }
                 });
                 
@@ -76,7 +76,7 @@ function initDeerSoundPools() {
                 });
                 
             } catch (error) {
-                console.warn(`Failed to initialize ${soundType} ${i + 1}:`, error);
+                // console.warn(`Failed to initialize ${soundType} ${i + 1}:`, error); // Logging disabled
             }
         }
     });
@@ -108,15 +108,15 @@ export function updateSpatialAudioListener() {
  * Plays a positioned 3D sound at a specific location
  */
 export function playPositionalSound(soundType, position, velocity = null) {
-    console.log(`Attempting to play positional sound: ${soundType} at position:`, position);
+    // console.log(`Attempting to play positional sound: ${soundType} at position:`, position); // Logging disabled
     
     if (!gameContext.spatialAudio?.sounds[soundType] || !position) {
-        console.warn(`Cannot play sound: spatialAudio=${!!gameContext.spatialAudio}, sounds=${!!gameContext.spatialAudio?.sounds[soundType]}, position=${!!position}`);
+        // console.warn(`Cannot play sound: spatialAudio=${!!gameContext.spatialAudio}, sounds=${!!gameContext.spatialAudio?.sounds[soundType]}, position=${!!position}`); // Logging disabled
         return;
     }
     
     const soundPool = gameContext.spatialAudio.sounds[soundType];
-    console.log(`Sound pool for ${soundType} has ${soundPool.length} instances`);
+    // console.log(`Sound pool for ${soundType} has ${soundPool.length} instances`); // Logging disabled
     
     // Find an available sound instance
     let soundInstance = soundPool.find(instance => !instance.inUse);
@@ -127,9 +127,9 @@ export function playPositionalSound(soundType, position, velocity = null) {
         if (soundInstance.player.state === 'started') {
             soundInstance.player.stop();
         }
-        console.log(`All instances in use, reusing first instance for ${soundType}`);
+        // console.log(`All instances in use, reusing first instance for ${soundType}`); // Logging disabled
     } else {
-        console.log(`Found available instance for ${soundType}`);
+        // console.log(`Found available instance for ${soundType}`); // Logging disabled
     }
     
     try {
@@ -141,11 +141,11 @@ export function playPositionalSound(soundType, position, velocity = null) {
         const relativePos = position.clone().sub(playerPos);
         const distance = relativePos.length();
         
-        console.log(`Sound distance: ${distance}, max distance: ${MAX_AUDIO_DISTANCE}`);
+        // console.log(`Sound distance: ${distance}, max distance: ${MAX_AUDIO_DISTANCE}`); // Logging disabled
         
         // Only play if within hearing range
         if (distance > MAX_AUDIO_DISTANCE) {
-            console.log(`Sound too far away (${distance} > ${MAX_AUDIO_DISTANCE}), not playing`);
+            // console.log(`Sound too far away (${distance} > ${MAX_AUDIO_DISTANCE}), not playing`); // Logging disabled
             soundInstance.inUse = false;
             return;
         }
@@ -165,7 +165,7 @@ export function playPositionalSound(soundType, position, velocity = null) {
         const attenuatedVolume = getSoundVolume(soundType) + (20 * Math.log10(volumeAttenuation + 0.1));
         soundInstance.volume.volume.value = attenuatedVolume;
         
-        console.log(`Playing ${soundType}: pan=${soundInstance.panner.pan.value.toFixed(2)}, volume=${attenuatedVolume.toFixed(2)}`);
+        // console.log(`Playing ${soundType}: pan=${soundInstance.panner.pan.value.toFixed(2)}, volume=${attenuatedVolume.toFixed(2)}`); // Logging disabled
         
         // Apply Doppler effect if velocity is provided
         if (velocity && DOPPLER_FACTOR > 0) {
@@ -178,17 +178,17 @@ export function playPositionalSound(soundType, position, velocity = null) {
         // Play the sound with a 0.5 second delay
         setTimeout(() => {
             soundInstance.player.start();
-            console.log(`Successfully started playing ${soundType}`);
+            // console.log(`Successfully started playing ${soundType}`); // Logging disabled
         }, 500);
         
         // Mark as available after sound duration
         setTimeout(() => {
             soundInstance.inUse = false;
-            console.log(`${soundType} instance marked as available`);
+            // console.log(`${soundType} instance marked as available`); // Logging disabled
         }, 2000); // Assume max 2 second sound duration
         
     } catch (error) {
-        console.warn(`Error playing positional sound ${soundType}:`, error);
+        // console.warn(`Error playing positional sound ${soundType}:`, error); // Logging disabled
         soundInstance.inUse = false;
     }
 }
@@ -257,7 +257,7 @@ export function stopSpatialAudio() {
         });
         
     } catch (error) {
-        console.warn('Error stopping spatial audio:', error);
+        // console.warn('Error stopping spatial audio:', error); // Logging disabled
     }
 }
 
@@ -279,6 +279,6 @@ export function setSpatialAudioVolume(volume) {
         });
         
     } catch (error) {
-        console.warn('Error setting spatial audio volume:', error);
+        // console.warn('Error setting spatial audio volume:', error); // Logging disabled
     }
 }

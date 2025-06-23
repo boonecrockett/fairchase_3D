@@ -25,13 +25,13 @@ export function initAudio() {
                 volume: RIFLE_SOUND_VOLUME,
                 autostart: false,
                 onload: () => {
-                    console.log(`Rifle sound ${i + 1} loaded successfully`);
+                    // console.log(`Rifle sound ${i + 1} loaded successfully`); // Logging disabled
                 }
             }).toDestination();
             
             gameContext.rifleSounds.push(rifleSound);
         } catch (error) {
-            console.warn(`Failed to initialize rifle sound ${i + 1}:`, error);
+            // console.warn(`Failed to initialize rifle sound ${i + 1}:`, error); // Logging disabled
         }
     }
     
@@ -44,7 +44,7 @@ export function initAudio() {
             autostart: false
         }).toDestination();
     } catch (error) {
-        console.warn("Failed to initialize walk sound:", error);
+        // console.warn("Failed to initialize walk sound:", error); // Logging disabled
     }
     
     // Initialize ambient forest sound
@@ -55,17 +55,17 @@ export function initAudio() {
             volume: FOREST_FADE_IN_START_VOLUME,
             autostart: false,
             onload: () => {
-                console.log("Forest sound loaded successfully");
+                // console.log("Forest sound loaded successfully"); // Logging disabled
                 // Try to start the forest sound, but handle autoplay restrictions
                 startForestSoundWithUserInteraction();
             },
             onerror: (error) => {
-                console.warn("Forest sound could not be loaded:", error);
+                // console.warn("Forest sound could not be loaded:", error); // Logging disabled
             }
         }).toDestination();
         
     } catch (error) {
-        console.warn("Failed to initialize forest sound:", error);
+        // console.warn("Failed to initialize forest sound:", error); // Logging disabled
     }
     
     // Initialize spatial audio system for directional deer sounds
@@ -82,20 +82,20 @@ function startForestSoundWithUserInteraction() {
             // Ensure Tone.js context is started
             if (Tone.context.state !== 'running') {
                 await Tone.start();
-                console.log("Tone.js audio context started");
+                // console.log("Tone.js audio context started"); // Logging disabled
             }
             
             // Start the forest sound with fade-in
             if (gameContext.forestSound && gameContext.forestSound.loaded) {
                 fadeInForestSound();
-                console.log("Forest sound started with fade-in");
+                // console.log("Forest sound started with fade-in"); // Logging disabled
                 
                 // Remove event listeners after successful start
                 document.removeEventListener('click', startAudio);
                 document.removeEventListener('keydown', startAudio);
             }
         } catch (error) {
-            console.warn("Could not start forest sound:", error);
+            // console.warn("Could not start forest sound:", error); // Logging disabled
         }
     };
     
@@ -123,7 +123,7 @@ export function fadeInForestSound() {
         // Fade in to target volume
         const now = Tone.now();
         gameContext.forestSound.volume.rampTo(FOREST_SOUND_VOLUME, FOREST_FADE_IN_DURATION, now);
-        console.log("Forest sound fading in over", FOREST_FADE_IN_DURATION, "seconds");
+        // console.log("Forest sound fading in over", FOREST_FADE_IN_DURATION, "seconds"); // Logging disabled
     }
 }
 

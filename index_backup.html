@@ -788,11 +788,11 @@
                     if (journalEntries.length > 5) journalEntries.pop(); 
                 } else {
                    journalEntries.unshift({title: `Day ${journalEntries.length + 1}`, content: "The quiet of the woods was its own reward."});
-                   console.error("Gemini API Error:", result);
+                   // console.error("Gemini API Error:", result); // Logging disabled
                 }
             } catch (error) {
                 journalEntries.unshift({title: `Day ${journalEntries.length + 1}`, content: "The quiet of the woods was its own reward."});
-                console.error("Fetch Error:", error);
+                // console.error("Fetch Error:", error); // Logging disabled
             }
             
             showMessage("A new day has dawned. Check your journal.", 5000);

@@ -77,7 +77,7 @@ export class Animal {
                 this.shouldSpawnOnLoad = false;
             }
         }, undefined, (error) => {
-            console.error(`An error happened loading model: ${path}`, error);
+            // console.error(`An error happened loading model: ${path}`, error); // Logging disabled
             // Fallback to procedural model if GLB fails to load
             this.createBody();
             this.createLegs();
