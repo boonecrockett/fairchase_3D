@@ -333,16 +333,8 @@ class Deer extends Animal {
     respawn() {
         this.fallen = false;
         
-        // TEMPORARY: Check spawn mode radio buttons for testing
-        const spawnModeRadios = document.getElementsByName('deer-spawn-mode');
-        
-        let spawnMode = 'random'; // default
-        for (const radio of spawnModeRadios) {
-            if (radio.checked) {
-                spawnMode = radio.value;
-                break;
-            }
-        }
+        // Get spawn mode from the game context, with 'random' as a default
+        const spawnMode = gameContext.deerSpawnMode || 'random';
         
         let x, y, z;
         const worldSize = gameContext.worldConfig?.terrain?.size || 200;

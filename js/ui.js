@@ -8,6 +8,7 @@ import { deer } from './deer.js';
 
 // Durations
 const MESSAGE_FADE_DURATION_MS = 2000;
+const LOADING_DURATION_MS = 3000; // Duration for the loading bar animation
 
 // Interaction
 const TAG_INTERACTION_DISTANCE = 4; // Max distance to player for 'Tag Deer' prompt
@@ -24,7 +25,44 @@ const INTERACTION_PROMPT_TAG_DEER = 'Press [E] to Tag Deer';
 /**
  * Initializes UI elements and sets up event listeners for collapsible panels, modals, and buttons.
  */
-export function initUI() {
+/**
+ * Animates the loading bar from 0% to 100%
+ */
+function animateLoadingBar() {
+    return new Promise(resolve => {
+        const progressRingFill = document.getElementById('progress-ring-fill');
+        if (!progressRingFill) {
+            resolve();
+            return;
+        }
+
+        const radius = progressRingFill.r.baseVal.value;
+        const circumference = 2 * Math.PI * radius;
+
+        progressRingFill.style.strokeDasharray = `${circumference} ${circumference}`;
+        progressRingFill.style.strokeDashoffset = circumference;
+
+        const startTime = performance.now();
+
+        function updateLoadingBar(currentTime) {
+            const elapsedTime = currentTime - startTime;
+            const progress = Math.min(elapsedTime / LOADING_DURATION_MS, 1);
+            
+            const offset = circumference - progress * circumference;
+            progressRingFill.style.strokeDashoffset = offset;
+
+            if (progress < 1) {
+                requestAnimationFrame(updateLoadingBar);
+            } else {
+                resolve();
+            }
+        }
+
+        requestAnimationFrame(updateLoadingBar);
+    });
+}
+
+export async function initUI() {
     const instructionsHeader = document.getElementById('instructions-header');
     const instructionsBody = document.getElementById('instructions-body');
     const instructionsToggle = document.getElementById('instructions-toggle');
@@ -63,30 +101,51 @@ export function initUI() {
 
     populateWorldSelector();
 
+    // Handle loading and start button visibility
+    const loadingContainer = document.getElementById('loading-container');
+    
+    if (loadingContainer && gameContext.startGameButton) {
+        // Start the loading animation and wait for it to finish
+        await animateLoadingBar();
+        
+        // Hide loading ring and show start button
+        loadingContainer.style.display = 'none';
+        gameContext.startGameButton.style.display = 'block';
+    }
+
     // Set up the main menu 'Start Game' button listener
     if (gameContext.startGameButton) {
         gameContext.startGameButton.addEventListener('click', async () => {
-            if (gameContext.mainMenu) {
-                gameContext.mainMenu.style.display = 'none';
-            }
+            // Disable the start button to prevent multiple clicks
+            gameContext.startGameButton.disabled = true;
+            gameContext.startGameButton.textContent = 'Starting...';
+            
+            // Read deer behavior debugging option
+            // Read deer behavior debugging option and store it in the game context
+            gameContext.deerSpawnMode = document.querySelector('input[name="deer-spawn-mode"]:checked').value;
+            gameContext.deerBehaviorMode = document.querySelector('input[name="deer-behavior-mode"]:checked').value;
 
+            // Get the selected world configuration
+            const selectedWorld = gameContext.worldSelect.value;
+            const worldConfig = worldPresets[selectedWorld];
+            
+            // Hide the main menu
+            const mainMenuContainer = document.getElementById('main-menu-container');
+            if (mainMenuContainer) {
+                mainMenuContainer.style.display = 'none';
+            }
+            
+            // Hide the testing options panel
+            const testingOptionsPanel = document.getElementById('testing-options-panel');
+            if (testingOptionsPanel) {
+                testingOptionsPanel.style.display = 'none';
+            }
+            
             // Show the in-game UI by removing the helper class
             const gameUiElements = document.querySelectorAll('.initially-hidden');
             gameUiElements.forEach(el => {
                 el.classList.remove('initially-hidden');
             });
-
-            const selectedWorldKey = gameContext.worldSelect.value;
-            const worldConfig = worldPresets[selectedWorldKey];
-            
-            // Read deer behavior debugging option
-            const deerBehaviorRadio = document.querySelector('input[name="deer-behavior-mode"]:checked');
-            const deerCanFlee = !deerBehaviorRadio || deerBehaviorRadio.value !== 'no-flee';
-            
-            // Pass deer behavior setting to deer system
-            if (deer.setFleeingEnabled) {
-                deer.setFleeingEnabled(deerCanFlee);
-            }
             
             // Initialize the game with the selected world and start the animation loop
             if (gameContext.init && gameContext.animate) {

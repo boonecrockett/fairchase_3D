@@ -2,11 +2,32 @@
     display: none !important;
 }
 
-body { 
+html, body { 
     margin: 0; 
+    padding: 0;
+    width: 100%;
+    height: 100%;
+}
+
+body { 
     overflow: hidden; 
     background-color: #000;
     font-family: 'Courier New', Courier, monospace;
+    position: relative;
+}
+
+body::before {
+    content: "";
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    z-index: -1;
+    background-image: url('../assets/titlescreen.png');
+    background-size: cover;
+    background-position: center center;
+    background-repeat: no-repeat;
 }
 canvas { display: block; }
 #crosshair {
@@ -155,67 +176,109 @@ canvas { display: block; }
     box-shadow: 0 0 3px #ff4500; /* Subtle glow effect */
 }
 /* Main Menu Styles */
-#main-menu {
+/* Testing Options Panel */
+#testing-options-panel {
+    position: absolute;
+    top: 20px;
+    right: 20px;
+    z-index: 50;
+}
+
+.testing-options-content {
+    background-color: rgba(0, 0, 0, 0.7);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    border-radius: 8px;
+    padding: 15px;
+    color: white;
+    font-size: 14px;
+    font-family: 'Helvetica Neue', Arial, sans-serif;
+    box-shadow: 0 0 10px rgba(0, 0, 0, 0.3);
+}
+
+#testing-options-panel label {
+    color: #e0e0e0;
+    font-weight: 500;
+    display: inline-block;
+    margin-left: 5px;
+    vertical-align: middle;
+}
+
+#testing-options-panel input[type="radio"] {
+    margin-right: 0;
+    vertical-align: middle;
+}
+
+#testing-options-panel div {
+    margin-bottom: 8px;
+    display: flex;
+    align-items: center;
+}
+
+.testing-options-content,
+.testing-options-content > div {
+    flex-direction: column;
+    align-items: flex-start;
+}
+
+/* Main Menu Container */
+#main-menu-container {
     position: absolute;
     top: 50%;
     left: 50%;
     transform: translate(-50%, -50%);
-    background-color: rgba(0, 0, 0, 0.8);
-    border: 2px solid #ffdd00;
-    border-radius: 15px;
-    padding: 30px;
-    color: white;
-    text-align: center;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
     z-index: 50;
-    min-width: 400px;
-    box-shadow: 0 0 20px rgba(255, 221, 0, 0.3);
+    width: clamp(300px, 50%, 500px);
+    max-width: 90vw;
 }
 
-#main-menu h1 {
-    color: #ffdd00;
-    margin-top: 0;
-    margin-bottom: 30px;
-    font-size: 36px;
-    text-shadow: 2px 2px 4px black;
+/* Loading Container */
+#loading-container {
+    margin-bottom: 20px;
+    display: flex;
+    justify-content: center;
+    align-items: center;
 }
 
-#main-menu .menu-item {
-    margin: 15px 0;
+#progress-ring-track {
+    stroke: rgba(255, 255, 255, 0.2);
+}
+
+#progress-ring-fill {
+    stroke: #d35400;
+    stroke-linecap: round;
+    transform: rotate(-90deg);
+    transform-origin: 50% 50%;
+    transition: stroke-dashoffset 0.5s ease;
+}
+
+/* Start Button */
+#start-button {
+    background-color: #d35400;
     color: white;
-}
-
-#main-menu label {
-    color: white;
-    font-weight: bold;
-    margin-bottom: 8px;
-    display: block;
-}
-
-#main-menu select {
-    background-color: #333;
-    color: white;
-    border: 1px solid #666;
-    border-radius: 5px;
-    padding: 8px;
-    font-size: 16px;
-    width: 100%;
-}
-
-#main-menu button {
-    background-color: #ffdd00;
-    color: black;
     border: none;
-    padding: 15px 30px;
-    border-radius: 8px;
+    padding: 12px 25px;
+    border-radius: 6px;
     cursor: pointer;
-    font-weight: bold;
+    font-weight: 500;
     font-size: 18px;
-    margin-top: 20px;
-    transition: background-color 0.3s ease;
+    font-family: 'Helvetica Neue', Arial, sans-serif;
+    transition: all 0.3s ease;
+    box-shadow: 0 3px 10px rgba(0, 0, 0, 0.3);
+    min-width: 180px;
 }
 
-#main-menu button:hover {
-    background-color: #e6c700;
+#start-button:hover {
+    background-color: #e67e22;
+    transform: translateY(-2px);
+    box-shadow: 0 5px 15px rgba(0, 0, 0, 0.4);
+}
+
+#start-button:active {
+    transform: translateY(1px);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
 }
 
 #main-menu input[type="radio"] {

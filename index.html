@@ -103,43 +103,49 @@
         </div>
     </div>
 
-    <div id="main-menu">
-        <h1>Fairchase</h1>
-        <div class="menu-item">
-            <label for="world-select">Select World:</label>
-            <select id="world-select">
-                <!-- Options will be populated by JavaScript -->
-            </select>
-        </div>
-        
-        <!-- TEMPORARY: Testing deer spawn modes (remove before production) -->
-        <div class="menu-item" style="border: 2px dashed #ff6b6b; padding: 10px; margin: 10px 0; background-color: rgba(255, 107, 107, 0.1);">
-            <label style="color: #ff6b6b; font-weight: bold; font-size: 12px;">🧪 TESTING MODE (TEMPORARY)</label>
-            <div style="margin-top: 8px;">
-                <label for="deer-spawn-mode">Deer Spawn:</label>
-                <div style="margin-left: 20px;">
+    <!-- Testing options panel in upper right -->
+    <div id="testing-options-panel">
+        <div class="testing-options-content">
+            <div style="margin-bottom: 12px;">
+                <div>Deer Spawn:</div>
+                <div>
                     <input type="radio" id="spawn-normal" name="deer-spawn-mode" value="normal" checked>
-                    <label for="spawn-normal" style="margin-left: 5px;">Normal (random location)</label>
+                    <label for="spawn-normal">Normal</label>
                 </div>
-                <div style="margin-left: 20px;">
+                <div>
                     <input type="radio" id="spawn-near" name="deer-spawn-mode" value="near">
-                    <label for="spawn-near" style="margin-left: 5px;">Debug (spawn near player)</label>
-                </div>
-                <div style="margin-top: 8px;">
-                    <label for="deer-behavior-mode">Deer Behavior:</label>
-                </div>
-                <div style="margin-left: 20px;">
-                    <input type="radio" id="behavior-normal" name="deer-behavior-mode" value="normal" checked>
-                    <label for="behavior-normal" style="margin-left: 5px;">Normal (will flee)</label>
-                </div>
-                <div style="margin-left: 20px;">
-                    <input type="radio" id="behavior-no-flee" name="deer-behavior-mode" value="no-flee">
-                    <label for="behavior-no-flee" style="margin-left: 5px;">Debug (will not flee)</label>
+                    <label for="spawn-near">Debug (near)</label>
                 </div>
             </div>
+            <div>
+                <div>Deer Behavior:</div>
+                <div>
+                    <input type="radio" id="behavior-normal" name="deer-behavior-mode" value="normal" checked>
+                    <label for="behavior-normal">Normal</label>
+                </div>
+                <div>
+                    <input type="radio" id="behavior-no-flee" name="deer-behavior-mode" value="no-flee">
+                    <label for="behavior-no-flee">Debug (no flee)</label>
+                </div>
+            </div>
+            <div style="display: none;">
+                <select id="world-select">
+                    <!-- Options will be populated by JavaScript -->
+                </select>
+            </div>
         </div>
-        
-        <button id="start-button" class="menu-item">Start Game</button>
+    </div>
+    
+    <!-- Main menu with loading bar and start button at bottom -->
+    <div id="main-menu-container">
+        <div id="loading-container">
+            <svg id="progress-ring" width="120" height="120">
+                <circle id="progress-ring-track" stroke-width="8" fill="transparent" r="52" cx="60" cy="60"/>
+                <circle id="progress-ring-fill" stroke-width="8" fill="transparent" r="52" cx="60" cy="60"/>
+            </svg>
+        </div>
+        <button id="start-button" style="display: none;">Start Game</button>
+    </div>
     </div>
 
     <div id="sleep-overlay">

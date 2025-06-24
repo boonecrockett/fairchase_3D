@@ -751,13 +751,19 @@ async function init(worldConfig) {
     createPlayer();
     initAudio();
     deer.respawn();
+
+    // Set initial deer state based on UI selection
+    if (gameContext.deerBehaviorMode) {
+        deer.setState(gameContext.deerBehaviorMode);
+    }
+
     addPlayerEventListeners();
     document.addEventListener('contextmenu', (event) => event.preventDefault());
     showMessage("Welcome to Fairchase! Use WASD to move, Mouse to look, R to scope, Click to shoot.", 5000);
 }
 
 // --- GAME ENTRY POINT ---
-document.addEventListener('DOMContentLoaded', () => {
+document.addEventListener('DOMContentLoaded', async () => {
     // Make gameContext globally accessible for debugging
     window.gameContext = gameContext;
     
@@ -803,5 +809,5 @@ document.addEventListener('DOMContentLoaded', () => {
     gameContext.checkTreeCollision = checkTreeCollision;
 
     // Initialize the UI, which will set up the main menu and its listeners
-    initUI();
+    await initUI();
 });
