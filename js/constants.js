@@ -50,6 +50,17 @@ export const DUSK_START_HOUR = 17;
  */
 export const NIGHT_START_HOUR = 19;
 
+/**
+ * The hour at which legal hunting starts.
+ * @type {number}
+ */
+export const LEGAL_HUNTING_START_HOUR = 5.5; // 5:30 AM
+/**
+ * The hour at which legal hunting ends.
+ * @type {number}
+ */
+export const LEGAL_HUNTING_END_HOUR = 19.5; // 7:30 PM
+
 // --- SLEEP SEQUENCE CONSTANTS ---
 /**
  * Initial delay in milliseconds before the sleep sequence overlay starts fading in.

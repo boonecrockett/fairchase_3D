@@ -228,13 +228,41 @@ export function triggerDeerBlowSound(deer) {
         return;
     }
     
+    // Debug: Check forest sound volume before deer blow
+    if (gameContext.forestSound && gameContext.forestSound.state === 'started') {
+        console.log(`Forest sound volume before deer blow: ${gameContext.forestSound.volume.value.toFixed(2)} dB`);
+    }
+    
     const deerPosition = deer.model.position;
     const playerDistance = gameContext.player.position.distanceTo(deerPosition);
     
     // Only play if within hearing range
     if (playerDistance <= MAX_AUDIO_DISTANCE) {
         playPositionalSound('deerBlow', deerPosition);
+        
+        // Debug: Check forest sound volume after deer blow trigger
+        setTimeout(() => {
+            if (gameContext.forestSound && gameContext.forestSound.state === 'started') {
+                console.log(`Forest sound volume after deer blow: ${gameContext.forestSound.volume.value.toFixed(2)} dB`);
+            }
+        }, 100);
     }
+}
+
+/**
+ * Triggers deer blow sound for spawn notifications
+ * Plays regardless of distance to alert player of new deer
+ */
+export function triggerDeerSpawnBlowSound(deer) {
+    if (!deer || !deer.model || !gameContext.spatialAudio) {
+        return;
+    }
+    
+    const deerPosition = deer.model.position;
+    
+    // For spawn notifications, always play the sound regardless of distance
+    // This alerts the player that a new deer has appeared on the map
+    playPositionalSound('deerBlow', deerPosition);
 }
 
 /**

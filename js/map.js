@@ -483,5 +483,7 @@ function closeSmartphoneMap() {
     const modal = document.getElementById('smartphone-map-modal');
     if (modal) {
         modal.style.display = 'none';
+        // Clean up any remaining event listeners to prevent conflicts
+        modal.remove();
     }
 }

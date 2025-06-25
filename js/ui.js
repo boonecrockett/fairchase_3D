@@ -3,6 +3,7 @@ import { gameContext } from './context.js';
 import { initMap, showMap } from './map.js';
 import { worldPresets } from './world-presets.js';
 import { deer } from './deer.js';
+import { stopTitleMusic } from './audio.js';
 
 // --- UI MODULE CONSTANTS ---
 
@@ -120,6 +121,9 @@ export async function initUI() {
             gameContext.startGameButton.disabled = true;
             gameContext.startGameButton.textContent = 'Starting...';
             
+            // Stop title screen music when game starts
+            stopTitleMusic();
+            
             // Read deer behavior debugging option
             // Read deer behavior debugging option and store it in the game context
             gameContext.deerSpawnMode = document.querySelector('input[name="deer-spawn-mode"]:checked').value;
@@ -156,6 +160,7 @@ export async function initUI() {
     }
 
     initMap();
+    // startTitleMusic();
 }
 
 /**
@@ -186,9 +191,11 @@ function showJournal() {
  * Updates the interaction prompt based on player proximity to a killed deer.
  */
 export function updateInteraction() {
-    if (deer.state === 'KILLED' && deer.fallen) {
-        if (gameContext.player.position.distanceTo(deer.model.position) < TAG_INTERACTION_DISTANCE) {
-            gameContext.interactionPromptElement.textContent = INTERACTION_PROMPT_TAG_DEER;
+    if (gameContext.deer.state === 'KILLED' && gameContext.deer.fallen && !gameContext.deer.tagged) {
+        const distance = gameContext.player.position.distanceTo(gameContext.deer.model.position);
+        
+        if (distance <= TAG_INTERACTION_DISTANCE) {
+            gameContext.interactionPromptElement.textContent = 'Press [E] to Tag Deer';
             gameContext.interactionPromptElement.style.display = 'block';
             gameContext.canTag = true;
         } else {

@@ -4,7 +4,8 @@ import { createHills, createWater, findDrinkingSpots, createTrees, createBushes 
 import { createPlayer, addPlayerEventListeners, updatePlayer } from './player.js';
 import { deer } from './deer.js';
 import { initUI, showMessage, updateInteraction, updateCompass } from './ui.js';
-import { initAudio, playRifleSound } from './audio.js';
+import { initAudio, playRifleSound, updateAmbianceForTime } from './audio.js';
+// import { initAudio, initTitleMusic, playRifleSound, updateAmbianceForTime } from './audio.js';
 import { gameContext } from './context.js'; 
 import {
     GAME_TIME_SPEED_MULTIPLIER,
@@ -13,7 +14,9 @@ import {
     DAWN_START_HOUR,
     SLEEP_SEQUENCE_DELAY_MS,
     SLEEP_SEQUENCE_MAIN_DURATION_MS,
-    SLEEP_FADE_OUT_DURATION_MS
+    SLEEP_FADE_OUT_DURATION_MS,
+    LEGAL_HUNTING_START_HOUR,
+    LEGAL_HUNTING_END_HOUR
 } from './constants.js';
 import { updateSpatialAudioListener } from './spatial-audio.js';
 
@@ -22,6 +25,39 @@ import { updateSpatialAudioListener } from './spatial-audio.js';
 function isNight() {
     const currentTime = gameContext.gameTime;
     return currentTime < DAWN_START_HOUR || currentTime > NIGHT_START_HOUR;
+}
+
+function isLegalHuntingTime() {
+    const currentTime = gameContext.gameTime;
+    return currentTime >= LEGAL_HUNTING_START_HOUR && currentTime <= LEGAL_HUNTING_END_HOUR;
+}
+
+function processKill(baseScore, baseMessage, wasMoving, shotCount, distance) {
+    let finalScore = baseScore;
+    let finalMessage = baseMessage;
+    let ethical = true;
+
+    if (!isLegalHuntingTime()) {
+        finalScore = -50; // Penalty for illegal harvest
+        finalMessage = "Unethical Harvest (Out of Hours)";
+        ethical = false;
+    }
+
+    gameContext.score += finalScore;
+    gameContext.scoreValueElement.textContent = gameContext.score;
+    gameContext.killInfo = { 
+        score: finalScore, 
+        message: finalMessage, 
+        wasMoving: wasMoving,
+        shotCount: shotCount,
+        distance: distance,
+        ethical: ethical
+    };
+    
+    const scoreText = finalScore >= 0 ? ` +${finalScore}` : ` ${finalScore}`;
+    showMessage(`${finalMessage}!${scoreText} Points`);
+    
+    gameContext.deer.setState('KILLED');
 }
 
 function getHeightAt(x, z) {
@@ -47,22 +83,46 @@ function shoot() {
         return;
     }
 
-    // Temporarily make the vitals hitbox visible for the raycaster to detect it.
-    const vitalsBox = gameContext.deer.model.vitals;
-    if (vitalsBox) {
-        vitalsBox.visible = true;
+    // Calculate distance from shooter to deer for logging
+    const shotDistance = gameContext.player.position.distanceTo(gameContext.deer.model.position);
+    const shotDistanceYards = Math.round(shotDistance * 1.09361); // Convert to yards
+
+    // Initialize huntLog on first shot if not already initialized
+    if (!gameContext.huntLog) { 
+        gameContext.huntLog = {
+            initialSightingDistance: shotDistanceYards,
+            firstShotResult: '',
+            firstShotDistance: shotDistanceYards,
+            hitLocation: '',
+            distanceTrailed: 0,
+            recoveryShotDistance: null,
+            totalShotsTaken: 0,
+            deerInitialPosition: gameContext.deer.model.position.clone()
+        };
     }
+
+    // Temporarily make the vitals hitbox visible for the raycaster to detect it.
+    gameContext.deer.hitbox.showVitalsForRaycasting();
 
     gameContext.raycaster.setFromCamera({ x: 0, y: 0 }, gameContext.camera);
     const intersects = gameContext.raycaster.intersectObject(gameContext.deer.model, true);
 
     // Hide the vitals hitbox again immediately.
-    if (vitalsBox) {
-        vitalsBox.visible = false;
-    }
+    gameContext.deer.hitbox.hideVitalsAfterRaycasting();
+
+    let shotResult = {
+        distance: shotDistanceYards,
+        hitType: 'miss',
+        timestamp: new Date().toLocaleTimeString(),
+        deerMoving: gameContext.deer.state === 'FLEEING' || gameContext.deer.state === 'WOUNDED' || gameContext.deer.state === 'WANDERING'
+    };
 
     if (intersects.length > 0) {
-        let hitName = null;
+        // Deer was hit
+        const hit = intersects[0];
+        let hitName = hit.object.name;
+        
+        const wasMoving = gameContext.deer.isMoving;
         let hitPosition = null;
 
         // Prioritize the hit: Vitals > Head > Body.
@@ -92,30 +152,15 @@ function shoot() {
 
         if (hitName) {
             
-            // Mark deer as actually hit to prevent erratic state cycling
-            gameContext.deer.wasActuallyHit = true;
-            
-            // Create blood indicator at the hit location
-            if (hitPosition) {
-                gameContext.deer.createShotBloodIndicator(hitPosition);
+            // Update shot result with hit type
+            if (hitName === 'vitals') {
+                shotResult.hitType = 'vital';
+            } else if (hitName === 'head') {
+                shotResult.hitType = 'brain';
+            } else if (hitName === 'body') {
+                shotResult.hitType = 'wound';
             }
             
-            const distance = gameContext.player.position.distanceTo(gameContext.deer.model.position);
-            const wasMoving = deer.state === 'FLEEING' || deer.state === 'WOUNDED' || deer.state === 'WANDERING';
-            
-            if (!gameContext.huntLog) { 
-                gameContext.huntLog = {
-                    initialSightingDistance: Math.round(distance * 1.09361),
-                    firstShotResult: '',
-                    firstShotDistance: Math.round(distance * 1.09361),
-                    hitLocation: '',
-                    distanceTrailed: 0,
-                    recoveryShotDistance: null,
-                    totalShotsTaken: 0,
-                    deerInitialPosition: gameContext.deer.model.position.clone()
-                };
-            }
-
             // Increment shot count and record hit location
             gameContext.huntLog.totalShotsTaken++;
             
@@ -130,6 +175,17 @@ function shoot() {
                     gameContext.huntLog.hitLocation = 'Body';
                 }
             }
+            
+            // Mark deer as actually hit to prevent erratic state cycling
+            gameContext.deer.wasActuallyHit = true;
+            
+            // Create blood indicator at the hit location
+            if (hitPosition) {
+                gameContext.deer.createShotBloodIndicator(hitPosition);
+            }
+            
+            const distance = gameContext.player.position.distanceTo(gameContext.deer.model.position);
+            const wasMoving = gameContext.deer.state === 'FLEEING' || gameContext.deer.state === 'WOUNDED' || gameContext.deer.state === 'WANDERING';
             
             if (hitName === 'vitals' || hitName === 'head') {
                 let isLethalShot = true;
@@ -149,155 +205,109 @@ function shoot() {
                         .applyAxisAngle(new THREE.Vector3(0, 1, 0), deerRotation);
                     
                     // Calculate the angle between deer's forward direction and direction to player
-                    const dotProduct = deerForward.dot(toPlayer);
-                    const angle = Math.acos(Math.max(-1, Math.min(1, dotProduct)));
-                    const angleInDegrees = angle * (180 / Math.PI);
+                    const angle = Math.acos(deerForward.dot(toPlayer));
+                    const angleInDegrees = THREE.MathUtils.radToDeg(angle);
                     
-                    // If angle is greater than 135 degrees, the shot is from behind (not lethal for vitals)
+                    // Check if shot is from behind - reclassify as body shot
                     if (angleInDegrees > 135) {
+                        // Rear shot - should be treated as body shot, not vital shot
+                        hitName = 'body';
+                        shotResult.hitType = 'wound';
+                        gameContext.huntLog.hitLocation = 'Hindquarters';
                         isLethalShot = false;
+                    } else if (angleInDegrees < 45) {
+                        // Front shot - instant kill
+                        processKill(90, "Perfect Front Vitals Shot", wasMoving, 1, shotDistanceYards);
                     } else {
+                        // Side shot - instant kill
+                        processKill(80, "Perfect Side Vitals Shot", wasMoving, 1, shotDistanceYards);
                     }
+                } else if (hitName === 'head') {
+                    // Head/brain shot - instant kill with high score
+                    processKill(120, "Perfect Head Shot", wasMoving, 1, shotDistanceYards);
                 }
                 
-                if (isLethalShot) {
-                    let shotScore;
-                    let shotMessage;
-                    let baseScore;
-
-                    if (deer.state === 'WOUNDED') {
-                        baseScore = 20; 
-                        shotMessage = "Recovery Shot";
-                        gameContext.huntLog.recoveryShotDistance = Math.round(distance * 1.09361);
-                    } else {
-                        baseScore = (hitName === 'vitals') ? 100 : 25;
-                        shotMessage = (hitName === 'vitals') ? "Perfect Shot!" : "Headshot!";
-                        gameContext.huntLog.firstShotResult = shotMessage;
-                    }
-                    
-                    const maxPenaltyDistance = 250;
-                    const distanceFactor = Math.min(distance, maxPenaltyDistance) / maxPenaltyDistance;
-                    const penalty = distanceFactor * (baseScore * 0.5); 
-                    shotScore = Math.round(baseScore - penalty);
-
-                    const distanceInYards = Math.round(distance * 1.09361);
-                    if (distanceInYards < 100) {
-                        shotScore += (100 - distanceInYards);
-                    }
-
-                    if (wasMoving) {
-                        shotScore -= 50;
-                        shotMessage += " (Moving)";
-                    }
-
-                    gameContext.killInfo = { 
-                        score: shotScore, 
-                        message: shotMessage, 
-                        wasMoving: wasMoving,
-                        shotCount: (deer.state === 'WOUNDED') ? 2 : 1,
-                        distance: Math.round(distance * 1.09361)
-                    };
-                    deer.setState('KILLED');
-                } else {
-                    // Vital shot from behind - treat as body shot (wound but don't kill)
-                    if (deer.state !== 'WOUNDED') {
-                        deer.woundCount++;
-                        gameContext.score -= 25;
-                        gameContext.scoreValueElement.textContent = gameContext.score;
-                        deer.setState('WOUNDED');
-                        gameContext.huntLog.firstShotResult = 'Wounded (Rear Shot)';
-                        showMessage(`Wounded from behind! -25 Points (${deer.woundCount}/3)`);
+                // If shot was reclassified as body shot, fall through to body shot logic
+                if (!isLethalShot) {
+                    // Process as body shot instead
+                    if (gameContext.deer.state !== 'WOUNDED') {
+                        gameContext.deer.woundCount = 1;
+                        gameContext.deer.setState('WOUNDED');
+                        showMessage("Hindquarter shot - deer wounded!");
                         
                         // Check if 3 wounds = kill
-                        if (deer.woundCount >= 3) {
-                            gameContext.killInfo = { 
-                                score: 10, // Low score for 3-wound kill
-                                message: "3-Wound Kill", 
-                                wasMoving: wasMoving,
-                                shotCount: deer.woundCount,
-                                distance: Math.round(distance * 1.09361)
-                            };
-                            deer.setState('KILLED');
+                        if (gameContext.deer.woundCount >= 3) {
+                            processKill(10, "3-Wound Kill", wasMoving, gameContext.deer.woundCount, shotDistanceYards);
                         }
                     } else {
                         // Already wounded, increment wound count
-                        deer.woundCount++;
-                        showMessage(`Additional wound! (${deer.woundCount}/3)`);
+                        gameContext.deer.woundCount++;
+                        showMessage(`Additional wound! (${gameContext.deer.woundCount}/3)`);
                         
                         // Check if 3 wounds = kill
-                        if (deer.woundCount >= 3) {
-                            gameContext.killInfo = { 
-                                score: 10, // Low score for 3-wound kill
-                                message: "3-Wound Kill", 
-                                wasMoving: wasMoving,
-                                shotCount: deer.woundCount,
-                                distance: Math.round(distance * 1.09361)
-                            };
-                            deer.setState('KILLED');
+                        if (gameContext.deer.woundCount >= 3) {
+                            processKill(10, "3-Wound Kill", wasMoving, gameContext.deer.woundCount, shotDistanceYards);
                         }
                     }
                 }
             } else if (hitName === 'body') {
-                if (deer.state !== 'WOUNDED') {
-                    deer.woundCount++;
-                    gameContext.score -= 25;
-                    gameContext.scoreValueElement.textContent = gameContext.score;
-                    deer.setState('WOUNDED');
-                    gameContext.huntLog.firstShotResult = 'Wounded';
-                    showMessage(`Wounded! -25 Points (${deer.woundCount}/3)`);
+                // Body hit - wound the deer
+                if (gameContext.deer.state !== 'WOUNDED') {
+                    gameContext.deer.woundCount = 1;
+                    gameContext.deer.setState('WOUNDED');
+                    showMessage("Body shot - deer wounded!");
                     
                     // Check if 3 wounds = kill
-                    if (deer.woundCount >= 3) {
-                        gameContext.killInfo = { 
-                            score: 10, // Low score for 3-wound kill
-                            message: "3-Wound Kill", 
-                            wasMoving: wasMoving,
-                            shotCount: deer.woundCount,
-                            distance: Math.round(distance * 1.09361)
-                        };
-                        deer.setState('KILLED');
+                    if (gameContext.deer.woundCount >= 3) {
+                        processKill(10, "3-Wound Kill", wasMoving, gameContext.deer.woundCount, shotDistanceYards);
                     }
                 } else {
                     // Already wounded, increment wound count
-                    deer.woundCount++;
-                    showMessage(`Additional wound! (${deer.woundCount}/3)`);
+                    gameContext.deer.woundCount++;
+                    showMessage(`Additional wound! (${gameContext.deer.woundCount}/3)`);
                     
                     // Check if 3 wounds = kill
-                    if (deer.woundCount >= 3) {
-                        gameContext.killInfo = { 
-                            score: 10, // Low score for 3-wound kill
-                            message: "3-Wound Kill", 
-                            wasMoving: wasMoving,
-                            shotCount: deer.woundCount,
-                            distance: Math.round(distance * 1.09361)
-                        };
-                        deer.setState('KILLED');
+                    if (gameContext.deer.woundCount >= 3) {
+                        processKill(10, "3-Wound Kill", wasMoving, gameContext.deer.woundCount, shotDistanceYards);
                     }
                 }
             }
         } else {
             // Hit a non-critical or unnamed part
-            if (deer.state !== 'WOUNDED') deer.setState('FLEEING');
+            if (gameContext.deer.state !== 'WOUNDED') gameContext.deer.setState('FLEEING');
         }
     } else {
         // Handle a clean miss
         gameContext.score -= 20; // Changed from -50 to -20
         gameContext.scoreValueElement.textContent = gameContext.score;
         showMessage("Missed! -20 Points");
-        if (deer.state !== 'WOUNDED' && deer.state !== 'FLEEING') {
-            deer.setState('FLEEING');
+        if (gameContext.deer.state !== 'WOUNDED' && gameContext.deer.state !== 'FLEEING') {
+            gameContext.deer.setState('FLEEING');
         }
+    }
+
+    // Log this shot to the shot log
+    if (!gameContext.shotLog) {
+        gameContext.shotLog = [];
+    }
+    gameContext.shotLog.push(shotResult);
+    
+    // Update first shot result if this is the first shot
+    if (gameContext.huntLog && gameContext.huntLog.firstShotResult === '') {
+        gameContext.huntLog.firstShotResult = shotResult.hitType;
     }
 }
 
 function tagDeer() {
-    if (deer.state !== 'KILLED' || !gameContext.canTag || !gameContext.killInfo) return;
-
-    const shotScore = gameContext.killInfo.score;
+    if (gameContext.deer.state !== 'KILLED' || !gameContext.canTag || !gameContext.killInfo || gameContext.deer.tagged) {
+        return;
+    }
+    
     const tagBonus = 25;
-    gameContext.score += shotScore + tagBonus;
+    gameContext.score += tagBonus;
     gameContext.scoreValueElement.textContent = gameContext.score;
-    const shotScoreStr = shotScore >= 0 ? `+${shotScore}` : shotScore;
+    
+    const shotScoreStr = gameContext.killInfo.score >= 0 ? `+${gameContext.killInfo.score}` : `${gameContext.killInfo.score}`;
     const finalMessage = `${gameContext.killInfo.message} (${shotScoreStr}) | Tag Bonus: +${tagBonus}`;
     showMessage(finalMessage);
     
@@ -305,11 +315,12 @@ function tagDeer() {
     gameContext.huntLog = {}; 
     gameContext.killInfo = null;
     gameContext.canTag = false;
+    gameContext.deer.tagged = true; 
     if(gameContext.interactionPromptElement) gameContext.interactionPromptElement.style.display = 'none';
     
     // Wait 10 seconds before spawning a new deer
     setTimeout(() => {
-        deer.respawn();
+        gameContext.deer.respawn();
     }, 10000); // 10 seconds delay
 }
 
@@ -336,20 +347,59 @@ function showEndOfDayJournal() {
         
         const huntData = gameContext.dailyKillInfo || gameContext.huntLog;
         const trailingDistance = Math.round(huntData.distanceTrailed * 1.09361);
-        const firstShotDistance = huntData.firstShotDistance || huntData.initialSightingDistance;
+        const firstShotDistance = huntData.firstShotDistance || huntData.initialSightingDistance || 'Unknown';
         const finalShotDistance = huntData.recoveryShotDistance || firstShotDistance;
         const hitLocation = huntData.hitLocation || 'Unknown';
         const totalShots = huntData.totalShotsTaken || 1;
+        const initialSightingDistance = huntData.initialSightingDistance || 'Unknown';
+        const firstShotResult = huntData.firstShotResult || 'Unknown';
         
         // Initial sighting
-        journalHTML += `<div class="stat-line"><span class="highlight">Initial Sighting:</span> ${huntData.initialSightingDistance} yards</div>`;
+        journalHTML += `<div class="stat-line"><span class="highlight">Initial Sighting:</span> ${initialSightingDistance} yards</div>`;
         
         // Shot analysis
         journalHTML += `<h3>Shot Analysis</h3>`;
         journalHTML += `<div class="stat-line"><span class="highlight">Total Shots Taken:</span> ${totalShots}</div>`;
         journalHTML += `<div class="stat-line"><span class="highlight">First Shot Distance:</span> ${firstShotDistance} yards</div>`;
         journalHTML += `<div class="stat-line"><span class="highlight">Hit Location:</span> ${hitLocation}</div>`;
-        journalHTML += `<div class="stat-line"><span class="highlight">First Shot Result:</span> <span class="${getResultClass(huntData.firstShotResult)}">${huntData.firstShotResult}</span></div>`;
+        journalHTML += `<div class="stat-line"><span class="highlight">First Shot Result:</span> <span class="${getResultClass(firstShotResult)}">${firstShotResult}</span></div>`;
+        
+        // Detailed shot log
+        if (gameContext.shotLog && gameContext.shotLog.length > 0) {
+            journalHTML += `<h3>Detailed Shot Log</h3>`;
+            gameContext.shotLog.forEach((shot, index) => {
+                const shotNumber = index + 1;
+                const hitTypeClass = shot.hitType === 'miss' ? 'error' : 
+                                   shot.hitType === 'vital' || shot.hitType === 'brain' ? 'success' : 'warning';
+                const hitTypeDisplay = shot.hitType === 'vital' ? 'Vital Hit' :
+                                     shot.hitType === 'brain' ? 'Brain Shot' :
+                                     shot.hitType === 'wound' ? 'Body Wound' : 'Miss';
+                
+                journalHTML += `<div class="stat-line">`;
+                journalHTML += `<span class="highlight">Shot ${shotNumber} (${shot.timestamp}):</span> `;
+                journalHTML += `${shot.distance} yards - `;
+                journalHTML += `<span class="${hitTypeClass}">${hitTypeDisplay}</span>`;
+                if (shot.deerMoving) {
+                    journalHTML += ` (Deer was moving)`;
+                }
+                journalHTML += `</div>`;
+            });
+            
+            // Shot accuracy summary
+            const hits = gameContext.shotLog.filter(shot => shot.hitType !== 'miss').length;
+            const accuracy = Math.round((hits / gameContext.shotLog.length) * 100);
+            journalHTML += `<div class="stat-line"><span class="highlight">Shot Accuracy:</span> ${hits}/${gameContext.shotLog.length} (${accuracy}%)</div>`;
+            
+            // Average shot distance
+            const totalDistance = gameContext.shotLog.reduce((sum, shot) => sum + shot.distance, 0);
+            const avgDistance = Math.round(totalDistance / gameContext.shotLog.length);
+            journalHTML += `<div class="stat-line"><span class="highlight">Average Shot Distance:</span> ${avgDistance} yards</div>`;
+            
+            // Hunt Ethics Analysis
+            journalHTML += `<h3>Hunt Ethics Analysis</h3>`;
+            const ethicsAnalysis = generateHuntEthicsAnalysis(gameContext.shotLog, huntData);
+            journalHTML += ethicsAnalysis;
+        }
         
         if (finalShotDistance !== firstShotDistance) {
             journalHTML += `<div class="stat-line"><span class="highlight">Final Shot Distance:</span> ${finalShotDistance} yards</div>`;
@@ -436,7 +486,7 @@ function showEndOfDayJournal() {
     if (gameContext.dailyKillInfo) {
         const huntData = gameContext.dailyKillInfo;
         const trailingDistance = Math.round(huntData.distanceTrailed * 1.09361);
-        const firstShotDistance = huntData.firstShotDistance || huntData.initialSightingDistance;
+        const firstShotDistance = huntData.firstShotDistance || huntData.initialSightingDistance || 'Unknown';
         const finalShotDistance = huntData.recoveryShotDistance || firstShotDistance;
         const hitLocation = huntData.hitLocation || 'Unknown';
         const totalShots = huntData.totalShotsTaken || 1;
@@ -451,7 +501,7 @@ function showEndOfDayJournal() {
     } else if (gameContext.huntLog && gameContext.huntLog.firstShotResult && gameContext.huntLog.firstShotResult.includes('Wounded')) {
         const huntData = gameContext.huntLog;
         const trailingDistance = Math.round(huntData.distanceTrailed * 1.09361);
-        const firstShotDistance = huntData.firstShotDistance || huntData.initialSightingDistance;
+        const firstShotDistance = huntData.firstShotDistance || huntData.initialSightingDistance || 'Unknown';
         const hitLocation = huntData.hitLocation || 'Unknown';
         const totalShots = huntData.totalShotsTaken || 1;
         
@@ -481,7 +531,7 @@ function showEndOfDayJournal() {
 }
 
 /**
- * Helper function to get CSS class for shot result
+ * Shows the comprehensive end-of-day journal with detailed hunt analysis
  */
 function getResultClass(result) {
     if (!result) return '';
@@ -507,9 +557,22 @@ function checkTreeCollision(position, radius = 1.0) {
         return null;
     }
     
-    // Check collision with each tree
+    // Performance optimization: Use spatial partitioning to only check nearby trees
+    // Instead of checking all trees, only check trees within a reasonable distance
+    const MAX_CHECK_DISTANCE = 50; // Only check trees within 50 units
+    const MAX_TREES_TO_CHECK = 20; // Limit to checking at most 20 trees per call
+    
+    let treesChecked = 0;
+    
+    // Check collision with nearby trees only
     for (const tree of gameContext.trees.children) {
-        // Calculate 2D distance (ignore Y axis for collision)
+        // Quick distance check to skip far away trees
+        const roughDistance = Math.abs(position.x - tree.position.x) + Math.abs(position.z - tree.position.z);
+        if (roughDistance > MAX_CHECK_DISTANCE) {
+            continue; // Skip trees that are definitely too far away
+        }
+        
+        // Calculate precise 2D distance (ignore Y axis for collision)
         const distance = new THREE.Vector2(
             position.x - tree.position.x,
             position.z - tree.position.z
@@ -522,6 +585,12 @@ function checkTreeCollision(position, radius = 1.0) {
         // Check if collision occurs
         if (distance < treeRadius + radius) {
             return tree; // Return the colliding tree
+        }
+        
+        // Limit the number of trees we check per call to prevent performance issues
+        treesChecked++;
+        if (treesChecked >= MAX_TREES_TO_CHECK) {
+            break;
         }
     }
     
@@ -586,16 +655,17 @@ function updateDynamicLighting() {
     // Define lighting phases throughout the day
     let sunColor, ambientColor, skyColor, sunIntensity, ambientIntensity;
     
-    if (timeOfDay >= 5 && timeOfDay < 7) {
-        // Sunrise (5-7 AM) - warm orange/pink tones
-        const progress = (timeOfDay - 5) / 2;
-        sunColor = interpolateColor(0x1a1a2e, 0xff6b35, progress); // Dark blue to orange
-        ambientColor = interpolateColor(0x16213e, 0x8b4513, progress); // Dark to warm brown
+    if (timeOfDay >= 4.5 && timeOfDay < 7) {
+        // Sunrise (4:30-7:00 AM) - Gradual transition from night to morning
+        const progress = (timeOfDay - 4.5) / 2.5; // 2.5 hour duration
+        // From night colors to sunrise/golden hour start colors
+        sunColor = interpolateColor(0x0f0f23, 0xff6b35, progress); // Very dark blue to orange
+        ambientColor = interpolateColor(0x0a0a1a, 0x8b4513, progress); // Nearly black to warm brown
         skyColor = adjustColorSaturationAndLuminosity(
-            interpolateColor(0x1a1a2e, 0xff8c69, progress), 0.5, 1.2
-        ); // Dark to salmon with reduced saturation and increased luminosity
-        sunIntensity = 0.3 + progress * 0.5; // 0.3 to 0.8
-        ambientIntensity = 0.2 + progress * 0.3; // 0.2 to 0.5
+            interpolateColor(0x0f0f23, 0xff8c69, progress), 0.5, 1.2 // Dark blue to salmon
+        );
+        sunIntensity = 0.1 + progress * 0.7; // 0.1 to 0.8
+        ambientIntensity = 0.1 + progress * 0.4; // 0.1 to 0.5
         
     } else if (timeOfDay >= 7 && timeOfDay < 10) {
         // Early Morning (7-10 AM) - golden hour
@@ -653,12 +723,23 @@ function updateDynamicLighting() {
         ambientIntensity = 0.4 - progress * 0.2; // 0.4 to 0.2
         
     } else {
-        // Night (9 PM - 5 AM) - deep blue/purple tones
-        sunColor = 0x191970; // Midnight blue
-        ambientColor = 0x191970; // Midnight blue
-        skyColor = adjustColorSaturationAndLuminosity(0x191970, 0.5, 1.2); // Midnight blue with reduced saturation and increased luminosity
-        sunIntensity = 0.1; // Very dim
-        ambientIntensity = 0.15; // Minimal ambient
+        // Night (9 PM - 4:30 AM) - deep blue/purple tones
+        let progress = 0;
+        if (timeOfDay >= 21) {
+            // Late night (9 PM - midnight)
+            progress = (timeOfDay - 21) / 3; // 0 to 1 over 3 hours
+        } else if (timeOfDay < 4.5) {
+            // Early morning night (midnight - 4:30 AM)
+            progress = 1 - (timeOfDay / 4.5); // 1 to 0 over 4.5 hours
+        }
+        
+        sunColor = 0x0f0f23; // Very dark blue
+        ambientColor = 0x0a0a1a; // Nearly black
+        skyColor = adjustColorSaturationAndLuminosity(
+            interpolateColor(0x191970, 0x0f0f23, progress), 0.5, 1.2
+        ); // Midnight blue to very dark blue
+        sunIntensity = 0.1; // Minimal light
+        ambientIntensity = 0.1; // Minimal ambient
     }
     
     // Apply the calculated lighting
@@ -672,8 +753,29 @@ function updateDynamicLighting() {
     gameContext.scene.background.setHex(skyColor);
     if (gameContext.scene.fog) {
         gameContext.scene.fog.color.setHex(skyColor);
-        // Adjust fog density based on time (more fog at dawn/dusk)
-        const fogFactor = (timeOfDay >= 5 && timeOfDay <= 8) || (timeOfDay >= 17 && timeOfDay <= 20) ? 1.5 : 1.0;
+        // Adjust fog density based on time for smooth transitions
+        let fogFactor = 1.0;
+        // Morning fog (4:00 AM to 8:00 AM)
+        if (timeOfDay >= 4.0 && timeOfDay < 4.5) { // Fade in (4:00 -> 4:30)
+            const progress = (timeOfDay - 4.0) / 0.5;
+            fogFactor = 1.0 + progress * 0.5;
+        } else if (timeOfDay >= 4.5 && timeOfDay < 7.5) { // Peak fog (4:30 -> 7:30)
+            fogFactor = 1.5;
+        } else if (timeOfDay >= 7.5 && timeOfDay < 8.0) { // Fade out (7:30 -> 8:00)
+            const progress = (timeOfDay - 7.5) / 0.5;
+            fogFactor = 1.5 - progress * 0.5;
+        }
+        // Evening fog (5:00 PM to 8:00 PM)
+        else if (timeOfDay >= 17.0 && timeOfDay < 17.5) { // Fade in (17:00 -> 17:30)
+            const progress = (timeOfDay - 17.0) / 0.5;
+            fogFactor = 1.0 + progress * 0.5;
+        } else if (timeOfDay >= 17.5 && timeOfDay < 19.5) { // Peak fog (17:30 -> 19:30)
+            fogFactor = 1.5;
+        } else if (timeOfDay >= 19.5 && timeOfDay < 20.0) { // Fade out (19:30 -> 20:00)
+            const progress = (timeOfDay - 19.5) / 0.5;
+            fogFactor = 1.5 - progress * 0.5;
+        }
+
         gameContext.scene.fog.near = 50 * fogFactor;
         gameContext.scene.fog.far = 200 * fogFactor;
     }
@@ -733,15 +835,20 @@ function animate() {
     updateDayNightCycle();
     updateShadowCamera();
     updatePlayer();
-    deer.update(gameContext.deltaTime);
+    gameContext.deer.update(gameContext.deltaTime);
     updateInteraction();
     updateCompass();
     updateSpatialAudioListener();
+    updateAmbianceForTime(gameContext.gameTime);
     if(gameContext.renderer) gameContext.renderer.render(gameContext.scene, gameContext.camera);
 }
 
 async function init(worldConfig) {
     gameContext.worldConfig = worldConfig;
+    
+    // Reset shot log for new hunting session
+    gameContext.shotLog = [];
+    
     setupScene();
     createHills(worldConfig);
     createWater(worldConfig);
@@ -750,12 +857,19 @@ async function init(worldConfig) {
     await createBushes(worldConfig);
     createPlayer();
     initAudio();
-    deer.respawn();
-
-    // Set initial deer state based on UI selection
-    if (gameContext.deerBehaviorMode) {
-        deer.setState(gameContext.deerBehaviorMode);
-    }
+    
+    // Update time display immediately to show correct starting time
+    updateTimeDisplay();
+    
+    // Delay deer respawn to ensure audio system is ready for deer blow sound
+    setTimeout(() => {
+        gameContext.deer.respawn();
+        
+        // Set initial deer state based on UI selection
+        if (gameContext.deerBehaviorMode) {
+            gameContext.deer.setState(gameContext.deerBehaviorMode);
+        }
+    }, 1000); // 1 second delay to allow audio system to initialize
 
     addPlayerEventListeners();
     document.addEventListener('contextmenu', (event) => event.preventDefault());
@@ -809,5 +923,104 @@ document.addEventListener('DOMContentLoaded', async () => {
     gameContext.checkTreeCollision = checkTreeCollision;
 
     // Initialize the UI, which will set up the main menu and its listeners
+    // await initTitleMusic();
     await initUI();
 });
+
+function generateHuntEthicsAnalysis(shotLog, huntData) {
+    let analysis = '';
+    
+    // Calculate shot statistics
+    const totalShots = shotLog.length;
+    const cleanKills = shotLog.filter(shot => shot.hitType === 'vital' || shot.hitType === 'brain').length;
+    const wounds = shotLog.filter(shot => shot.hitType === 'wound').length;
+    const misses = shotLog.filter(shot => shot.hitType === 'miss').length;
+    const movingShots = shotLog.filter(shot => shot.deerMoving).length;
+    const standingShots = totalShots - movingShots;
+    
+    // Calculate percentages
+    const cleanKillRate = Math.round((cleanKills / totalShots) * 100);
+    const woundRate = Math.round((wounds / totalShots) * 100);
+    const missRate = Math.round((misses / totalShots) * 100);
+    const movingShotRate = Math.round((movingShots / totalShots) * 100);
+    
+    // Shot placement analysis
+    analysis += `<div class="stat-line"><span class="highlight">Shot Placement Analysis:</span></div>`;
+    analysis += `<div class="stat-line">• Clean Kills (Vital/Brain): ${cleanKills} shots (${cleanKillRate}%)</div>`;
+    analysis += `<div class="stat-line">• Wounding Shots: ${wounds} shots (${woundRate}%)</div>`;
+    analysis += `<div class="stat-line">• Missed Shots: ${misses} shots (${missRate}%)</div>`;
+    
+    // Deer movement analysis
+    analysis += `<div class="stat-line"><span class="highlight">Deer Movement Analysis:</span></div>`;
+    analysis += `<div class="stat-line">• Shots on Standing Deer: ${standingShots} shots</div>`;
+    analysis += `<div class="stat-line">• Shots on Moving Deer: ${movingShots} shots (${movingShotRate}%)</div>`;
+    
+    // Ethical hunting assessment
+    analysis += `<div class="stat-line"><span class="highlight">Ethical Assessment:</span></div>`;
+    
+    // Overall performance rating
+    let performanceRating = '';
+    let ethicalConcerns = [];
+    
+    if (totalShots === 1 && cleanKills === 1) {
+        performanceRating = '<span class="success">Excellent - One shot, clean kill</span>';
+    } else if (cleanKillRate >= 80 && woundRate <= 20) {
+        performanceRating = '<span class="success">Good - High clean kill rate</span>';
+    } else if (cleanKillRate >= 50 && woundRate <= 40) {
+        performanceRating = '<span class="warning">Fair - Room for improvement</span>';
+    } else {
+        performanceRating = '<span class="error">Poor - Significant improvement needed</span>';
+    }
+    
+    analysis += `<div class="stat-line">• Overall Performance: ${performanceRating}</div>`;
+    
+    // Specific ethical concerns and recommendations
+    if (wounds > 1) {
+        ethicalConcerns.push('Multiple wounding shots indicate poor shot placement');
+        analysis += `<div class="stat-line"><span class="error">⚠ Concern: ${wounds} wounding shots suggest inadequate shot placement or range estimation</span></div>`;
+    }
+    
+    if (totalShots > 3) {
+        ethicalConcerns.push('Excessive number of shots taken');
+        analysis += `<div class="stat-line"><span class="error">⚠ Concern: ${totalShots} shots taken - ethical hunting requires quick, clean kills</span></div>`;
+    }
+    
+    if (movingShotRate > 50) {
+        ethicalConcerns.push('Too many shots taken on moving deer');
+        analysis += `<div class="stat-line"><span class="warning">⚠ Concern: ${movingShotRate}% of shots on moving deer - wait for standing shots when possible</span></div>`;
+    }
+    
+    if (wounds > 0 && cleanKills === 0) {
+        analysis += `<div class="stat-line"><span class="error">⚠ Critical: Wounded deer without clean kill - improve tracking and recovery shot placement</span></div>`;
+    }
+    
+    // Positive feedback
+    if (cleanKills > 0) {
+        analysis += `<div class="stat-line"><span class="success">✓ Good: ${cleanKills} clean kill shot(s) demonstrate proper shot placement</span></div>`;
+    }
+    
+    if (standingShots > movingShots) {
+        analysis += `<div class="stat-line"><span class="success">✓ Good: Majority of shots taken on standing deer shows patience and ethics</span></div>`;
+    }
+    
+    // Recommendations
+    analysis += `<div class="stat-line"><span class="highlight">Recommendations:</span></div>`;
+    
+    if (woundRate > 20) {
+        analysis += `<div class="stat-line">• Practice shot placement on vital zones to reduce wounding</div>`;
+    }
+    
+    if (movingShotRate > 30) {
+        analysis += `<div class="stat-line">• Wait for deer to stop before taking shots for better accuracy</div>`;
+    }
+    
+    if (totalShots > 2) {
+        analysis += `<div class="stat-line">• Consider closer approach or better rest position for first shot success</div>`;
+    }
+    
+    if (ethicalConcerns.length === 0 && totalShots === 1 && cleanKills === 1) {
+        analysis += `<div class="stat-line"><span class="success">• Exemplary hunting - maintain this standard of ethics and marksmanship</span></div>`;
+    }
+    
+    return analysis;
+}

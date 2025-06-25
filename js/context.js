@@ -97,6 +97,8 @@ export const gameContext = {
 
     // Game state
     gameTime: 4.5, // Start at 4:30 AM (30 minutes before legal hunting hours)
+    eveningCrossfadeTriggered: false, // Track whether evening ambiance crossfade has occurred
+    morningCrossfadeTriggered: false, // Track whether morning ambiance crossfade has occurred
     gameSpeed: 1,
     score: 100,
     distanceTraveled: 0,
@@ -106,6 +108,7 @@ export const gameContext = {
     dailyKillInfo: null,
     huntLog: {},
     journalEntries: [],
+    shotLog: [], // Track all shots taken with distance and hit type
     deerState: 'IDLE',
     timeSinceLastDrink: 0,
     stateTimer: 0,
