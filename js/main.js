@@ -69,10 +69,8 @@ function processKill(baseScore, baseMessage, wasMoving, shotCount, distance) {
 }
 
 function getHeightAt(x, z) {
-    if (!gameContext.terrain) return 0;
-    gameContext.raycaster.set(new THREE.Vector3(x, 1000, z), new THREE.Vector3(0, -1, 0));
-    const intersects = gameContext.raycaster.intersectObject(gameContext.terrain);
-    return intersects.length > 0 ? intersects[0].point.y : 0;
+    // Use optimized cached height queries for better performance
+    return gameContext.getCachedHeightAt(x, z);
 }
 
 function shoot() {
@@ -213,31 +211,36 @@ function shoot() {
                     const deerPos = gameContext.deer.model.position;
                     const deerRotation = gameContext.deer.model.rotation.y;
                     
-                    // Vector from deer to player
-                    const toPlayer = new THREE.Vector3()
-                        .subVectors(playerPos, deerPos)
+                    // Vector from player to deer (shot direction)
+                    const shotDirection = new THREE.Vector3()
+                        .subVectors(deerPos, playerPos)
                         .normalize();
                     
                     // Deer's forward direction (using +Z as confirmed correct)
                     const deerForward = new THREE.Vector3(0, 0, 1)
                         .applyAxisAngle(new THREE.Vector3(0, 1, 0), deerRotation);
                     
-                    // Calculate the angle between deer's forward direction and direction to player
-                    const angle = Math.acos(Math.max(-1, Math.min(1, deerForward.dot(toPlayer))));
+                    // Calculate the angle between deer's forward direction and shot direction
+                    // When deer faces player directly, this should be ~180° (opposite directions)
+                    const dotProduct = deerForward.dot(shotDirection);
+                    const angle = Math.acos(Math.max(-1, Math.min(1, dotProduct)));
                     const angleInDegrees = THREE.MathUtils.radToDeg(angle);
                     
-                    // Check shot direction based on angle
-                    if (angleInDegrees < 45) {
-                        // Front shot - instant kill
+                    // Convert to shot angle: 180° = frontal, 90° = side, 0° = rear
+                    const shotAngle = 180 - angleInDegrees;
+                    
+                    // Check shot direction based on corrected shot angle
+                    if (shotAngle > 135) {
+                        // Front shot (135-180°) - instant kill
                         processKill(100, "Perfect Front Vitals Shot", wasMoving, 1, shotDistanceYards);
-                    } else if (angleInDegrees > 135) {
-                        // Rear shot (135-180°) - should be treated as hindquarter body shot
+                    } else if (shotAngle < 45) {
+                        // Rear shot (0-45°) - should be treated as hindquarter body shot
                         hitName = 'body';
                         shotResult.hitType = 'wound';
                         gameContext.huntLog.hitLocation = 'Hindquarters';
                         isLethalShot = false;
                     } else {
-                        // Side shot - instant kill
+                        // Side shot (45-135°) - instant kill
                         processKill(80, "Perfect Side Vitals Shot", wasMoving, 1, shotDistanceYards);
                     }
                 } else if (hitName === 'head') {

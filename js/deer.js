@@ -128,7 +128,15 @@ class Deer extends Animal {
                 this.hasAlertedPlayer = true;
             }
         }
-
+        
+        // Trigger deer blow sound when fleeing (for close-range spooks that skip ALERT)
+        if (newState === 'FLEEING' && oldState !== 'FLEEING') {
+            if (!this.hasAlertedPlayer) {
+                triggerDeerBlowSound(this); // Trigger deer blow sound for fleeing
+                this.hasAlertedPlayer = true;
+            }
+        }
+        
         // Reset alert turn direction when leaving ALERT state
         if (oldState === 'ALERT' && newState !== 'ALERT') {
             this.alertTurnDirection = false;

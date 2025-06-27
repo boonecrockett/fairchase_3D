@@ -59,7 +59,7 @@ export const deerConfig = {
     stateTimers: {
         grazing: 6,              // Increased from 4 - more time spent grazing for 40% total time
         drinking: 8,             // Reduced from 10 - less time spent drinking
-        fleeing: 4,              // Updated from 3 to 4 - deer runs away for 4 seconds after alert
+        fleeing: 6,              // Updated from 4 to 6 - deer runs away for 6 seconds after alert
     },
     speeds: {
         wandering: 2.8,          // Reduced by 30% from 4.0 to better match walk animation

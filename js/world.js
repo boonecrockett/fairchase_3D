@@ -657,30 +657,8 @@ export function createGrass(worldConfig) {
                     
                     const grassInstance = grassModel.clone();
                     
-                    // Use raycasting to properly anchor grass to terrain surface
-                    const raycaster = new THREE.Raycaster();
-                    const startHeight = Math.max(grassHeight + 100, 200); // Start well above terrain
-                    raycaster.set(
-                        new THREE.Vector3(grassX, startHeight, grassZ), // Start well above terrain
-                        new THREE.Vector3(0, -1, 0) // Cast downward
-                    );
-                    
-                    // Raycast against the terrain to find exact ground position
-                    let finalY = grassHeight; // Fallback to calculated height
-                    
-                    if (gameContext.terrain && gameContext.terrain.geometry) {
-                        const intersects = raycaster.intersectObject(gameContext.terrain, false);
-                        if (intersects.length > 0) {
-                            // Use the exact intersection point for perfect ground anchoring
-                            finalY = intersects[0].point.y;
-                        } else {
-                            // If raycasting fails, use the more accurate getHeightAt function
-                            finalY = gameContext.getHeightAt(grassX, grassZ);
-                        }
-                    } else {
-                        // Fallback to getHeightAt if terrain is not available
-                        finalY = gameContext.getHeightAt(grassX, grassZ);
-                    }
+                    // Use optimized cached height detection for better performance
+                    const finalY = gameContext.getCachedHeightAt(grassX, grassZ);
                     
                     // Position grass at exact terrain height with minimal vertical offset
                     grassInstance.position.set(grassX, finalY + 0.05, grassZ); // Reduced offset from 0.1 to 0.05

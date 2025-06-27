@@ -88,6 +88,19 @@ export const gameContext = {
     clock: new THREE.Clock(),
     deltaTime: 0,
 
+    // Raycaster optimization system
+    raycasterPool: {
+        terrain: new THREE.Raycaster(), // For height queries
+        effects: new THREE.Raycaster(), // For tracks, blood drops, grass
+        visibility: new THREE.Raycaster(), // For line-of-sight checks
+        available: [] // Pool of additional raycasters if needed
+    },
+    
+    // Height query caching system
+    heightCache: new Map(),
+    heightCacheMaxSize: 1000,
+    heightCacheGridSize: 2.0, // Cache resolution in world units
+
     // Game objects
     player: null,
     deer: null,
@@ -179,5 +192,54 @@ export const gameContext = {
     handleEndOfDay: null,
     checkTreeCollision: null,
     checkBushCollision: null,
-    isFoliageAt: null
+    isFoliageAt: null,
+
+    // Raycaster optimization helper functions
+    getTerrainRaycaster() {
+        return this.raycasterPool.terrain;
+    },
+    
+    getEffectsRaycaster() {
+        return this.raycasterPool.effects;
+    },
+    
+    getVisibilityRaycaster() {
+        return this.raycasterPool.visibility;
+    },
+    
+    // Optimized height query with caching
+    getCachedHeightAt(x, z) {
+        // Create cache key based on grid position
+        const gridX = Math.round(x / this.heightCacheGridSize) * this.heightCacheGridSize;
+        const gridZ = Math.round(z / this.heightCacheGridSize) * this.heightCacheGridSize;
+        const cacheKey = `${gridX},${gridZ}`;
+        
+        // Check cache first
+        if (this.heightCache.has(cacheKey)) {
+            return this.heightCache.get(cacheKey);
+        }
+        
+        // Perform raycast if not cached
+        if (!this.terrain) return 0;
+        
+        const terrainRaycaster = this.getTerrainRaycaster();
+        terrainRaycaster.set(new THREE.Vector3(gridX, 1000, gridZ), new THREE.Vector3(0, -1, 0));
+        const intersects = terrainRaycaster.intersectObject(this.terrain);
+        const height = intersects.length > 0 ? intersects[0].point.y : 0;
+        
+        // Cache the result
+        if (this.heightCache.size >= this.heightCacheMaxSize) {
+            // Remove oldest entry when cache is full
+            const firstKey = this.heightCache.keys().next().value;
+            this.heightCache.delete(firstKey);
+        }
+        this.heightCache.set(cacheKey, height);
+        
+        return height;
+    },
+    
+    // Clear height cache (useful when terrain changes)
+    clearHeightCache() {
+        this.heightCache.clear();
+    }
 };
