@@ -3,44 +3,42 @@ import { gameContext } from './context.js';
 import { initSpatialAudio } from './spatial-audio.js';
 
 // --- AUDIO MODULE CONSTANTS ---
-const FOREST_SOUND_VOLUME = 8; // dB, increased volume for maximum audibility
+const FOREST_SOUND_VOLUME = -5; // dB, raised by 1 dB for better balance
 const RIFLE_SOUND_VOLUME = 0; // dB, normal volume for rifle shot
-const WALK_SOUND_VOLUME = -5; // dB, moderate volume for walking sound
+const WALK_SOUND_VOLUME = -7; // dB, reduced by 1 dB for better balance
+const WATERWALK_SOUND_VOLUME = -5; // dB, moderate volume for water walking sound
+const FOLIAGEWALK_SOUND_VOLUME = -5; // dB, increased by 1 dB for better audibility
 const TITLE_MUSIC_VOLUME = -8; // dB, moderate volume for title screen music
 const RIFLE_SOUND_INSTANCES = 3; // Number of rifle sound instances for instant playback
 const FOREST_FADE_IN_DURATION = 2; // seconds for forest sound fade-in
 const FOREST_FADE_IN_START_VOLUME = -40; // dB, very quiet starting volume for fade-in
-const CRICKET_SOUND_VOLUME = 10; // dB, increased volume for maximum evening ambiance
-const CROSSFADE_START_TIME = 17.0; // 17:00 (5:00 PM) - start of crossfade
-const CROSSFADE_END_TIME = 18.0; // 18:00 (6:00 PM) - end of crossfade (1 hour duration)
-const CRICKET_START_TIME = 17.5; // 17:30 (5:30 PM) - midpoint for reference
+const CRICKET_SOUND_VOLUME = 6; // dB, reduced by 1 dB for better balance
+const CROSSFADE_START_TIME = 17.5; // 17:30 (5:30 PM) - start of cricket fade-in
+const CROSSFADE_END_TIME = 18.5; // 18:30 (6:30 PM) - end of cricket fade-in (1 hour duration)
+const CRICKET_START_TIME = 17.5; // 17:30 (5:30 PM) - cricket start time
+const CRICKET_END_TIME = 24.0; // 24:00 (midnight) - cricket end time
 
 /**
  * Initializes only the title screen music (called early, before UI initialization).
  */
 export function initTitleMusic() {
-    console.log("initTitleMusic called"); // Debug logging
-    
     // Initialize title screen music
     try {
-        console.log("Initializing title music..."); // Debug logging
         gameContext.titleMusic = new Tone.Player({
             url: "assets/sounds/chasing_shadows.mp3",
             loop: true,
             volume: TITLE_MUSIC_VOLUME,
             autostart: false,
             onload: () => {
-                console.log("Title music loaded successfully"); // Debug logging
+                // Title music loaded successfully
             },
             onerror: (error) => {
-                console.warn("Title music could not be loaded:", error); // Debug logging
+                // Title music could not be loaded
             }
         }).toDestination();
         
-        console.log("Title music initialized"); // Debug logging
-        
     } catch (error) {
-        console.warn("Failed to initialize title music:", error); // Debug logging
+        // Failed to initialize title music
     }
 }
 
@@ -48,6 +46,9 @@ export function initTitleMusic() {
  * Initializes the audio components, including rifle shot sound, walk sound, and ambient forest sound.
  */
 export function initAudio() {
+    console.log('DEBUG: ===== AUDIO INITIALIZATION STARTED =====');
+    console.log('DEBUG: Initializing all audio components...');
+    
     // Initialize multiple rifle shot sound instances for instant playback
     gameContext.rifleSounds = [];
     gameContext.rifleCurrentIndex = 0;
@@ -59,13 +60,13 @@ export function initAudio() {
                 volume: RIFLE_SOUND_VOLUME,
                 autostart: false,
                 onload: () => {
-                    // console.log(`Rifle sound ${i + 1} loaded successfully`); // Logging disabled
+                    // Rifle sound loaded successfully
                 }
             }).toDestination();
             
             gameContext.rifleSounds.push(rifleSound);
         } catch (error) {
-            // console.warn(`Failed to initialize rifle sound ${i + 1}:`, error); // Logging disabled
+            // Failed to initialize rifle sound
         }
     }
     
@@ -78,42 +79,66 @@ export function initAudio() {
             autostart: false
         }).toDestination();
     } catch (error) {
-        // console.warn("Failed to initialize walk sound:", error); // Logging disabled
+        // Failed to initialize walk sound
     }
     
-    // Initialize ambient forest sound
+    // Initialize water walk sound
     try {
-        console.log("Creating forest sound player...");
+        gameContext.waterWalkSound = new Tone.Player({
+            url: "assets/sounds/waterwalk.mp3",
+            loop: true,
+            volume: WATERWALK_SOUND_VOLUME,
+            autostart: false
+        }).toDestination();
+    } catch (error) {
+        // Failed to initialize water walk sound
+    }
+    
+    // Initialize foliage walk sound
+    try {
+        gameContext.foliageWalkSound = new Tone.Player({
+            url: "assets/sounds/foliagewalk.mp3",
+            loop: true,
+            volume: FOLIAGEWALK_SOUND_VOLUME,
+            autostart: false
+        }).toDestination();
+    } catch (error) {
+        console.error('Failed to initialize foliage walk sound:', error);
+    }
+    
+    // Initialize ambient forest sound with seamless looping
+    try {
         gameContext.forestSound = new Tone.Player({
             url: "assets/sounds/forest.mp3",
             loop: true,
             volume: FOREST_FADE_IN_START_VOLUME, // Start at fade-in volume, not full volume
             autostart: false,
+            // No fade parameters - let the perfect loop play completely seamlessly
             onload: () => {
-                console.log("Forest sound loaded successfully");
+                // Forest sound loaded successfully
                 // Try to start the forest sound, but handle autoplay restrictions
                 startForestSoundWithUserInteraction();
             },
             onerror: (error) => {
-                console.warn("Forest sound could not be loaded:", error);
+                // Forest sound could not be loaded
             }
         }).toDestination();
         
-        console.log("Forest sound initialization started");
     } catch (error) {
-        console.warn("Failed to initialize forest sound:", error);
+        // Failed to initialize forest sound
     }
     
-    // Initialize cricket ambient sound for evening
+    // Initialize cricket ambient sound for evening with seamless looping
     try {
         gameContext.cricketSound = new Tone.Player({
             url: "assets/sounds/crickets.mp3",
             loop: true,
             volume: CRICKET_SOUND_VOLUME,
-            autostart: false
+            autostart: false,
+            // No fade parameters - let the perfect loop play completely seamlessly
         }).toDestination();
     } catch (error) {
-        console.warn("Failed to initialize cricket sound:", error);
+        // Failed to initialize cricket sound
     }
     
     // Initialize spatial audio system for directional deer sounds
@@ -124,36 +149,26 @@ export function initAudio() {
  * Starts forest sound with proper user interaction handling for browser autoplay policies.
  */
 function startForestSoundWithUserInteraction() {
-    console.log("startForestSoundWithUserInteraction called");
-    
     // Function to start audio after user interaction
     const startAudio = async () => {
         try {
-            console.log("Attempting to start forest sound...");
-            
             // Ensure Tone.js context is started
             if (Tone.context.state !== 'running') {
                 await Tone.start();
-                console.log("Tone.js audio context started");
             }
             
             // Start the forest sound with fade-in
             if (gameContext.forestSound && gameContext.forestSound.loaded) {
                 fadeInForestSound();
-                console.log("Forest sound started with fade-in");
                 
                 // Remove event listeners after successful start
                 document.removeEventListener('click', startAudio);
                 document.removeEventListener('keydown', startAudio);
             } else {
-                console.warn("Forest sound not loaded or not available:", {
-                    exists: !!gameContext.forestSound,
-                    loaded: gameContext.forestSound?.loaded,
-                    state: gameContext.forestSound?.state
-                });
+                // Forest sound not loaded or not available
             }
         } catch (error) {
-            console.warn("Could not start forest sound:", error);
+            // Could not start forest sound
         }
     };
     
@@ -166,7 +181,7 @@ function startForestSoundWithUserInteraction() {
 }
 
 /**
- * Fades in the forest sound from silent to full volume over the specified duration.
+ * Fades in the forest sound from silent to full volume over the specified duration with smooth transitions.
  */
 export function fadeInForestSound() {
     if (gameContext.forestSound && gameContext.forestSound.loaded) {
@@ -178,12 +193,15 @@ export function fadeInForestSound() {
             gameContext.forestSound.start();
         }
         
-        // Fade in to target volume
-        const now = Tone.now();
-        gameContext.forestSound.volume.rampTo(FOREST_SOUND_VOLUME, FOREST_FADE_IN_DURATION, now);
-        console.log(`Forest sound fading in from ${FOREST_FADE_IN_START_VOLUME} dB to ${FOREST_SOUND_VOLUME} dB over ${FOREST_FADE_IN_DURATION} seconds`);
+        // Use smooth rampTo for more natural fade-in
+        gameContext.forestSound.volume.rampTo(FOREST_SOUND_VOLUME, FOREST_FADE_IN_DURATION);
+        
+        // Set a timeout to log completion
+        setTimeout(() => {
+            // Forest sound fade-in completed
+        }, FOREST_FADE_IN_DURATION * 1000);
     } else {
-        console.warn("Forest sound not loaded or not available for fade-in");
+        // Forest sound not loaded or not available for fade-in
     }
 }
 
@@ -206,12 +224,13 @@ export function stopForestSound() {
 }
 
 /**
- * Sets the volume of the forest sound.
+ * Sets the volume of the forest sound with smooth transition to prevent audio blips.
  * @param {number} volume - Volume in dB (e.g., -20 for quiet, 0 for normal)
  */
 export function setForestSoundVolume(volume) {
     if (gameContext.forestSound) {
-        gameContext.forestSound.volume.value = volume;
+        // Use rampTo for smooth volume transitions instead of instant changes
+        gameContext.forestSound.volume.rampTo(volume, 0.1); // 100ms smooth transition
     }
 }
 
@@ -257,30 +276,75 @@ export function setWalkSoundVolume(volume) {
 }
 
 /**
+ * Starts the water walk sound if it's loaded and not already playing.
+ */
+export function startWaterWalkSound() {
+    if (gameContext.waterWalkSound && gameContext.waterWalkSound.loaded && gameContext.waterWalkSound.state === 'stopped') {
+        gameContext.waterWalkSound.start();
+    }
+}
+
+/**
+ * Stops the water walk sound.
+ */
+export function stopWaterWalkSound() {
+    if (gameContext.waterWalkSound && gameContext.waterWalkSound.state === 'started') {
+        gameContext.waterWalkSound.stop();
+    }
+}
+
+/**
+ * Sets the volume of the water walk sound.
+ * @param {number} volume - Volume in dB (e.g., -20 for quiet, 0 for normal)
+ */
+export function setWaterWalkSoundVolume(volume) {
+    if (gameContext.waterWalkSound) {
+        gameContext.waterWalkSound.volume.value = volume;
+    }
+}
+
+/**
+ * Starts the foliage walk sound if it's loaded and not already playing.
+ */
+export function startFoliageWalkSound() {
+    if (gameContext.foliageWalkSound && gameContext.foliageWalkSound.loaded && gameContext.foliageWalkSound.state === 'stopped') {
+        gameContext.foliageWalkSound.start();
+    }
+}
+
+/**
+ * Stops the foliage walk sound.
+ */
+export function stopFoliageWalkSound() {
+    if (gameContext.foliageWalkSound && gameContext.foliageWalkSound.state === 'started') {
+        gameContext.foliageWalkSound.stop();
+    }
+}
+
+/**
+ * Sets the volume of the foliage walk sound.
+ * @param {number} volume - Volume in dB (e.g., -20 for quiet, 0 for normal)
+ */
+export function setFoliageWalkSoundVolume(volume) {
+    if (gameContext.foliageWalkSound) {
+        gameContext.foliageWalkSound.volume.value = volume;
+    }
+}
+
+/**
  * Starts the title screen music with user interaction handling for autoplay policies.
  */
 export function startTitleMusic() {
-    console.log("startTitleMusic called"); // Debug logging
-    
-    if (!gameContext.titleMusic) {
-        console.log("Title music not initialized"); // Debug logging
-        return;
-    }
-    
     // Function to start music after user interaction
     const startMusic = async () => {
         try {
-            console.log("Attempting to start title music, loaded:", gameContext.titleMusic.loaded, "state:", gameContext.titleMusic.state); // Debug logging
-            
             // Ensure Tone.js context is started
             if (Tone.context.state !== 'running') {
                 await Tone.start();
-                console.log("Tone.js context started"); // Debug logging
             }
             
             // Wait for the music to load if it's not loaded yet
             if (!gameContext.titleMusic.loaded) {
-                console.log("Title music not loaded yet, waiting..."); // Debug logging
                 // Try again after a short delay
                 setTimeout(() => startTitleMusic(), 500);
                 return;
@@ -289,12 +353,11 @@ export function startTitleMusic() {
             // Start the title music if not already playing
             if (gameContext.titleMusic.state === 'stopped') {
                 gameContext.titleMusic.start();
-                console.log("Title music started successfully"); // Debug logging
             } else {
-                console.log("Title music already playing, state:", gameContext.titleMusic.state); // Debug logging
+                // Title music already playing
             }
         } catch (error) {
-            console.warn("Could not start title music:", error); // Debug logging
+            // Could not start title music
         }
     };
     
@@ -303,7 +366,6 @@ export function startTitleMusic() {
     
     // Also add fallback listeners for user interaction
     const startOnInteraction = () => {
-        console.log("Starting title music on user interaction"); // Debug logging
         startMusic();
         document.removeEventListener('click', startOnInteraction);
         document.removeEventListener('keydown', startOnInteraction);
@@ -330,8 +392,6 @@ export function stopTitleMusic() {
                 gameContext.titleMusic.stop();
             }
         }, fadeOutDuration * 1000 + 100); // Add small buffer
-        
-        console.log("Title music fading out"); // Debug logging
     }
 }
 
@@ -350,7 +410,7 @@ export function setTitleMusicVolume(volume) {
  */
 export function crossfadeToEveningAmbiance() {
     if (!gameContext.forestSound || !gameContext.cricketSound) {
-        console.warn("Forest or cricket sound not initialized for crossfade");
+        // Forest or cricket sound not initialized for crossfade
         return;
     }
     
@@ -359,8 +419,6 @@ export function crossfadeToEveningAmbiance() {
         gameContext.cricketSound.volume.value = -40; // Start very quiet
         gameContext.cricketSound.start();
     }
-    
-    console.log("Evening ambiance crossfade started - will progress over 1 game hour");
 }
 
 /**
@@ -369,7 +427,9 @@ export function crossfadeToEveningAmbiance() {
 function updateCrossfadeVolumes(gameTime) {
     if (!gameContext.forestSound || !gameContext.cricketSound) return;
     
-    // Evening crossfade (17:00 to 18:00)
+    const VOLUME_TOLERANCE = 0.5; // Only adjust volume if difference is > 0.5 dB
+    
+    // Evening crossfade (17:30 to 18:30)
     if (gameTime >= CROSSFADE_START_TIME && gameTime <= CROSSFADE_END_TIME) {
         const progress = (gameTime - CROSSFADE_START_TIME) / (CROSSFADE_END_TIME - CROSSFADE_START_TIME);
         
@@ -377,27 +437,51 @@ function updateCrossfadeVolumes(gameTime) {
         const forestVolume = FOREST_SOUND_VOLUME + (progress * (-40 - FOREST_SOUND_VOLUME));
         const cricketVolume = -40 + (progress * (CRICKET_SOUND_VOLUME - (-40)));
         
-        // Apply volumes
+        // Apply volumes only if they need significant adjustment
         if (gameContext.forestSound.state === 'started') {
-            gameContext.forestSound.volume.value = forestVolume;
+            const currentForestVolume = gameContext.forestSound.volume.value;
+            if (Math.abs(currentForestVolume - forestVolume) > VOLUME_TOLERANCE) {
+                gameContext.forestSound.volume.rampTo(forestVolume, 0.1);
+            }
         }
         if (gameContext.cricketSound.state === 'started') {
-            gameContext.cricketSound.volume.value = cricketVolume;
+            const currentCricketVolume = gameContext.cricketSound.volume.value;
+            if (Math.abs(currentCricketVolume - cricketVolume) > VOLUME_TOLERANCE) {
+                gameContext.cricketSound.volume.rampTo(cricketVolume, 0.1);
+            }
         }
     }
-    // Outside crossfade periods - maintain normal volumes
+    // Cricket active period (18:30 to midnight) - keep crickets at full volume
+    else if (gameTime > CROSSFADE_END_TIME && gameTime < CRICKET_END_TIME) {
+        // Keep forest sound quiet and crickets at full volume
+        if (gameContext.forestSound.state === 'started') {
+            const currentForestVolume = gameContext.forestSound.volume.value;
+            if (Math.abs(currentForestVolume - (-40)) > VOLUME_TOLERANCE) {
+                gameContext.forestSound.volume.rampTo(-40, 0.1);
+            }
+        }
+        if (gameContext.cricketSound.state === 'started') {
+            const currentCricketVolume = gameContext.cricketSound.volume.value;
+            if (Math.abs(currentCricketVolume - CRICKET_SOUND_VOLUME) > VOLUME_TOLERANCE) {
+                gameContext.cricketSound.volume.rampTo(CRICKET_SOUND_VOLUME, 0.1);
+            }
+        }
+    }
+    // Outside cricket hours - maintain normal forest volume, silence crickets
     else {
         // Ensure forest sound is at its target volume during normal times
         if (gameContext.forestSound.state === 'started') {
             const currentVolume = gameContext.forestSound.volume.value;
-            if (Math.abs(currentVolume - FOREST_SOUND_VOLUME) > 0.1) {
-                console.log(`Forest sound volume corrected from ${currentVolume.toFixed(2)} dB to ${FOREST_SOUND_VOLUME} dB`);
-                gameContext.forestSound.volume.value = FOREST_SOUND_VOLUME;
+            if (Math.abs(currentVolume - FOREST_SOUND_VOLUME) > VOLUME_TOLERANCE) {
+                gameContext.forestSound.volume.rampTo(FOREST_SOUND_VOLUME, 0.1);
             }
         }
         // Cricket sound should be silent outside evening hours
-        if (gameContext.cricketSound.state === 'started' && (gameTime < CROSSFADE_START_TIME || gameTime > 6.0)) {
-            gameContext.cricketSound.volume.value = -40; // Very quiet
+        if (gameContext.cricketSound.state === 'started' && (gameTime < CRICKET_START_TIME || gameTime > CRICKET_END_TIME)) {
+            const currentCricketVolume = gameContext.cricketSound.volume.value;
+            if (Math.abs(currentCricketVolume - (-40)) > VOLUME_TOLERANCE) {
+                gameContext.cricketSound.volume.rampTo(-40, 0.1);
+            }
         }
     }
 }
@@ -407,18 +491,41 @@ function updateCrossfadeVolumes(gameTime) {
  * Should be called regularly (e.g., in the game loop) to check for time-based audio changes.
  */
 export function updateAmbianceForTime(gameTime) {
-    // Start evening crossfade at 17:00
+    // Start evening crossfade at 17:30
     if (!gameContext.eveningCrossfadeTriggered && gameTime >= CROSSFADE_START_TIME) {
         gameContext.eveningCrossfadeTriggered = true;
         crossfadeToEveningAmbiance();
     }
     
-    // Reset evening flag at dawn (no morning crossfade)
-    if (gameContext.eveningCrossfadeTriggered && gameTime >= 5.0 && gameTime < 5.1) {
+    // Stop cricket sound at midnight (24:00/0:00) and reset evening flag
+    if (gameContext.eveningCrossfadeTriggered && gameTime >= CRICKET_END_TIME) {
         gameContext.eveningCrossfadeTriggered = false;
-        // Stop cricket sound completely at dawn
+        // Fade out cricket sound smoothly at midnight instead of abrupt stop
         if (gameContext.cricketSound && gameContext.cricketSound.state === 'started') {
-            gameContext.cricketSound.stop();
+            gameContext.cricketSound.volume.rampTo(-60, 0.5); // Fade to silence over 500ms
+            setTimeout(() => {
+                if (gameContext.cricketSound.state === 'started') {
+                    gameContext.cricketSound.stop();
+                    // Reset volume for next evening
+                    gameContext.cricketSound.volume.value = CRICKET_SOUND_VOLUME;
+                }
+            }, 500);
+        }
+    }
+    
+    // Also handle the case where time wraps around to 0:00 (midnight)
+    if (gameContext.eveningCrossfadeTriggered && gameTime >= 0.0 && gameTime < 0.1) {
+        gameContext.eveningCrossfadeTriggered = false;
+        // Fade out cricket sound smoothly at midnight instead of abrupt stop
+        if (gameContext.cricketSound && gameContext.cricketSound.state === 'started') {
+            gameContext.cricketSound.volume.rampTo(-60, 0.5); // Fade to silence over 500ms
+            setTimeout(() => {
+                if (gameContext.cricketSound.state === 'started') {
+                    gameContext.cricketSound.stop();
+                    // Reset volume for next evening
+                    gameContext.cricketSound.volume.value = CRICKET_SOUND_VOLUME;
+                }
+            }, 500);
         }
     }
     

@@ -4,6 +4,7 @@ import { initMap, showMap } from './map.js';
 import { worldPresets } from './world-presets.js';
 import { deer } from './deer.js';
 import { stopTitleMusic } from './audio.js';
+import { generateCurrentReport, updateReportModal } from './report-logger.js';
 
 // --- UI MODULE CONSTANTS ---
 
@@ -20,7 +21,7 @@ const COMPASS_DIRECTIONS = ['S', 'SW', 'W', 'NW', 'N', 'NE', 'E', 'SE'];
 // UI Elements
 const TOGGLE_EXPAND_ICON = '[-]';
 const TOGGLE_COLLAPSE_ICON = '[+]';
-const EMPTY_JOURNAL_MESSAGE = "Your journal is empty. A successful hunt will add an entry at the end of the day.";
+const EMPTY_REPORT_MESSAGE = "Your report is empty. A successful hunt will add an entry at the end of the day.";
 const INTERACTION_PROMPT_TAG_DEER = 'Press [E] to Tag Deer';
 
 /**
@@ -64,6 +65,12 @@ function animateLoadingBar() {
 }
 
 export async function initUI() {
+    // Show main menu container on page load (since it's hidden by default in CSS)
+    const mainMenuContainer = document.getElementById('main-menu-container');
+    if (mainMenuContainer) {
+        mainMenuContainer.style.display = 'flex';
+    }
+    
     const instructionsHeader = document.getElementById('instructions-header');
     const instructionsBody = document.getElementById('instructions-body');
     const instructionsToggle = document.getElementById('instructions-toggle');
@@ -91,8 +98,9 @@ export async function initUI() {
         gameContext.closeReportButton.addEventListener('click', () => { gameContext.reportModalBackdrop.style.display = 'none'; });
     }
 
-    if (gameContext.journalButton) {
-        gameContext.journalButton.addEventListener('click', () => showJournal());
+    gameContext.reportButton = document.getElementById('report-button');
+    if (gameContext.reportButton) {
+        gameContext.reportButton.addEventListener('click', () => showReport());
     }
 
     if (gameContext.mapButton && gameContext.mapModalBackdrop && gameContext.closeMapButton) {
@@ -175,16 +183,24 @@ export function showMessage(text, duration = MESSAGE_FADE_DURATION_MS) {
 }
 
 /**
- * Displays the hunter's journal modal with all recorded entries.
+ * Displays the hunter's report modal with all recorded entries.
  */
-function showJournal() {
+function showReport() {
     gameContext.reportModalBackdrop.style.display = 'flex';
-    gameContext.reportTitle.textContent = "Hunter's Journal";
-    if (gameContext.journalEntries.length > 0) {
-        gameContext.reportContent.innerHTML = gameContext.journalEntries.map(entry => `<h3>${entry.title}</h3><p>${entry.content}</p>`).join('<hr>');
-    } else {
-        gameContext.reportContent.textContent = EMPTY_JOURNAL_MESSAGE;
+    gameContext.reportTitle.textContent = "Hunter's Report";
+    
+    // Show real-time current day report
+    const currentReportHTML = generateCurrentReport();
+    
+    // Add historical reports if any exist
+    let fullReportHTML = currentReportHTML;
+    
+    if (gameContext.reportEntries.length > 0) {
+        fullReportHTML += `<hr><h3>Previous Days</h3>`;
+        fullReportHTML += gameContext.reportEntries.map(entry => `<h4>${entry.title}</h4><p>${entry.content}</p>`).join('<hr>');
     }
+    
+    gameContext.reportContent.innerHTML = fullReportHTML;
 }
 
 /**
@@ -205,6 +221,24 @@ export function updateInteraction() {
     } else {
         gameContext.interactionPromptElement.style.display = 'none';
         gameContext.canTag = false;
+    }
+}
+
+/**
+ * Ensures the main menu container stays hidden during gameplay.
+ * This prevents the title screen from reappearing after modals or game events.
+ */
+export function ensureMainMenuHidden() {
+    const mainMenuContainer = document.getElementById('main-menu-container');
+    const testingOptionsPanel = document.getElementById('testing-options-panel');
+    
+    if (mainMenuContainer && mainMenuContainer.style.display !== 'none') {
+        mainMenuContainer.style.display = 'none';
+        console.log('Main menu container was visible during gameplay - hiding it');
+    }
+    
+    if (testingOptionsPanel && testingOptionsPanel.style.display !== 'none') {
+        testingOptionsPanel.style.display = 'none';
     }
 }
 

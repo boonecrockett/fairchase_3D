@@ -25,8 +25,8 @@
  * @property {boolean} canTag - Flag indicating if the player can tag a downed deer.
  * @property {object} killInfo - Information about the last kill (distance, moving, etc.).
  * @property {object} dailyKillInfo - Information about the kill for the current day's report.
- * @property {object} huntLog - Stores details of the current hunt for the journal.
- * @property {Array<object>} journalEntries - Array of all hunt log entries.
+ * @property {object} huntLog - Stores details of the current hunt for the report.
+ * @property {Array<object>} reportEntries - Array of all hunt log entries.
  * @property {string} deerState - Current state of the deer AI (IDLE, FLEEING, etc.).
  * @property {number} timeSinceLastDrink - Time elapsed since the deer last drank.
  * @property {number} stateTimer - Timer for various AI states.
@@ -47,30 +47,33 @@
  * @property {HTMLElement} startGameButton - The button to start the game.
  * @property {HTMLElement} scopeOverlayElement - UI overlay for the rifle scope.
  * @property {HTMLElement} crosshairElement - UI element for the crosshair.
- * @property {HTMLElement} reportModalBackdrop - Modal backdrop for reports/journal.
- * @property {HTMLElement} reportModal - Modal element for reports/journal.
- * @property {HTMLElement} reportTitle - Title element for reports/journal.
- * @property {HTMLElement} reportContent - Content element for reports/journal.
+ * @property {HTMLElement} reportModalBackdrop - Modal backdrop for reports.
+ * @property {HTMLElement} reportModal - Modal element for reports.
+ * @property {HTMLElement} reportTitle - Title element for reports.
+ * @property {HTMLElement} reportContent - Content element for reports.
  * @property {HTMLElement} closeReportButton - Button to close the report modal.
- * @property {HTMLElement} journalButton - Button to open the journal.
+ * @property {HTMLElement} reportButton - Button to open the report.
  * @property {HTMLElement} mapModalBackdrop - Modal backdrop for the map.
  * @property {HTMLElement} mapModal - Modal element for the map.
  * @property {HTMLElement} closeMapButton - Button to close the map modal.
- * @property {HTMLElement} endOfDayModalBackdrop - Modal backdrop for end-of-day journal.
- * @property {HTMLElement} endOfDayModal - Modal element for end-of-day journal.
- * @property {HTMLElement} endOfDayTitle - Title element for end-of-day journal.
- * @property {HTMLElement} endOfDayContent - Content element for end-of-day journal.
+ * @property {HTMLElement} endOfDayModalBackdrop - Modal backdrop for end-of-day report.
+ * @property {HTMLElement} endOfDayModal - Modal element for end-of-day report.
+ * @property {HTMLElement} endOfDayTitle - Title element for end-of-day report.
+ * @property {HTMLElement} endOfDayContent - Content element for end-of-day report.
  * @property {HTMLElement} continueToNextDayButton - Button to continue to next day.
  * @property {HTMLElement} mapCanvas - The canvas element for the map.
  * @property {Function} init - Initializes a game world with a given configuration.
  * @property {Function} animate - The main animation loop.
  * @property {Function} getHeightAt - Gets terrain height at specified coordinates.
+ * @property {Function} isWaterAt - Checks if there is water at the player's position.
  * @property {Function} shoot - Handles the shooting mechanic.
  * @property {Function} tagDeer - Handles tagging a downed deer.
  * @property {Function} startSleepSequence - Initiates the end-of-day sleep sequence.
  * @property {Function} isNight - Checks if it's currently night time.
- * @property {Function} handleEndOfDay - Processes end-of-day logic (scoring, journal).
+ * @property {Function} handleEndOfDay - Processes end-of-day logic (scoring, report).
  * @property {Function} checkTreeCollision - Checks for collisions with trees.
+ * @property {Function} checkBushCollision - Checks for collisions with bushes.
+ * @property {Function} isFoliageAt - Checks if a position is within foliage for sound effects.
  */
 
 // The one and only game context object, shared across all modules.
@@ -107,8 +110,23 @@ export const gameContext = {
     killInfo: null,
     dailyKillInfo: null,
     huntLog: {},
-    journalEntries: [],
+    reportEntries: [],
     shotLog: [], // Track all shots taken with distance and hit type
+    currentDayEvents: [],
+    currentDayStats: {
+        distanceTraveled: 0,
+        timeStarted: null,
+        deerSightings: 0,
+        shotsTaken: 0,
+        hits: 0,
+        misses: 0,
+        deerKilled: false,
+        deerTagged: false,
+        mapChecks: 0,
+        batteryUsed: 0,
+        trackingDistance: 0, // Distance traveled while tracking wounded deer
+        isTracking: false // Flag to track if currently tracking wounded deer
+    },
     deerState: 'IDLE',
     timeSinceLastDrink: 0,
     stateTimer: 0,
@@ -118,6 +136,7 @@ export const gameContext = {
     mapUsageCount: 0, // Track smartphone map usage for battery system
     maxMapUsage: 10,  // Maximum map uses per day
     isSleeping: false,
+    deerSighted: false, // Flag to prevent duplicate sighting logs
 
     // UI Elements - to be populated on DOMContentLoaded
     timeValueElement: null,
@@ -137,7 +156,7 @@ export const gameContext = {
     reportTitle: null,
     reportContent: null,
     closeReportButton: null,
-    journalButton: null,
+    reportButton: null,
     mapModalBackdrop: null,
     mapModal: null,
     closeMapButton: null,
@@ -152,10 +171,13 @@ export const gameContext = {
     init: null,
     animate: null,
     getHeightAt: null,
+    isWaterAt: null,
     shoot: null,
     tagDeer: null,
     startSleepSequence: null,
     isNight: null,
     handleEndOfDay: null,
-    checkTreeCollision: null
+    checkTreeCollision: null,
+    checkBushCollision: null,
+    isFoliageAt: null
 };

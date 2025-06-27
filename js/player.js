@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { gameContext } from './context.js';
 import { MOUSE_SENSITIVITY as MOUSE_SENSITIVITY_NORMAL } from './constants.js';
-import { startWalkSound, stopWalkSound } from './audio.js';
+import { startWalkSound, stopWalkSound, startWaterWalkSound, stopWaterWalkSound, startFoliageWalkSound, stopFoliageWalkSound } from './audio.js';
 import { showSmartphoneMap } from './map.js';
 import { updateSpatialAudioListener } from './spatial-audio.js';
 
@@ -42,6 +42,8 @@ let lastTrackCreationPosition = null;
 let humanTracks = []; // Array to store human track objects
 let isWalking = false;
 let isTreeBraced = false;
+let isWalkingOnWater = false;
+let isWalkingOnFoliage = false;
 
 // --- EXPORTED FUNCTIONS ---
 
@@ -102,8 +104,7 @@ export function updatePlayer() {
             // No collision - safe to move
             gameContext.player.position.add(velocity);
         } else {
-            // Collision detected - try sliding along the obstacle
-            // Split velocity into X and Z components and test each separately
+            // Tree collision detected - try sliding along obstacles
             const xVelocity = new THREE.Vector3(velocity.x, 0, 0);
             const zVelocity = new THREE.Vector3(0, 0, velocity.z);
             
@@ -134,43 +135,81 @@ export function updatePlayer() {
     const newHeight = gameContext.getHeightAt(gameContext.player.position.x, gameContext.player.position.z);
     gameContext.player.position.y = newHeight;
 
+    // Check if player is walking on water (only when moving)
+    const isOnWater = velocity.lengthSq() > 0 ? gameContext.isWaterAt(gameContext.player.position.x, gameContext.player.position.z) : isWalkingOnWater;
+    const isOnFoliage = velocity.lengthSq() > 0 ? gameContext.isFoliageAt(gameContext.player.position.x, gameContext.player.position.z) : isWalkingOnFoliage;
+    
+    // Handle water state transitions
+    if (isOnWater !== isWalkingOnWater) {
+        console.log(`DEBUG: Water state changed from ${isWalkingOnWater} to ${isOnWater}`);
+        // Stop current sounds when transitioning
+        if (isWalking) {
+            if (isWalkingOnWater) {
+                stopWaterWalkSound();
+            } else {
+                stopWalkSound();
+            }
+        }
+        isWalkingOnWater = isOnWater;
+    }
+
+    // Handle foliage state transitions
+    if (isOnFoliage !== isWalkingOnFoliage) {
+        isWalkingOnFoliage = isOnFoliage;
+        
+        // If player is walking, switch to appropriate sound immediately
+        if (isWalking) {
+            if (isOnFoliage) {
+                // Entering foliage - start foliage sound, stop regular walk sound
+                startFoliageWalkSound();
+                stopWalkSound();
+            } else {
+                // Leaving foliage - start regular walk sound, stop foliage sound
+                startWalkSound();
+                stopFoliageWalkSound();
+            }
+        }
+    }
+
     // Track distance traveled
     if (gameContext.lastPlayerPosition.distanceTo(gameContext.player.position) > 0) {
         gameContext.lastPlayerPosition.copy(gameContext.player.position);
-
-        // Create human tracks
-        if (lastTrackCreationPosition === null || gameContext.player.position.distanceTo(lastTrackCreationPosition) > HUMAN_TRACK_CONFIG.trackCreationDistanceThreshold) {
-            createHumanTrack();
-            lastTrackCreationPosition = gameContext.player.position.clone();
-        }
     }
 
     // Update human tracks
     updateHumanTracks();
 
-    // Apply scope sway when scoped
+    // Create human tracks if moving
+    if (velocity.lengthSq() > 0) {
+        if (!lastTrackCreationPosition || 
+            gameContext.player.position.distanceTo(lastTrackCreationPosition) >= HUMAN_TRACK_CONFIG.trackCreationDistanceThreshold) {
+            createHumanTrack();
+            lastTrackCreationPosition = gameContext.player.position.clone();
+        }
+    }
+
+    // Update tree bracing
+    checkTreeBracing();
+
+    // Update scope sway if scoped
     if (isScoped) {
         scopeSwayTime += delta;
         
-        // Check if player is bracing against a tree for steadier aim
-        checkTreeBracing();
+        // Breathing sway (slow, rhythmic)
+        let swayX = Math.sin(scopeSwayTime * SCOPE_SWAY_FREQUENCY) * SCOPE_SWAY_AMPLITUDE;
+        let swayY = Math.cos(scopeSwayTime * SCOPE_SWAY_FREQUENCY * 0.7) * SCOPE_SWAY_AMPLITUDE * 0.8;
         
-        // Randomized breathing pattern (not circular)
-        const breathingVariation = Math.sin(scopeSwayTime * SCOPE_SWAY_FREQUENCY + Math.random() * 0.1);
-        let swayX = breathingVariation * SCOPE_SWAY_AMPLITUDE * (0.8 + Math.random() * 0.4); // 80-120% variation
-        let swayY = Math.sin(scopeSwayTime * SCOPE_SWAY_FREQUENCY * 1.3 + Math.random() * 0.15) * SCOPE_SWAY_AMPLITUDE * (0.7 + Math.random() * 0.6); // Different frequency and variation
+        // Noise/tremor (faster, irregular)
+        let noiseX = (Math.sin(scopeSwayTime * SCOPE_SWAY_NOISE_FREQUENCY) + 
+                       Math.sin(scopeSwayTime * SCOPE_SWAY_NOISE_FREQUENCY * 1.3)) * SCOPE_SWAY_NOISE_AMPLITUDE * 0.5;
+        let noiseY = (Math.cos(scopeSwayTime * SCOPE_SWAY_NOISE_FREQUENCY * 0.9) + 
+                       Math.cos(scopeSwayTime * SCOPE_SWAY_NOISE_FREQUENCY * 1.7)) * SCOPE_SWAY_NOISE_AMPLITUDE * 0.5;
         
-        // Perlin-like noise with varying intensity
-        const noiseIntensityX = Math.sin(scopeSwayTime * 0.7) * 0.5 + 0.5; // 0-1 range
-        const noiseIntensityY = Math.cos(scopeSwayTime * 0.9) * 0.5 + 0.5; // 0-1 range
-        let noiseX = (Math.random() - 0.5) * 2 * SCOPE_SWAY_NOISE_AMPLITUDE * noiseIntensityX;
-        let noiseY = (Math.random() - 0.5) * 2 * SCOPE_SWAY_NOISE_AMPLITUDE * noiseIntensityY;
+        // Random micro-shifts (very subtle, occasional)
+        let randomShiftX = (Math.random() < 0.05) ? (Math.random() - 0.5) * SCOPE_SWAY_NOISE_AMPLITUDE * 0.3 : 0;
+        let randomShiftY = (Math.random() < 0.05) ? (Math.random() - 0.5) * SCOPE_SWAY_NOISE_AMPLITUDE * 0.3 : 0;
         
-        // Random directional shifts (breaks circular pattern)
-        let randomShiftX = Math.sin(scopeSwayTime * 0.3 + Math.random() * 6.28) * SCOPE_SWAY_AMPLITUDE * 0.3;
-        let randomShiftY = Math.cos(scopeSwayTime * 0.4 + Math.random() * 6.28) * SCOPE_SWAY_AMPLITUDE * 0.3;
-        
-        // Occasional micro-adjustments
+        // Micro-adjustments (very rare, very small)
         let microAdjustX = (Math.random() < 0.1) ? (Math.random() - 0.5) * SCOPE_SWAY_NOISE_AMPLITUDE * 0.5 : 0;
         let microAdjustY = (Math.random() < 0.1) ? (Math.random() - 0.5) * SCOPE_SWAY_NOISE_AMPLITUDE * 0.5 : 0;
         
@@ -190,13 +229,39 @@ export function updatePlayer() {
         gameContext.camera.rotation.y += swayX + noiseX + randomShiftX + microAdjustX;
     }
 
-    // Update walking sound
+    // Update walking sound based on movement and water state
     if (velocity.lengthSq() > 0 && !isWalking) {
-        startWalkSound();
+        // Start appropriate sound based on water state
+        if (isWalkingOnWater) {
+            startWaterWalkSound();
+        } else if (isWalkingOnFoliage) {
+            startFoliageWalkSound();
+        } else {
+            startWalkSound();
+        }
         isWalking = true;
     } else if (velocity.lengthSq() === 0 && isWalking) {
+        // Stop all walking sounds when not moving
         stopWalkSound();
+        stopWaterWalkSound();
+        stopFoliageWalkSound();
         isWalking = false;
+    } else if (velocity.lengthSq() > 0 && isWalking) {
+        // Player is moving and already walking - check if we need to switch sounds
+        // This handles the case where player transitions between water/land while moving
+        if (isWalkingOnWater) {
+            startWaterWalkSound();
+            stopWalkSound();
+            stopFoliageWalkSound();
+        } else if (isWalkingOnFoliage) {
+            startFoliageWalkSound();
+            stopWalkSound();
+            stopWaterWalkSound();
+        } else {
+            startWalkSound();
+            stopWaterWalkSound();
+            stopFoliageWalkSound();
+        }
     }
 }
 
@@ -327,7 +392,27 @@ function createHumanTrack() {
     const track = new THREE.Mesh(trackGeometry, trackMaterial);
 
     track.position.copy(gameContext.player.position);
-    track.position.y = gameContext.getHeightAt(track.position.x, track.position.z) + 0.01; // Slightly above ground
+    
+    // Use raycasting for more accurate terrain height detection
+    let finalY;
+    if (gameContext.terrain && gameContext.terrain.geometry) {
+        const raycaster = new THREE.Raycaster();
+        raycaster.set(new THREE.Vector3(track.position.x, 100, track.position.z), new THREE.Vector3(0, -1, 0));
+        const intersects = raycaster.intersectObject(gameContext.terrain);
+        
+        if (intersects.length > 0) {
+            finalY = intersects[0].point.y + 0.015; // Slightly above ground with more clearance
+        } else {
+            // Fallback to getHeightAt if raycasting fails
+            finalY = gameContext.getHeightAt(track.position.x, track.position.z) + 0.015;
+        }
+    } else {
+        // Fallback to getHeightAt if terrain is not available
+        finalY = gameContext.getHeightAt(track.position.x, track.position.z) + 0.015;
+    }
+    
+    track.position.y = finalY;
+    
     track.rotation.x = -Math.PI / 2; // Lay flat on ground
     
     // Orient track to player's facing direction
@@ -365,4 +450,11 @@ function checkTreeBracing() {
     // Use larger radius for bracing detection to be more forgiving
     const treeCollision = gameContext.checkTreeCollision(playerPosition, 1.5);
     isTreeBraced = !!treeCollision;
+}
+
+/**
+ * Gets whether the player is currently braced against a tree
+ */
+export function getIsTreeBraced() {
+    return isTreeBraced;
 }

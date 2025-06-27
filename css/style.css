@@ -226,7 +226,7 @@ canvas { display: block; }
     top: calc(50% + 50px);
     left: 50%;
     transform: translate(-50%, -50%);
-    display: flex;
+    display: none; /* Hidden by default to prevent random appearance */
     flex-direction: column;
     align-items: center;
     z-index: 50;
@@ -286,25 +286,82 @@ canvas { display: block; }
 }
 /* Modal Styles */
 .modal-backdrop {
-    position: absolute;
-    top: 0; left: 0;
-    width: 100%; height: 100%;
-    background-color: rgba(0,0,0,0.7);
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.8);
     display: none;
     justify-content: center;
     align-items: center;
-    z-index: 30;
+    z-index: 100;
+    backdrop-filter: blur(5px);
 }
+
 .modal {
-    background-color: #1a1a1a;
-    color: white;
-    padding: 25px;
+    background: rgba(30, 30, 30, 0.95);
+    border: 2px solid #d35400;
     border-radius: 10px;
-    border: 1px solid #444;
-    width: 90%;
-    max-width: 600px;
-    box-shadow: 0 5px 25px rgba(0,0,0,0.5);
+    padding: 20px;
+    max-width: 80%;
+    max-height: 80%;
+    overflow-y: auto;
+    color: white;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
 }
+
+/* Report Event Styling */
+.stat-section, .events-section, .status-section {
+    margin-bottom: 20px;
+    padding: 15px;
+    background: rgba(0, 0, 0, 0.3);
+    border-radius: 8px;
+    border-left: 4px solid #d35400;
+}
+
+.event-line {
+    padding: 8px 12px;
+    margin: 5px 0;
+    border-radius: 5px;
+    font-family: 'Courier New', monospace;
+    font-size: 14px;
+}
+
+.event-important {
+    background: rgba(211, 84, 0, 0.2);
+    border-left: 3px solid #d35400;
+}
+
+.event-sighting {
+    background: rgba(46, 125, 50, 0.2);
+    border-left: 3px solid #2e7d32;
+}
+
+.event-utility {
+    background: rgba(25, 118, 210, 0.2);
+    border-left: 3px solid #1976d2;
+}
+
+.event-normal {
+    background: rgba(117, 117, 117, 0.2);
+    border-left: 3px solid #757575;
+}
+
+.event-time {
+    color: #ffb74d;
+    font-weight: bold;
+}
+
+.event-type {
+    color: #81c784;
+    font-weight: bold;
+}
+
+.event-desc {
+    color: #e0e0e0;
+}
+
 .modal h2 {
     margin-top: 0;
     color: #ffdd00;

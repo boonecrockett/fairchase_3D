@@ -62,8 +62,8 @@ export const deerConfig = {
         fleeing: 4,              // Updated from 3 to 4 - deer runs away for 4 seconds after alert
     },
     speeds: {
-        wandering: 4.0,          // Increased from 3.42 - deer moves more, easier to spot
-        thirsty: 7.5,            // Increased from 7.125 - more movement when seeking water
+        wandering: 2.8,          // Reduced by 30% from 4.0 to better match walk animation
+        thirsty: 5.25,           // Reduced by 30% from 7.5 to better match walk animation
         fleeing: 27.0,           // Keep fleeing speed unchanged
         wounded: 13.5,           // Keep wounded speed unchanged for escape realism
     },

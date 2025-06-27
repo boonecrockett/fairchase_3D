@@ -1,6 +1,8 @@
 // js/map.js
 import * as THREE from 'three';
 import { gameContext } from './context.js';
+import { ensureMainMenuHidden } from './ui.js';
+import { logEvent, updateReportModal } from './report-logger.js';
 
 // This file assumes THREE.js is loaded globally, as it is not imported as a module in main.js
 
@@ -38,13 +40,44 @@ export function initMap() {
 export function showMap() {
     if (!gameContext.mapModalBackdrop || !gameContext.terrain || !gameContext.mapRenderer) return;
 
+    if (gameContext.batteryLevel <= 0) {
+        showBatteryDepletedMessage();
+        return;
+    }
+    
+    // Log map usage
+    logEvent("Map Checked", `Smartphone map opened (Battery: ${gameContext.batteryLevel}%)`, {
+        batteryLevel: gameContext.batteryLevel,
+        mapUsageCount: gameContext.mapUsageCount + 1
+    });
+    
     gameContext.mapModalBackdrop.style.display = 'flex';
+    
+    // Use battery
+    gameContext.batteryLevel = Math.max(0, gameContext.batteryLevel - 10);
+    gameContext.mapUsageCount++;
+    
+    // Log battery usage
+    logEvent("Battery Used", `10% battery consumed for map usage`, {
+        amount: 10,
+        remainingBattery: gameContext.batteryLevel
+    });
+    
+    // Update battery display
+    if (gameContext.batteryValueElement) {
+        gameContext.batteryValueElement.textContent = `${gameContext.batteryLevel}%`;
+    }
+    
+    // Update report if modal is open
+    updateReportModal();
+    
     const worldSize = gameContext.terrain.geometry.parameters.width;
 
     const tempScene = new THREE.Scene();
     tempScene.background = new THREE.Color(MAP_BACKGROUND_COLOR);
 
     const halfWorldSize = worldSize / 2;
+    // Fix aspect ratio for square map canvas (512x512)
     const tempCamera = new THREE.OrthographicCamera(-halfWorldSize, halfWorldSize, halfWorldSize, -halfWorldSize, MAP_CAMERA_NEAR_PLANE, MAP_CAMERA_FAR_PLANE);
     tempCamera.position.y = MAP_CAMERA_Y_POSITION;
     tempCamera.lookAt(tempScene.position); // Look at the center of the map
@@ -165,6 +198,7 @@ export function showSmartphoneMap() {
  * Shows battery depleted message
  */
 function showBatteryDepletedMessage() {
+    ensureMainMenuHidden();
     // Create or show battery depleted modal
     let depletedModal = document.getElementById('battery-depleted-modal');
     if (!depletedModal) {
@@ -317,11 +351,12 @@ function createSmartphoneMapModal() {
     const mapContainer = document.createElement('div');
     mapContainer.style.cssText = `
         width: 100%;
-        height: 480px;
+        height: 310px;
         background: #000;
         border-radius: 15px;
         overflow: hidden;
         position: relative;
+        margin: auto;
         margin-bottom: 15px;
         box-sizing: border-box;
     `;
@@ -329,7 +364,7 @@ function createSmartphoneMapModal() {
     const mapCanvas = document.createElement('canvas');
     mapCanvas.id = 'smartphone-map-canvas';
     mapCanvas.width = 310;
-    mapCanvas.height = 480;
+    mapCanvas.height = 310;
     mapCanvas.style.cssText = `
         width: 100%;
         height: 100%;
@@ -400,7 +435,7 @@ function renderSmartphoneMap() {
     
     // Create renderer for smartphone map
     const renderer = new THREE.WebGLRenderer({ canvas: canvas, antialias: true });
-    renderer.setSize(310, 480);
+    renderer.setSize(310, 310);
     renderer.setPixelRatio(window.devicePixelRatio);
     renderer.setClearColor(0x1a472a);
     
@@ -409,7 +444,15 @@ function renderSmartphoneMap() {
     tempScene.background = new THREE.Color(0x1a472a);
     
     const halfWorldSize = worldSize / 2;
-    const tempCamera = new THREE.OrthographicCamera(-halfWorldSize, halfWorldSize, halfWorldSize, -halfWorldSize, 1, 2000);
+    // Fix aspect ratio for smartphone map (310x310) - square screen
+    const aspectRatio = 1; // Square
+    
+    // For square screen, we need to expand the horizontal view to show the full world
+    // Instead of narrowing horizontal bounds, expand them to ensure full world visibility
+    const horizontalBounds = halfWorldSize / aspectRatio; // Expand horizontal to fit full world
+    const verticalBounds = halfWorldSize; // Keep vertical as full world size
+    
+    const tempCamera = new THREE.OrthographicCamera(-horizontalBounds, horizontalBounds, verticalBounds, -verticalBounds, 1, 2000);
     tempCamera.position.y = 500;
     tempCamera.lookAt(tempScene.position);
     

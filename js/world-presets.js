@@ -10,12 +10,10 @@ export const worldPresets = {
         environment: {
             skyColor: 0x87CEEB, // SkyBlue
             fogColor: 0x87CEEB,
-            waterColor: 0x4682B4, // SteelBlue
+            waterColor: 0x1E3A8A, // Deep blue
             waterLevel: -15, // Lowered for consistency with new water body depths
             waterBodies: [
-                { shape: 'circle', size: 120, position: { x: 150, y: -14, z: -150 }, opacity: 0.8 },
-                { shape: 'circle', size: 100, position: { x: -200, y: -15, z: 200 }, opacity: 0.7 },
-                { shape: 'circle', size: 80, position: { x: 250, y: -12, z: 280 }, opacity: 0.75 } // Adjusted -5 to -12, slightly shallower
+                { shape: 'circle', size: 92, position: { x: 0, y: -6, z: 0 }, opacity: 0.75 }
             ]
         },
         vegetation: {
@@ -47,11 +45,11 @@ export const worldPresets = {
         },
         environment: {
             waterLevel: -1,
-            waterColor: 0x336699, // Blue
+            waterColor: 0x2E5BBA, // Less green, more blue
             skyColor: 0x87CEEB,
             fogColor: 0xddeeff,
             waterBodies: [
-                { shape: 'circle', size: 150, position: { x: 0, y: 0, z: 0 }, opacity: 0.8 }
+                { shape: 'circle', size: 230, position: { x: 0, y: 0, z: 0 }, opacity: 0.8 }
             ]
         }
     },
@@ -76,11 +74,11 @@ export const worldPresets = {
         },
         environment: {
             waterLevel: -15, // Small oasis
-            waterColor: 0x336699, 
+            waterColor: 0x2E5BBA, // Less green, more blue
             skyColor: 0xFFA500,
             fogColor: 0xFFDAB9,
             waterBodies: [
-                { shape: 'circle', size: 50, position: { x: -250, y: -14, z: -250 }, opacity: 0.85 }
+                { shape: 'circle', size: 77, position: { x: -250, y: -14, z: -250 }, opacity: 0.85 }
             ]
         }
     }

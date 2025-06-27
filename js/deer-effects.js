@@ -72,9 +72,26 @@ export class DeerEffects {
         
         track.position.x += randomOffsetX;
         track.position.z += randomOffsetZ;
-        track.position.y = gameContext.getHeightAt(track.position.x, track.position.z) + 0.01; // Slightly above ground
-
-        // Orient the track to match the deer's actual travel direction
+        
+        // Use raycasting for more accurate terrain height detection
+        let finalY;
+        if (gameContext.terrain && gameContext.terrain.geometry) {
+            const raycaster = new THREE.Raycaster();
+            raycaster.set(new THREE.Vector3(track.position.x, 100, track.position.z), new THREE.Vector3(0, -1, 0));
+            const intersects = raycaster.intersectObject(gameContext.terrain);
+            
+            if (intersects.length > 0) {
+                finalY = intersects[0].point.y + 0.015; // Slightly above ground with more clearance
+            } else {
+                // Fallback to getHeightAt if raycasting fails
+                finalY = gameContext.getHeightAt(track.position.x, track.position.z) + 0.015;
+            }
+        } else {
+            // Fallback to getHeightAt if terrain is not available
+            finalY = gameContext.getHeightAt(track.position.x, track.position.z) + 0.015;
+        }
+        
+        track.position.y = finalY;
         track.rotation.x = -Math.PI / 2; // Lay flat on ground
         
         // Calculate actual movement direction from position change
@@ -155,7 +172,26 @@ export class DeerEffects {
         drop.position.copy(this.deer.model.position);
         drop.position.x += randomOffsetX;
         drop.position.z += randomOffsetZ;
-        drop.position.y = gameContext.getHeightAt(drop.position.x, drop.position.z) + 0.015; // Slightly above ground
+        
+        // Use raycasting for more accurate terrain height detection
+        let finalY;
+        if (gameContext.terrain && gameContext.terrain.geometry) {
+            const raycaster = new THREE.Raycaster();
+            raycaster.set(new THREE.Vector3(drop.position.x, 100, drop.position.z), new THREE.Vector3(0, -1, 0));
+            const intersects = raycaster.intersectObject(gameContext.terrain);
+            
+            if (intersects.length > 0) {
+                finalY = intersects[0].point.y + 0.02; // Slightly above ground with more clearance
+            } else {
+                // Fallback to getHeightAt if raycasting fails
+                finalY = gameContext.getHeightAt(drop.position.x, drop.position.z) + 0.02;
+            }
+        } else {
+            // Fallback to getHeightAt if terrain is not available
+            finalY = gameContext.getHeightAt(drop.position.x, drop.position.z) + 0.02;
+        }
+        
+        drop.position.y = finalY;
         drop.rotation.x = -Math.PI / 2; // Lay flat
         drop.rotation.z = Math.random() * Math.PI * 2; // Randomize rotation
 

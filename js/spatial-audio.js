@@ -3,7 +3,7 @@ import * as THREE from 'three';
 import { gameContext } from './context.js';
 
 // --- SPATIAL AUDIO MODULE CONSTANTS ---
-const DEER_BLOW_VOLUME = 6; // dB, loud alarm sound when deer spots hunter (3x louder)
+const DEER_BLOW_VOLUME = 5; // dB, reduced by 1 dB for better balance
 const MAX_AUDIO_DISTANCE = 300; // Maximum distance for audio to be heard (matches deer alert range)
 const ROLLOFF_FACTOR = 2; // How quickly sound fades with distance
 const DOPPLER_FACTOR = 0.3; // Doppler effect strength
@@ -179,6 +179,22 @@ export function playPositionalSound(soundType, position, velocity = null) {
         setTimeout(() => {
             soundInstance.player.start();
             // console.log(`Successfully started playing ${soundType}`); // Logging disabled
+            
+            // Add fade-out effect for deer blow sound
+            if (soundType === 'deerBlow') {
+                // Start fade-out at 1.5 seconds (0.5 seconds before end)
+                setTimeout(() => {
+                    const fadeOutDuration = 0.4; // 400ms fade-out (shorter)
+                    const currentVolume = soundInstance.volume.volume.value;
+                    const targetVolume = currentVolume - 6; // Gentler fade (only -6dB)
+                    
+                    // Smooth fade-out using exponential ramp
+                    soundInstance.volume.volume.exponentialRampToValueAtTime(
+                        targetVolume, 
+                        Tone.context.currentTime + fadeOutDuration
+                    );
+                }, 1500); // Start fade later (1.5 seconds)
+            }
         }, 500);
         
         // Mark as available after sound duration
@@ -228,24 +244,12 @@ export function triggerDeerBlowSound(deer) {
         return;
     }
     
-    // Debug: Check forest sound volume before deer blow
-    if (gameContext.forestSound && gameContext.forestSound.state === 'started') {
-        console.log(`Forest sound volume before deer blow: ${gameContext.forestSound.volume.value.toFixed(2)} dB`);
-    }
-    
     const deerPosition = deer.model.position;
     const playerDistance = gameContext.player.position.distanceTo(deerPosition);
     
     // Only play if within hearing range
     if (playerDistance <= MAX_AUDIO_DISTANCE) {
         playPositionalSound('deerBlow', deerPosition);
-        
-        // Debug: Check forest sound volume after deer blow trigger
-        setTimeout(() => {
-            if (gameContext.forestSound && gameContext.forestSound.state === 'started') {
-                console.log(`Forest sound volume after deer blow: ${gameContext.forestSound.volume.value.toFixed(2)} dB`);
-            }
-        }, 100);
     }
 }
 
