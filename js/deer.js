@@ -298,20 +298,19 @@ class Deer extends Animal {
         this.effects.updateBloodDrops();
     }
 
-    updateHitboxes() {
-        this.hitbox.updateHitboxes();
-    }
+
 
     spawn(position, rotationY) {
         // Call parent spawn method first
         super.spawn(position, rotationY);
         
-        // Now update hitbox positions if they exist
-        this.hitbox.updateHitboxes();
+
     }
 
     createVitals(parent) {
+        console.log('DEBUG: Creating deer vitals hitbox, parent:', parent);
         this.hitbox.createVitals(parent);
+        console.log('DEBUG: After hitbox creation - vitals:', !!this.model.vitals, 'gut:', !!this.model.gut, 'rear:', !!this.model.rear);
     }
     
     createSimpleVitalsHitbox() {
@@ -349,6 +348,8 @@ class Deer extends Animal {
 
         // Always call super.update for proper height positioning, even when dead
         super.update(delta);
+        
+
 
         // Only continue with AI behavior if deer is alive
         if (this.state === 'KILLED') return;
@@ -418,6 +419,29 @@ class Deer extends Animal {
         
         // Update last player position for next frame (AFTER movement detection)
         this.lastPlayerPosition.copy(currentPlayerPosition);
+
+        // Check if deer was hit and react accordingly
+        if (this.wasActuallyHit) {
+            console.log('DEBUG: wasActuallyHit flag is TRUE, current state:', this.state);
+            if (this.state !== 'KILLED') {
+                this.woundCount++; // Increment wound count on any non-fatal hit
+                console.log(`DEBUG: Deer hit. Wound count is now: ${this.woundCount}`);
+
+                if (this.woundCount >= 3) {
+                    console.log('DEBUG: Maximum wounds reached. Transitioning to KILLED state.');
+                    this.setState('KILLED');
+                } else {
+                    console.log('DEBUG: Deer wounded. Intensifying flee behavior.');
+                    this.setState('WOUNDED');
+                    // Reset flee timer to make deer flee longer/faster
+                    this.fleeStartTime = Date.now();
+                    this.fleeDirection = this.model.position.clone().sub(this.lastPlayerPosition).normalize();
+                }
+            } else {
+                console.log('DEBUG: Deer hit ignored - already KILLED');
+            }
+            this.wasActuallyHit = false; // Reset flag after processing all hit logic
+        }
 
         // Only react to player if they are visible AND have been detected moving for 2 seconds
         if (this.state !== 'FLEEING' && this.state !== 'WOUNDED' && this.state !== 'KILLED') {

@@ -54,13 +54,27 @@ export class Animal {
 
             // Create vitals hitbox and attach it to the identified body mesh.
             if (this.config.vitals && bodyMesh) {
+                console.log('DEBUG: Animal loadModel calling createVitals with bodyMesh:', bodyMesh);
                 this.createVitals(bodyMesh);
+                console.log('DEBUG: Animal loadModel after createVitals');
+                
+                // Check if hitboxes are still attached immediately after creation
+                setTimeout(() => {
+                    console.log('DEBUG: Checking hitboxes 1 second after model load:', {
+                        vitals: !!this.model.vitals,
+                        gut: !!this.model.gut,
+                        rear: !!this.model.rear,
+                        modelKeys: Object.keys(this.model)
+                    });
+                }, 1000);
+            } else {
+                console.log('DEBUG: Animal loadModel - vitals config or bodyMesh missing:', {
+                    hasVitalsConfig: !!this.config.vitals,
+                    hasBodyMesh: !!bodyMesh
+                });
             }
 
-            // Create brain and attach it to the identified body mesh.
-            if (this.config.brain && bodyMesh) {
-                this.createBrain(bodyMesh);
-            }
+
 
             // Set up the animation mixer.
             this.mixer = new THREE.AnimationMixer(loadedScene);
@@ -68,7 +82,17 @@ export class Animal {
                 this.animations[clip.name] = clip;
             });
 
+            // Set the loaded model as the new model.
             this.model = gltf.scene;
+
+            // RESTORE HITBOXES: Re-attach hitboxes from the hitboxMeshes array to the new model.
+            if (this.hitboxMeshes && this.hitboxMeshes.length > 0) {
+                console.log(`🔴 DEBUG: Re-attaching ${this.hitboxMeshes.length} hitboxes to new model.`);
+                this.hitboxMeshes.forEach(hitbox => {
+                    this.model.add(hitbox);
+                });
+            }
+
             this.setupModel();
             this.isModelLoaded = true;
             
@@ -117,24 +141,6 @@ export class Animal {
         vitals.name = 'vitals';
         parent.add(vitals);
         this.model.vitals = vitals;
-    }
-
-    createBrain(parent) {
-        if (!this.config.brain) return; // Only create if brain config exists
-        
-        const brainGeometry = new THREE.BoxGeometry(this.config.brain.size.x, this.config.brain.size.y, this.config.brain.size.z);
-        const brainMaterial = new THREE.MeshBasicMaterial({ 
-            color: this.config.brain.debugColor,
-            transparent: true,
-            opacity: 0.5,
-            wireframe: true
-        });
-        const brain = new THREE.Mesh(brainGeometry, brainMaterial);
-        brain.visible = false; // Hidden for normal gameplay
-        brain.position.set(this.config.brain.offset.x, this.config.brain.offset.y, this.config.brain.offset.z);
-        brain.name = 'brain';
-        parent.add(brain);
-        this.model.brain = brain;
     }
 
     createLegs() {

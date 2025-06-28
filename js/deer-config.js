@@ -12,25 +12,40 @@ export const deerConfig = {
     worldBoundaryMargin: 50, // Increased from 20 to 50 for more room near boundaries
 
     vitals: {
-        size: { x: 0.252, y: 0.252, z: 0.252 }, // Shrunk by 10% from 0.28 to 0.252 (0.28 * 0.9)
-        offset: { x: 0, y: 0.65, z: 0.3 }, // Moved forward 0.1 toward head (z: 0.2→0.3)
-        debugColor: 0xFF0000,
+        size: { x: 0.20, y: 0.16, z: 0.154 }, // Extended forward 10%
+        offset: { x: 0, y: 0.8, z: 0.307 }, // Adjusted forward to keep back aligned
+        debugColor: 0xFF0000, // Red color for vitals hitbox
     },
 
     brain: {
-        size: { x: 0.1, y: 0.1, z: 0.1 }, // Resized to 0.1x0.1x0.1 units for maximum precision
-        offset: { x: 0, y: 1.02, z: 0.6 }, // Moved down 0.03 (y: 1.05→1.02)
-        debugColor: 0x00FF00, // Green color for brain hitbox
+        size: { x: 0.12, y: 0.12, z: 0.12 }, // Increased for reliable hit detection
+        offset: { x: 0, y: 0.958, z: 0.65 }, // Positioned in head area
+        debugColor: 0xFFFF00, // Yellow color for brain hitbox
+    },
+
+    gut: {
+        size: { x: 0.20, y: 0.16, z: 0.16 }, // Increased for reliable hit detection
+        offset: { x: 0, y: 0.8, z: 0.05 }, // Positioned in belly area, clear of vitals and rear
+        debugColor: 0x00FF00, // Green color for gut hitbox
+    },
+
+    rear: {
+        size: { x: 0.20, y: 0.16, z: 0.14 }, // Increased for reliable hit detection
+        offset: { x: 0, y: 0.8, z: -0.25 }, // Positioned in hindquarter area, clear of gut
+        debugColor: 0x0000FF, // Blue color for rear hitbox
+    },
+
+    spine: {
+        size: { x: 0.0283, y: 0.0282, z: 0.6 }, // Height increased by 20%
+        offset: { x: 0, y: 0.814, z: 0.1 }, // Moved forward to prevent rear protrusion
+        debugColor: 0xFF00FF, // Magenta color for spine hitbox
     },
 
     neck: {
-        radiusTop: 0.2,
-        radiusBottom: 0.2,
-        height: 0.8,
-        segments: 8,
-        positionYOffset: 0.4,
-        groupOffset: { x: 1, y: 0.5, z: 0 },
-        rotationZ: -Math.PI / 4,
+        size: { x: 0.1, y: 0.202, z: 0.1 }, // Extended 15% towards brain
+        offset: { x: 0, y: 0.879, z: 0.509 }, // Adjusted to keep base aligned
+        rotation: { x: 0.768, y: 0, z: 0 }, // Tilted up 20 degrees (from ~64 to ~44 deg)
+        debugColor: 0x00FFFF, // Cyan for neck hitbox
     },
 
     head: {

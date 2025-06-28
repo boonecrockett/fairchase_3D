@@ -6,7 +6,8 @@ import { deer } from './deer.js';
 import { initUI, showMessage, updateInteraction, updateCompass, ensureMainMenuHidden } from './ui.js';
 import { initAudio, playRifleSound, updateAmbianceForTime } from './audio.js';
 import { logEvent, initializeDayReport, updateDistanceTraveled } from './report-logger.js';
-import { gameContext } from './context.js'; 
+import { gameContext } from './context.js';
+import { collisionSystem } from './collision.js'; 
 import {
     GAME_TIME_SPEED_MULTIPLIER,
     HOURS_IN_DAY,
@@ -33,6 +34,9 @@ function isLegalHuntingTime() {
 }
 
 function processKill(baseScore, baseMessage, wasMoving, shotCount, distance) {
+    console.log('🔴 DEBUG: processKill called with:', { baseScore, baseMessage, wasMoving, shotCount, distance });
+    console.log('🔴 DEBUG: Current deer state before kill:', gameContext.deer.state);
+    
     let finalScore = baseScore;
     let finalMessage = baseMessage;
     let ethical = true;
@@ -41,6 +45,7 @@ function processKill(baseScore, baseMessage, wasMoving, shotCount, distance) {
         finalScore = -50; // Penalty for illegal harvest
         finalMessage = "Unethical Harvest (Out of Hours)";
         ethical = false;
+        console.log('🔴 DEBUG: Illegal hunting time detected');
     }
 
     gameContext.score += finalScore;
@@ -57,7 +62,9 @@ function processKill(baseScore, baseMessage, wasMoving, shotCount, distance) {
     const scoreText = finalScore >= 0 ? ` +${finalScore}` : ` ${finalScore}`;
     showMessage(`${finalMessage}!${scoreText} Points`);
     
+    console.log('🔴 DEBUG: About to set deer state to KILLED');
     gameContext.deer.setState('KILLED');
+    console.log('🔴 DEBUG: Deer state after kill:', gameContext.deer.state);
     const isBraced = getIsTreeBraced();
     logEvent("Deer Killed", `${finalMessage} at ${distance} yards${isBraced ? ' (Braced)' : ''}`, {
         distance: distance,
@@ -73,36 +80,93 @@ function getHeightAt(x, z) {
     return gameContext.getCachedHeightAt(x, z);
 }
 
+// Helper function to determine which hitbox was hit based on intersection point
+function determineHitboxFromPoint(intersectionPoint, deerModel) {
+    // Convert intersection point to deer's local coordinate system
+    const localPoint = new THREE.Vector3();
+    deerModel.worldToLocal(localPoint.copy(intersectionPoint));
+    
+    console.log('DEBUG: Intersection point (world):', intersectionPoint);
+    console.log('DEBUG: Intersection point (local):', localPoint);
+    
+    // Check if deer has hitbox property and what's in it
+    console.log('DEBUG: Deer object structure:', {
+        hasModel: !!deer.model,
+        hasHitbox: !!deer.hitbox,
+        modelKeys: deer.model ? Object.keys(deer.model) : 'no model',
+        hitboxKeys: deer.hitbox ? Object.keys(deer.hitbox) : 'no hitbox'
+    });
+    
+    // Show actual contents of deer.hitbox
+    if (deer.hitbox) {
+        console.log('DEBUG: deer.hitbox contents:', deer.hitbox);
+        console.log('DEBUG: deer.hitbox properties:', {
+            config: !!deer.hitbox.config,
+            deer: !!deer.hitbox.deer,
+            vitals: !!deer.hitbox.vitals,
+            gut: !!deer.hitbox.gut,
+            rear: !!deer.hitbox.rear
+        });
+    }
+    
+    const hitboxes = ['vitals', 'brain', 'gut', 'rear', 'body'];
+    
+    for (const hitboxName of hitboxes) {
+        // Check both deer.model and deer.hitbox for hitboxes
+        const hitboxOnModel = deerModel[hitboxName];
+        const hitboxOnHitboxObj = deer.hitbox ? deer.hitbox[hitboxName] : null;
+        
+        console.log(`DEBUG: ${hitboxName} - on model: ${!!hitboxOnModel}, on hitbox obj: ${!!hitboxOnHitboxObj}`);
+        
+        const hitbox = hitboxOnModel || hitboxOnHitboxObj;
+        if (hitbox) {
+            console.log(`DEBUG: ${hitboxName} hitbox found - visible: ${hitbox.visible}, name: ${hitbox.name}`);
+            
+            if (hitbox.visible) {
+                // Get hitbox bounding box in world coordinates
+                const box = new THREE.Box3().setFromObject(hitbox);
+                
+                console.log(`DEBUG: ${hitboxName} hitbox bounding box:`, box);
+                console.log(`DEBUG: ${hitboxName} hitbox position:`, hitbox.position);
+                
+                // Check if intersection point is within this hitbox (using world coordinates)
+                if (box.containsPoint(intersectionPoint)) {
+                    console.log(`DEBUG: Manual collision detected in ${hitboxName} hitbox`);
+                    return hitbox;
+                }
+            }
+        } else {
+            console.log(`DEBUG: ${hitboxName} hitbox not found on deerModel or deer.hitbox`);
+        }
+    }
+    
+    // If no specific hitbox contains the point, default to body
+    console.log('DEBUG: Manual collision defaulting to body hitbox');
+    return deerModel.body || null;
+}
+
+// Shooting function
 function shoot() {
-    if (gameContext.isSleeping) return;
-    
-    // Play rifle sound first
+    if (gameContext.isSleeping || (gameContext.deer && gameContext.deer.state === 'KILLED')) return;
+
     playRifleSound();
-    
-    // Apply rifle recoil effect immediately after sound
     applyRifleRecoil();
 
-    // Use the correct flag to ensure the GLB model is fully loaded and ready.
     if (!gameContext.deer || !gameContext.deer.isModelLoaded) {
         showMessage("Deer model not loaded yet", 2000);
         return;
     }
 
-    // Check if deer model is actually in the scene
     if (!gameContext.scene.children.includes(gameContext.deer.model)) {
         showMessage("Deer not in scene", 2000);
         return;
     }
 
-    // Determine if deer was moving when shot was taken
-    const wasMoving = gameContext.deer.state === 'FLEEING' || gameContext.deer.state === 'WOUNDED' || gameContext.deer.state === 'WANDERING';
-
-    // Calculate distance from shooter to deer for logging
+    const wasMoving = ['FLEEING', 'WOUNDED', 'WANDERING'].includes(gameContext.deer.state);
     const shotDistance = gameContext.player.position.distanceTo(gameContext.deer.model.position);
-    const shotDistanceYards = Math.round(shotDistance * 1.09361); // Convert to yards
+    const shotDistanceYards = Math.round(shotDistance * 1.09361);
 
-    // Initialize huntLog on first shot if not already initialized
-    if (!gameContext.huntLog) { 
+    if (!gameContext.huntLog) {
         gameContext.huntLog = {
             initialSightingDistance: shotDistanceYards,
             firstShotResult: '',
@@ -115,244 +179,92 @@ function shoot() {
         };
     }
 
-    // Temporarily make the vitals hitbox visible for the raycaster to detect it.
-    gameContext.deer.hitbox.showVitalsForRaycasting();
-
     gameContext.raycaster.setFromCamera({ x: 0, y: 0 }, gameContext.camera);
-    const intersects = gameContext.raycaster.intersectObject(gameContext.deer.model, true);
+    const rayOrigin = gameContext.raycaster.ray.origin;
+    const rayDirection = gameContext.raycaster.ray.direction;
+    const rayEnd = rayOrigin.clone().add(rayDirection.clone().multiplyScalar(1000));
 
-    // Hide the vitals hitbox again immediately.
-    gameContext.deer.hitbox.hideVitalsAfterRaycasting();
+    const hitResult = collisionSystem.raycast(rayOrigin, rayEnd, gameContext.deer);
+    console.log('Physics raycast result:', hitResult);
 
     let shotResult = {
         distance: shotDistanceYards,
         hitType: 'miss',
         timestamp: new Date().toLocaleTimeString(),
-        deerMoving: wasMoving
+        deerMoving: wasMoving,
+        hit: false
     };
 
-    if (intersects.length > 0) {
-        // Deer was hit
-        const hit = intersects[0];
-        let hitName = hit.object.name;
-        
-        let hitPosition = null;
+    if (hitResult.hit) {
+        shotResult.hit = true;
+        const hitName = hitResult.hitZone;
+        const hitPosition = hitResult.point;
+        const yards = Math.round(hitResult.distance * 1.09);
 
-        // Prioritize the hit: Vitals > Head > Body.
-        for (const intersection of intersects) {
-            let currentHitObject = intersection.object;
-            let currentHitName = currentHitObject.name;
-            while (!currentHitName && currentHitObject.parent) {
-                currentHitObject = currentHitObject.parent;
-                currentHitName = currentHitObject.name;
-            }
+        shotResult.hitType = hitName;
 
-            if (currentHitName === 'vitals') {
-                hitName = 'vitals';
-                hitPosition = intersection.point;
-                break; // Vitals is highest priority.
-            }
-            if (currentHitName === 'head' || currentHitName === 'brain') {
-                hitName = 'head'; // Normalize to 'head' for processing
-                hitPosition = intersection.point;
-                break; // Head/brain is second highest priority - always lethal
-            }
-            if (currentHitName === 'body' && !hitName) {
-                hitName = 'body';
-                hitPosition = intersection.point;
-            }
-        }
+        // Let the deer state machine know a real hit occurred
+        gameContext.deer.wasActuallyHit = true;
 
-        if (hitName) {
-            
-            // Update shot result with hit type
-            if (hitName === 'vitals') {
-                shotResult.hitType = 'vital';
-            } else if (hitName === 'head') {
-                shotResult.hitType = 'brain';
-            } else if (hitName === 'body') {
-                shotResult.hitType = 'wound';
+        if (['vitals', 'brain', 'spine'].includes(hitName)) {
+            gameContext.deer.setState('KILLED');
+            if (hitName === 'vitals') showMessage(`Vital shot! Clean kill at ${yards} yards`);
+            if (hitName === 'brain') showMessage(`Brain shot! Instant kill at ${yards} yards`);
+            if (hitName === 'spine') showMessage(`Spine shot! Broken back at ${yards} yards`);
+        } else if (hitName === 'neck') {
+            if (Math.random() < 0.5) {
+                gameContext.deer.setState('KILLED');
+                showMessage(`Neck shot! Fatal wound at ${yards} yards`);
+            } else {
+                gameContext.deer.setState('WOUNDED');
+                showMessage(`Neck shot! The deer is wounded at ${yards} yards`);
             }
-            
-            // Mark as a successful hit
-            shotResult.hit = true;
-            
-            // Increment shot count and record hit location
-            gameContext.huntLog.totalShotsTaken++;
-            
-            // Record hit location for report
-            if (!gameContext.huntLog.hitLocation) {
-                // First hit - record the location
-                if (hitName === 'vitals') {
-                    gameContext.huntLog.hitLocation = 'Vital organs';
-                } else if (hitName === 'head') {
-                    gameContext.huntLog.hitLocation = 'Head/Brain';
-                } else if (hitName === 'body') {
-                    gameContext.huntLog.hitLocation = 'Body';
-                }
-            }
-            
-            // Mark deer as actually hit to prevent erratic state cycling
-            gameContext.deer.wasActuallyHit = true;
-            
-            // Create blood indicator at the hit location
-            if (hitPosition) {
-                gameContext.deer.createShotBloodIndicator(hitPosition);
-            }
-            
-            const distance = gameContext.player.position.distanceTo(gameContext.deer.model.position);
-            const wasMoving = gameContext.deer.state === 'FLEEING' || gameContext.deer.state === 'WOUNDED' || gameContext.deer.state === 'WANDERING';
-            
-            if (hitName === 'vitals' || hitName === 'head') {
-                let isLethalShot = true;
-                if (hitName === 'vitals') {
-                    // Calculate the angle between player and deer to determine shot direction
-                    const playerPos = gameContext.player.position;
-                    const deerPos = gameContext.deer.model.position;
-                    const deerRotation = gameContext.deer.model.rotation.y;
-                    
-                    // Vector from player to deer (shot direction)
-                    const shotDirection = new THREE.Vector3()
-                        .subVectors(deerPos, playerPos)
-                        .normalize();
-                    
-                    // Deer's forward direction (using +Z as confirmed correct)
-                    const deerForward = new THREE.Vector3(0, 0, 1)
-                        .applyAxisAngle(new THREE.Vector3(0, 1, 0), deerRotation);
-                    
-                    // Calculate the angle between deer's forward direction and shot direction
-                    // When deer faces player directly, this should be ~180° (opposite directions)
-                    const dotProduct = deerForward.dot(shotDirection);
-                    const angle = Math.acos(Math.max(-1, Math.min(1, dotProduct)));
-                    const angleInDegrees = THREE.MathUtils.radToDeg(angle);
-                    
-                    // Convert to shot angle: 180° = frontal, 90° = side, 0° = rear
-                    const shotAngle = 180 - angleInDegrees;
-                    
-                    // Check shot direction based on corrected shot angle
-                    if (shotAngle > 135) {
-                        // Front shot (135-180°) - instant kill
-                        processKill(100, "Perfect Front Vitals Shot", wasMoving, 1, shotDistanceYards);
-                    } else if (shotAngle < 45) {
-                        // Rear shot (0-45°) - should be treated as hindquarter body shot
-                        hitName = 'body';
-                        shotResult.hitType = 'wound';
-                        gameContext.huntLog.hitLocation = 'Hindquarters';
-                        isLethalShot = false;
-                    } else {
-                        // Side shot (45-135°) - instant kill
-                        processKill(80, "Perfect Side Vitals Shot", wasMoving, 1, shotDistanceYards);
-                    }
-                } else if (hitName === 'head') {
-                    // Head/brain shot - instant kill with high score
-                    processKill(120, "Perfect Head Shot", wasMoving, 1, shotDistanceYards);
-                }
-                
-                // If shot was reclassified as body shot, fall through to body shot logic
-                if (!isLethalShot) {
-                    // Process as body shot instead
-                    if (gameContext.deer.state !== 'WOUNDED') {
-                        gameContext.deer.woundCount = 1;
-                        gameContext.deer.setState('WOUNDED');
-                        showMessage("Hindquarter shot - deer wounded!");
-                        logEvent("Deer Wounded", `Hindquarter shot at ${shotDistanceYards} yards`, {
-                            distance: shotDistanceYards,
-                            moving: wasMoving
-                        });
-                        
-                        // Check if 3 wounds = kill
-                        if (gameContext.deer.woundCount >= 3) {
-                            processKill(10, "3-Wound Kill", wasMoving, gameContext.deer.woundCount, shotDistanceYards);
-                        }
-                    } else {
-                        // Already wounded, increment wound count
-                        gameContext.deer.woundCount++;
-                        showMessage(`Additional wound! (${gameContext.deer.woundCount}/3)`);
-                        logEvent("Deer Wounded", `Additional wound at ${shotDistanceYards} yards`, {
-                            distance: shotDistanceYards,
-                            moving: wasMoving
-                        });
-                        
-                        // Check if 3 wounds = kill
-                        if (gameContext.deer.woundCount >= 3) {
-                            processKill(10, "3-Wound Kill", wasMoving, gameContext.deer.woundCount, shotDistanceYards);
-                        }
-                    }
-                }
-            } else if (hitName === 'body') {
-                // Body hit - wound the deer
-                if (gameContext.deer.state !== 'WOUNDED') {
-                    gameContext.deer.woundCount = 1;
-                    gameContext.deer.setState('WOUNDED');
-                    showMessage("Body shot - deer wounded!");
-                    logEvent("Deer Wounded", `Body shot at ${shotDistanceYards} yards`, {
-                        distance: shotDistanceYards,
-                        moving: wasMoving
-                    });
-                    
-                    // Check if 3 wounds = kill
-                    if (gameContext.deer.woundCount >= 3) {
-                        processKill(10, "3-Wound Kill", wasMoving, gameContext.deer.woundCount, shotDistanceYards);
-                    }
-                } else {
-                    // Already wounded, increment wound count
-                    gameContext.deer.woundCount++;
-                    showMessage(`Additional wound! (${gameContext.deer.woundCount}/3)`);
-                    logEvent("Deer Wounded", `Additional wound at ${shotDistanceYards} yards`, {
-                        distance: shotDistanceYards,
-                        moving: wasMoving
-                    });
-                    
-                    // Check if 3 wounds = kill
-                    if (gameContext.deer.woundCount >= 3) {
-                        processKill(10, "3-Wound Kill", wasMoving, gameContext.deer.woundCount, shotDistanceYards);
-                    }
-                }
-            }
+        } else if (['gut', 'body', 'rear'].includes(hitName)) {
+            gameContext.deer.setState('WOUNDED');
+            if (hitName === 'gut') showMessage(`Gut shot - deer wounded at ${yards} yards`);
+            if (hitName === 'rear') showMessage(`Hindquarter shot - deer wounded at ${yards} yards`);
+            if (hitName === 'body') showMessage(`Body shot - deer wounded at ${yards} yards`);
         } else {
-            // Hit a non-critical or unnamed part
-            if (gameContext.deer.state !== 'WOUNDED') gameContext.deer.setState('FLEEING');
+            console.warn(`Unknown hit zone '${hitName}', defaulting to body`);
+            shotResult.hitType = 'body';
+            gameContext.deer.setState('WOUNDED');
+            showMessage(`Body shot - deer wounded at ${yards} yards`);
         }
+
+        if (gameContext.huntLog.firstShotResult === '') {
+            gameContext.huntLog.hitLocation = hitName;
+        } else {
+            gameContext.huntLog.recoveryShotDistance = shotDistanceYards;
+        }
+
+        gameContext.deer.createShotBloodIndicator(hitPosition);
     } else {
-        // Handle a clean miss
-        gameContext.score -= 20; // Changed from -50 to -20
-        gameContext.scoreValueElement.textContent = gameContext.score;
-        showMessage("Missed! -20 Points");
-        logEvent("Shot Missed", `Missed shot at ${shotDistanceYards} yards`, {
-            distance: shotDistanceYards,
-            moving: wasMoving
-        });
-        if (gameContext.deer.state !== 'WOUNDED' && gameContext.deer.state !== 'FLEEING') {
+        console.log('Physics raycast: No hit detected');
+        shotResult.hitType = 'miss';
+        showMessage("Missed!");
+        if (gameContext.deer.state !== 'KILLED' && gameContext.deer.state !== 'FLEEING') {
             gameContext.deer.setState('FLEEING');
         }
     }
 
-    // Log this shot to the shot log
+    if (gameContext.huntLog) {
+        gameContext.huntLog.totalShotsTaken++;
+        if (gameContext.huntLog.firstShotResult === '') {
+            gameContext.huntLog.firstShotResult = shotResult.hitType;
+        }
+    }
+
     if (!gameContext.shotLog) {
         gameContext.shotLog = [];
     }
     gameContext.shotLog.push(shotResult);
-    
-    // Update first shot result if this is the first shot
-    if (gameContext.huntLog && gameContext.huntLog.firstShotResult === '') {
-        gameContext.huntLog.firstShotResult = shotResult.hitType;
-    }
 
-    // Log all shots for statistics tracking
-    logEvent("Shot Taken", shotResult.hit ? `Shot hit at ${shotDistanceYards} yards` : `Shot missed at ${shotDistanceYards} yards`, {
+    logEvent("Shot Taken", shotResult.hit ? `Shot hit ${shotResult.hitType} at ${shotDistanceYards} yards` : `Shot missed at ${shotDistanceYards} yards`, {
         distance: shotDistanceYards,
         moving: wasMoving,
         hit: shotResult.hit,
-        hideFromReport: shotResult.hit // Hide successful shots from report since kill events show them
+        hideFromReport: shotResult.hit
     });
-    
-    // Update statistics for shot taken
-    // Removed updateStats call
-    
-    // Update report modal if open
-    // Removed updateReportModal call
-    
-    if(gameContext.renderer) gameContext.renderer.render(gameContext.scene, gameContext.camera);
 }
 
 // Rifle recoil effect - kicks camera upward and slightly backward
@@ -924,6 +836,11 @@ function animate() {
     }
     
     gameContext.deer.update(gameContext.deltaTime);
+    
+    // Update hitbox positions to follow deer movement
+    if (gameContext.collisionSystem && gameContext.deer) {
+        gameContext.collisionSystem.updateHitboxPositions(gameContext.deer);
+    }
     
     // Check for deer sighting (player looking at deer within reasonable distance)
     const deerDistance = gameContext.player.position.distanceTo(gameContext.deer.model.position);

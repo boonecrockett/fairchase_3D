@@ -1,154 +1,101 @@
 /**
- * DeerHitbox - Manages hitbox creation, positioning, and collision detection for deer
- * Extracted from deer.js as part of modularization effort
+ * DeerHitbox - Manages hitbox creation, positioning, and collision detection for deer.
+ * This class wraps the global collision system, which uses Three.js raycasting.
  */
 
 import * as THREE from 'three';
+import { collisionSystem } from './collision.js';
 
 export class DeerHitbox {
     constructor(deer, config) {
         this.deer = deer;
         this.config = config;
-        this.permanentVitalsHitbox = null;
+        this.collisionBody = null;
+        this.debugMode = false;
     }
 
     /**
-     * Create vitals hitbox - overrides base Animal class method
-     * @param {THREE.Object3D} parent - Parent object to attach hitbox to
+     * Create visible wireframe hitboxes for collision detection
+     * @param {THREE.Object3D} parent - Parent object (deer model)
      */
     createVitals(parent) {
-        // Call base class method first
-        this.createBaseVitals(parent);
-        
-        // Don't create any additional hitbox until we solve the underlying issue
-        return;
+        // Create visible wireframe hitboxes that ARE the collision hitboxes
+        collisionSystem.createDebugHitboxes(this.deer);
+        console.log('Visible wireframe hitboxes created for collision detection');
     }
 
-    /**
-     * Base vitals creation from Animal class
-     * @param {THREE.Object3D} parent - Parent object to attach hitbox to
-     */
-    createBaseVitals(parent) {
-        if (!this.config.vitals) return;
 
-        const vitalsGeometry = new THREE.BoxGeometry(
-            this.config.vitals.size.x, 
-            this.config.vitals.size.y, 
-            this.config.vitals.size.z
-        );
-        const vitalsMaterial = new THREE.MeshBasicMaterial({ 
-            color: this.config.vitals.debugColor 
-        });
-        const vitals = new THREE.Mesh(vitalsGeometry, vitalsMaterial);
-        vitals.visible = false; // Hidden for normal gameplay
-        vitals.position.set(
-            this.config.vitals.offset.x, 
-            this.config.vitals.offset.y, 
-            this.config.vitals.offset.z
-        );
-        vitals.name = 'vitals';
-        parent.add(vitals);
-        this.deer.model.vitals = vitals;
-    }
 
     /**
-     * Create a simple, clean vitals hitbox
+     * Toggle debug visualization of hit zones
      */
-    createSimpleVitalsHitbox() {
-        // Create geometry and material
-        const geometry = new THREE.BoxGeometry(5, 5, 5); // Reduced to 10% of original size (50 -> 5)
-        const material = new THREE.MeshBasicMaterial({
-            color: 0xff0000,
-            transparent: true,
-            opacity: 0.3,
-            wireframe: true
-        });
-        
-        // Create the mesh
-        this.permanentVitalsHitbox = new THREE.Mesh(geometry, material);
-        this.permanentVitalsHitbox.name = 'vitals';
-        
-        // Position it relative to deer center
-        this.permanentVitalsHitbox.position.set(0, 2, 0); // 2 units above deer
-        
-        // Add directly to the deer's model group
-        this.deer.model.add(this.permanentVitalsHitbox);
-    }
-
-    /**
-     * Update hitbox positions based on current deer position and rotation
-     */
-    updateHitboxes() {
-        // Update hitbox positions based on current deer position and rotation
-        // (This method should update hitbox geometry, not trigger respawn)
-        
-        // TODO: Implement actual hitbox position updates when needed
-        // For now, hitboxes are attached to the deer model and move automatically
-        
-        // If we had detached hitboxes, we would update their positions here:
-        // if (this.permanentVitalsHitbox) {
-        //     this.permanentVitalsHitbox.position.copy(this.deer.model.position);
-        //     this.permanentVitalsHitbox.rotation.copy(this.deer.model.rotation);
-        // }
-    }
-
-    /**
-     * Make vitals hitbox temporarily visible for raycasting
-     */
-    showVitalsForRaycasting() {
-        const vitalsBox = this.deer.model.vitals;
-        if (vitalsBox) {
-            vitalsBox.visible = true;
+    toggleDebugMode() {
+        this.debugMode = !this.debugMode;
+        if (this.deer && this.deer.hitboxMeshes) {
+            this.deer.hitboxMeshes.forEach(mesh => {
+                mesh.visible = this.debugMode;
+            });
         }
+        console.log(`Hitbox debug mode set to: ${this.debugMode ? 'ON' : 'OFF'}`);
+        return this.debugMode;
     }
 
     /**
-     * Hide vitals hitbox after raycasting
+     * Perform raycast hit detection using physics system
+     * @param {THREE.Vector3} from - Ray start position
+     * @param {THREE.Vector3} to - Ray end position
+     * @returns {Object} Hit result with zone information
      */
-    hideVitalsAfterRaycasting() {
-        const vitalsBox = this.deer.model.vitals;
-        if (vitalsBox) {
-            vitalsBox.visible = false;
-        }
+    raycastHit(from, to) {
+        return collisionSystem.raycast(from, to, this.deer);
     }
 
     /**
-     * Check if a hit name corresponds to a vital area
-     * @param {string} hitName - Name of the hit area
+     * Check if a hit zone corresponds to a vital area
+     * @param {string} hitZone - Name of the hit zone
      * @returns {boolean} True if hit is vital
      */
-    isVitalHit(hitName) {
-        return hitName === 'vitals';
+    isVitalHit(hitZone) {
+        return hitZone === 'vitals' || hitZone === 'brain';
     }
 
     /**
-     * Get vitals hitbox for external access
-     * @returns {THREE.Mesh|null} The vitals hitbox mesh
+     * Get hit zone name from legacy hitbox reference (for compatibility)
+     * @param {THREE.Mesh} hitbox - Legacy hitbox mesh
+     * @returns {string} Hit zone name
      */
-    getVitalsHitbox() {
-        return this.deer.model.vitals || this.permanentVitalsHitbox;
+    getHitZoneFromLegacyHitbox(hitbox) {
+        if (!hitbox || !hitbox.name) return 'body';
+        return hitbox.name;
     }
 
     /**
-     * Clean up hitbox resources
+     * Legacy compatibility methods - no longer needed with Three.js raycasting
+     */
+    showVitalsForRaycasting() {
+        // No longer needed - Three.js raycasting handles visibility
+    }
+
+    hideVitalsAfterRaycasting() {
+        // No longer needed - Three.js raycasting handles visibility
+    }
+
+    /**
+     * Get collision body for external access
+     * @returns {null} The collision body (legacy, always null)
+     */
+    getCollisionBody() {
+        return this.collisionBody;
+    }
+
+    /**
+     * Clean up collision resources
      */
     dispose() {
-        if (this.permanentVitalsHitbox) {
-            if (this.permanentVitalsHitbox.parent) {
-                this.permanentVitalsHitbox.parent.remove(this.permanentVitalsHitbox);
-            }
-            this.permanentVitalsHitbox.geometry?.dispose();
-            this.permanentVitalsHitbox.material?.dispose();
-            this.permanentVitalsHitbox = null;
-        }
-
-        if (this.deer.model.vitals) {
-            if (this.deer.model.vitals.parent) {
-                this.deer.model.vitals.parent.remove(this.deer.model.vitals);
-            }
-            this.deer.model.vitals.geometry?.dispose();
-            this.deer.model.vitals.material?.dispose();
-            this.deer.model.vitals = null;
-        }
+        // Remove collision body from Three.js scene
+        collisionSystem.removeDeerCollisionBody(this.deer);
+        this.collisionBody = null;
+        
+        console.log('Deer collision system disposed');
     }
 }
