@@ -8,7 +8,7 @@ import * as THREE from 'three';
 class CollisionSystem {
     constructor() {
         this.raycaster = null;
-        this.debugMode = true; // Enable debug visualization
+        this.debugMode = false; // Disable debug visualization
         this.init();
     }
 
@@ -116,11 +116,12 @@ class CollisionSystem {
             const material = new THREE.MeshBasicMaterial({
                 color: debugColors[zoneName] || 0xFFFFFF,
                 wireframe: true,
-                transparent: false, // Make sure they are not transparent
-                visible: false // Hitboxes are not visible in production
+                transparent: true, // Enable transparency for opacity
+                opacity: 0.7 // Semi-transparent for better visibility
             });
             
             const hitbox = new THREE.Mesh(geometry, material);
+            hitbox.visible = this.debugMode; // Show hitboxes when debug mode is enabled
             hitbox.name = `hitbox_${zoneName}`;
             
             // Store zone information
@@ -396,6 +397,23 @@ class CollisionSystem {
 
     
     // Collision hitboxes ARE the debug wireframes
+
+    // Toggle hitbox visibility
+    toggleHitboxes() {
+        this.debugMode = !this.debugMode;
+        console.log(`Hitbox debug mode: ${this.debugMode ? 'ON' : 'OFF'}`);
+        
+        // Update visibility of all existing hitboxes
+        if (window.gameContext && window.gameContext.scene) {
+            window.gameContext.scene.traverse((child) => {
+                if (child.name && child.name.startsWith('hitbox_')) {
+                    child.visible = this.debugMode;
+                }
+            });
+        }
+        
+        return this.debugMode;
+    }
 
     // Remove debug visualization
     removeDebugVisualization(deer) {

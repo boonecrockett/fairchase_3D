@@ -41,6 +41,25 @@ class Deer extends Animal {
         
         // Initialize hitbox system
         this.hitbox = new DeerHitbox(this, this.config);
+
+    /**
+     * Wounds the deer, increments wound count, and checks for death.
+     * @returns {boolean} True if the deer died from this wound, false otherwise.
+     */
+    this.wound = () => {
+        if (this.state === 'KILLED') return false;
+
+        this.woundCount++;
+        this.effects.createBloodDrop(); // Deer bleeds when wounded
+
+        if (this.woundCount >= 3) {
+            this.setState('KILLED');
+            return true; // Deer has died from wounds
+        }
+
+        this.setState('WOUNDED');
+        return false; // Deer is wounded but not dead
+    };
         
         // Initialize movement system
         this.movement = new DeerMovement(this, this.config);
@@ -92,33 +111,41 @@ class Deer extends Animal {
     setState(newState) {
         const oldState = this.state;
         
+        console.log('🔴 DEBUG: setState called - oldState:', oldState, 'newState:', newState);
+        
+        // DEFENSIVE: Validate state - reject invalid states
+        const validStates = ['IDLE', 'WANDERING', 'THIRSTY', 'GRAZING', 'DRINKING', 'ALERT', 'FLEEING', 'WOUNDED', 'KILLED'];
+        if (!validStates.includes(newState)) {
+            console.error('🚨 INVALID STATE DETECTED:', newState);
+            console.error('🚨 Stack trace:', new Error().stack);
+            console.error('🚨 Rejecting invalid state, keeping current state:', this.state);
+            return; // Reject invalid state
+        }
+        
         // Critical bug fix: Prevent any state changes if deer is locked in KILLED state
         if (this.stateLockedToKilled && newState !== 'KILLED') {
+            console.log('🔴 DEBUG: setState blocked - deer locked to KILLED state');
             return;
         }
         
         // Also prevent transitions OUT of KILLED state once it's been set
         // EXCEPTION: Allow transitions during respawn when stateLockedToKilled is explicitly false
         if (this.state === 'KILLED' && newState !== 'KILLED' && this.stateLockedToKilled === true) {
+            console.log('🔴 DEBUG: setState blocked - cannot transition out of KILLED state');
             return;
         }
         
         // Critical bug fix: Set state lock BEFORE entering KILLED state to prevent race conditions
         if (newState === 'KILLED') {
-            // Only allow KILLED state if deer was actually hit
-            if (!this.wasActuallyHit) {
-                return; // Block invalid transition to KILLED
-            }
-            
-            // Set state lock BEFORE entering KILLED state to prevent immediate transitions out
-            if (!this.deathSequenceStarted) {
-                this.stateLockedToKilled = true;
-                this.deathSequenceStarted = true;
-            }
+            console.log('🔴 DEBUG: Setting state lock for KILLED state');
+            this.stateLockedToKilled = true;
+            this.deathSequenceStarted = true;
         }
         
         super.setState(newState);
         gameContext.deerState = newState; // For legacy access
+        
+        console.log('🔴 DEBUG: setState completed - this.state:', this.state, 'gameContext.deerState:', gameContext.deerState);
 
         // Special debug logging for ALERT state
         if (newState === 'ALERT' && oldState !== 'ALERT') {
@@ -152,11 +179,13 @@ class Deer extends Animal {
         }
         
         if (newState === 'KILLED') {
-            // Start death sequence after state is set
-            if (this.deathSequenceStarted && !this.deathSequenceInProgress) {
-                this.startDeathSequence();
-            }
-        }
+        // Start death sequence after state is set
+        // CRITICAL FIX: Always start death sequence when entering KILLED state.
+        // The conditional check for `deathSequenceInProgress` was causing an intermittent
+        // bug where a deer could not be tagged if the flag wasn't reset from a previous
+        // deer's death. This ensures the sequence always runs for a killed deer.
+        this.startDeathSequence();
+    }
         
         // Reset hit flag after state change
         if (newState !== 'WOUNDED' && newState !== 'KILLED') {
@@ -174,8 +203,11 @@ class Deer extends Animal {
      * Start the death sequence - sets fallen flag and triggers death animation
      */
     startDeathSequence() {
+        console.log('DEBUG: Starting death sequence for deer');
         this.deathSequenceInProgress = true;
         this.fallen = true; // CRITICAL: Set fallen flag so deer can be tagged
+        console.log('DEBUG: Deer fallen flag set to:', this.fallen);
+        console.log('DEBUG: Deer state:', this.state, 'tagged:', this.tagged);
         
         // Trigger death animation
         if (this.animation) {
@@ -321,147 +353,85 @@ class Deer extends Animal {
         if (!this.isModelLoaded) return;
 
         // CRITICAL: Handle KILLED state first - prevent any other logic from running
-        // This must be the first check to prevent state transitions out of KILLED
         if (this.state === 'KILLED' || this.stateLockedToKilled) {
-            // Force state to KILLED if locked (in case something tried to change it)
             if (this.stateLockedToKilled && this.state !== 'KILLED') {
                 this.state = 'KILLED';
                 gameContext.deerState = 'KILLED';
             }
-            
-            // Only update position based on terrain height (no movement, no AI)
             this.model.position.y = gameContext.getHeightAt(this.model.position.x, this.model.position.z) + this.config.heightOffset;
-            
-            // Update state timer for death sequence timing
             this.stateTimer += delta;
-            
-            // Allow animation mixer to run for death animation
             if (this.mixer) {
                 this.mixer.update(delta);
             }
-            
-            // Update animation system to handle death animation properly
             this.animation.update(delta);
-            
-            return; // Exit immediately - no other logic should run
+            return; // Exit immediately
         }
 
-        // Always call super.update for proper height positioning, even when dead
         super.update(delta);
-        
 
-
-        // Only continue with AI behavior if deer is alive
         if (this.state === 'KILLED') return;
-        
-        // Update spatial audio for this deer
+
         updateDeerAudio(this, delta);
 
-        // Track deer movement distance for journal when wounded or fleeing
         if ((this.state === 'WOUNDED' || this.state === 'FLEEING') && gameContext.huntLog && gameContext.huntLog.deerInitialPosition) {
             const currentDistance = gameContext.huntLog.deerInitialPosition.distanceTo(this.model.position);
             gameContext.huntLog.distanceTrailed = Math.max(gameContext.huntLog.distanceTrailed, currentDistance);
         }
 
         this.timeSinceLastDrink += delta;
-
         this.effects.update();
-
         this.animation.update(delta);
 
-        let speed = 0;
-        let legAnimationSpeed = this.animation.getLegAnimationSpeed();
-
         const distanceToPlayer = this.model.position.distanceTo(gameContext.player.position);
-
-        // Check if player is visible (not concealed by trees or bushes)
         const playerVisible = this.isPlayerVisible();
-
-        // Track player movement for detection logic
         const currentPlayerPosition = gameContext.player.position.clone();
         const playerMoved = this.lastPlayerPosition.distanceTo(currentPlayerPosition) > this.MOVEMENT_DISTANCE_THRESHOLD;
-        
+
         if (playerVisible) {
             if (playerMoved) {
-                // Player is moving - increment sample count
                 this.movementSampleCount++;
-                
                 if (!this.isTrackingPlayerMovement && this.movementSampleCount >= this.REQUIRED_MOVEMENT_SAMPLES) {
-                    // Start tracking movement after enough consecutive movement samples
                     this.isTrackingPlayerMovement = true;
                     this.playerMovementStartTime = gameContext.clock.getElapsedTime();
                     this.hasDetectedMovingPlayer = false;
                 } else if (this.isTrackingPlayerMovement) {
-                    // Continue tracking - check if player has been moving long enough
                     const movementDuration = gameContext.clock.getElapsedTime() - this.playerMovementStartTime;
                     if (movementDuration >= this.MOVEMENT_DETECTION_THRESHOLD && !this.hasDetectedMovingPlayer) {
                         this.hasDetectedMovingPlayer = true;
                     }
                 }
             } else {
-                // Player is not moving - reset movement sample count
                 this.movementSampleCount = Math.max(0, this.movementSampleCount - 1);
-                
                 if (this.movementSampleCount === 0 && this.isTrackingPlayerMovement) {
-                    // Player has stopped moving - reset tracking
                     this.isTrackingPlayerMovement = false;
                     this.hasDetectedMovingPlayer = false;
                 }
             }
         } else {
-            // Player is not visible - reset everything
             if (this.isTrackingPlayerMovement) {
                 this.isTrackingPlayerMovement = false;
                 this.hasDetectedMovingPlayer = false;
             }
             this.movementSampleCount = 0;
         }
-        
-        // Update last player position for next frame (AFTER movement detection)
+
         this.lastPlayerPosition.copy(currentPlayerPosition);
 
-        // Check if deer was hit and react accordingly
-        if (this.wasActuallyHit) {
-            console.log('DEBUG: wasActuallyHit flag is TRUE, current state:', this.state);
-            if (this.state !== 'KILLED') {
-                this.woundCount++; // Increment wound count on any non-fatal hit
-                console.log(`DEBUG: Deer hit. Wound count is now: ${this.woundCount}`);
-
-                if (this.woundCount >= 3) {
-                    console.log('DEBUG: Maximum wounds reached. Transitioning to KILLED state.');
-                    this.setState('KILLED');
-                } else {
-                    console.log('DEBUG: Deer wounded. Intensifying flee behavior.');
-                    this.setState('WOUNDED');
-                    // Reset flee timer to make deer flee longer/faster
-                    this.fleeStartTime = Date.now();
-                    this.fleeDirection = this.model.position.clone().sub(this.lastPlayerPosition).normalize();
-                }
-            } else {
-                console.log('DEBUG: Deer hit ignored - already KILLED');
-            }
-            this.wasActuallyHit = false; // Reset flag after processing all hit logic
-        }
-
-        // Only react to player if they are visible AND have been detected moving for 2 seconds
         if (this.state !== 'FLEEING' && this.state !== 'WOUNDED' && this.state !== 'KILLED') {
-            // Check if deer is in alert delay period
             const currentTime = gameContext.clock.getElapsedTime();
             const inAlertDelay = this.state === 'ALERT' && (currentTime - this.alertStartTime < this.alertMovementDelay);
-            
             if (playerVisible && this.hasDetectedMovingPlayer && distanceToPlayer < this.config.fleeDistanceThreshold && this.fleeingEnabled && !inAlertDelay) {
                 this.setState('FLEEING');
             } else if (playerVisible && this.hasDetectedMovingPlayer && distanceToPlayer < this.config.alertDistanceThreshold) {
                 if (this.state !== 'ALERT') {
                     this.setState('ALERT');
                 }
-            } else if (this.state === 'ALERT' && (!playerVisible || !this.hasDetectedMovingPlayer || distanceToPlayer >= this.config.alertDistanceThreshold)) {
-                // Only allow transition out of ALERT if not in delay period
-                if (!inAlertDelay) {
-                    this.setState('WANDERING');
-                }
+            } else if (this.state === 'ALERT' && !playerVisible) {
+                this.setState('IDLE');
             }
         }
+
+        let speed = 0;
 
         switch (this.state) {
             case 'IDLE':
@@ -896,7 +866,14 @@ class Deer extends Animal {
         if (!gameContext.player || !gameContext.trees) return true;
         
         const currentTime = gameContext.clock.getElapsedTime();
-        const distanceToPlayer = this.model.position.distanceTo(gameContext.player.position);
+
+        const isKneeling = gameContext.playerControls?.isKneeling || false;
+        let distanceToPlayer = this.model.position.distanceTo(gameContext.player.position);
+
+        // Apply stealth bonus for kneeling
+        if (isKneeling) {
+            distanceToPlayer *= 1.3; // Player appears 30% further away when kneeling
+        }
         
         // Skip visibility checks entirely if player is very far away (beyond detection range)
         if (distanceToPlayer > 150) {
@@ -958,7 +935,7 @@ class Deer extends Animal {
         
         // Adjust positions to eye level for more realistic line of sight
         deerPosition.y += 1.5; // Deer eye height
-        playerPosition.y += 1.7; // Player eye height
+        playerPosition.y += isKneeling ? 0.9 : 1.7; // Lower player eye height when kneeling
         
         const direction = new THREE.Vector3().subVectors(playerPosition, deerPosition).normalize();
         

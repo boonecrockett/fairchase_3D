@@ -12,8 +12,8 @@ export const deerConfig = {
     worldBoundaryMargin: 50, // Increased from 20 to 50 for more room near boundaries
 
     vitals: {
-        size: { x: 0.20, y: 0.16, z: 0.154 }, // Extended forward 10%
-        offset: { x: 0, y: 0.8, z: 0.307 }, // Adjusted forward to keep back aligned
+        size: { x: 0.20, y: 0.16, z: 0.23364 }, // Extended forward 55% total (10% + 15% + 20% + 10%)
+        offset: { x: 0, y: 0.72, z: 0.338 }, // Moved down 10% and adjusted forward
         debugColor: 0xFF0000, // Red color for vitals hitbox
     },
 
@@ -25,26 +25,26 @@ export const deerConfig = {
 
     gut: {
         size: { x: 0.20, y: 0.16, z: 0.16 }, // Increased for reliable hit detection
-        offset: { x: 0, y: 0.8, z: 0.05 }, // Positioned in belly area, clear of vitals and rear
+        offset: { x: 0, y: 0.72, z: 0.05 }, // Moved down 10% in belly area, clear of vitals and rear
         debugColor: 0x00FF00, // Green color for gut hitbox
     },
 
     rear: {
-        size: { x: 0.20, y: 0.16, z: 0.14 }, // Increased for reliable hit detection
-        offset: { x: 0, y: 0.8, z: -0.25 }, // Positioned in hindquarter area, clear of gut
+        size: { x: 0.20, y: 0.16, z: 0.168 }, // Extended backward 20% for reliable hit detection
+        offset: { x: 0, y: 0.8, z: -0.264 }, // Positioned further back in hindquarter area
         debugColor: 0x0000FF, // Blue color for rear hitbox
     },
 
     spine: {
-        size: { x: 0.0283, y: 0.0282, z: 0.6 }, // Height increased by 20%
-        offset: { x: 0, y: 0.814, z: 0.1 }, // Moved forward to prevent rear protrusion
+        size: { x: 0.05094, y: 0.10152, z: 0.6 }, // Width and height increased by 20%, doubled, then increased 50% more
+        offset: { x: 0, y: 0.84784, z: 0.1 }, // Moved up further to accommodate larger spine hitbox
         debugColor: 0xFF00FF, // Magenta color for spine hitbox
     },
 
     neck: {
-        size: { x: 0.1, y: 0.202, z: 0.1 }, // Extended 15% towards brain
-        offset: { x: 0, y: 0.879, z: 0.509 }, // Adjusted to keep base aligned
-        rotation: { x: 0.768, y: 0, z: 0 }, // Tilted up 20 degrees (from ~64 to ~44 deg)
+        size: { x: 0.09, y: 0.1818, z: 0.1 }, // Reduced width and height by 10%
+        offset: { x: 0, y: 0.93818, z: 0.58 }, // Moved up additional 10% of height vertically
+        rotation: { x: 0.943, y: 0, z: 0 }, // Tilted up 30 degrees total (~54 deg) - added 10 more degrees
         debugColor: 0x00FFFF, // Cyan for neck hitbox
     },
 
@@ -77,8 +77,8 @@ export const deerConfig = {
         fleeing: 6,              // Updated from 4 to 6 - deer runs away for 6 seconds after alert
     },
     speeds: {
-        wandering: 2.8,          // Reduced by 30% from 4.0 to better match walk animation
-        thirsty: 5.25,           // Reduced by 30% from 7.5 to better match walk animation
+        wandering: 1.96,         // Reduced by additional 30% from 2.8 for slower walking
+        thirsty: 3.675,          // Reduced by additional 30% from 5.25 for slower walking
         fleeing: 27.0,           // Keep fleeing speed unchanged
         wounded: 13.5,           // Keep wounded speed unchanged for escape realism
     },

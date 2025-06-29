@@ -161,9 +161,7 @@ function startForestSoundWithUserInteraction() {
             if (gameContext.forestSound && gameContext.forestSound.loaded) {
                 fadeInForestSound();
                 
-                // Remove event listeners after successful start
-                document.removeEventListener('click', startAudio);
-                document.removeEventListener('keydown', startAudio);
+                // Event listeners are now self-removing with { once: true }, so no manual removal is needed.
             } else {
                 // Forest sound not loaded or not available
             }
@@ -172,7 +170,7 @@ function startForestSoundWithUserInteraction() {
         }
     };
     
-    // Add event listeners for user interaction
+    // Add self-removing event listeners for the first user interaction
     document.addEventListener('click', startAudio, { once: true });
     document.addEventListener('keydown', startAudio, { once: true });
     
@@ -367,8 +365,7 @@ export function startTitleMusic() {
     // Also add fallback listeners for user interaction
     const startOnInteraction = () => {
         startMusic();
-        document.removeEventListener('click', startOnInteraction);
-        document.removeEventListener('keydown', startOnInteraction);
+        // Listeners are now self-removing.
     };
     
     document.addEventListener('click', startOnInteraction, { once: true });
