@@ -44,7 +44,7 @@
  * @property {HTMLElement} sleepTimerElement - UI element for the sleep timer (not currently used).
  * @property {HTMLElement} mainMenu - The main menu container element.
  * @property {HTMLElement} worldSelect - The dropdown for world selection.
- * @property {HTMLElement} startGameButton - The button to start the game.
+ * @property {string} gameMode - The selected game mode ('practice' or 'simulator').
  * @property {HTMLElement} scopeOverlayElement - UI overlay for the rifle scope.
  * @property {HTMLElement} crosshairElement - UI element for the crosshair.
  * @property {HTMLElement} reportModalBackdrop - Modal backdrop for reports.
@@ -161,7 +161,7 @@ export const gameContext = {
     sleepTimerElement: null,
     mainMenu: null,
     worldSelect: null,
-    startGameButton: null,
+    gameMode: 'simulator', // Default to simulator mode
     scopeOverlayElement: null,
     crosshairElement: null,
     reportModalBackdrop: null,

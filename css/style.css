@@ -12,7 +12,7 @@ html, body {
 body { 
     overflow: hidden; 
     background-color: #000;
-    font-family: 'Courier New', Courier, monospace;
+    font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
     position: relative;
 }
 
@@ -41,6 +41,36 @@ canvas { display: block; }
     transform: translate(-50%, -50%);
     box-shadow: 0 0 5px white, 0 0 10px white;
 }
+
+#elegant-crosshair {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 20px;
+    height: 20px;
+    transform: translate(-50%, -50%);
+    pointer-events: none;
+}
+
+#elegant-crosshair .h-line {
+    position: absolute;
+    top: 50%;
+    left: 0;
+    width: 100%;
+    height: 1px;
+    background-color: white;
+    transform: translateY(-50%);
+}
+
+#elegant-crosshair .v-line {
+    position: absolute;
+    top: 0;
+    left: 50%;
+    width: 1px;
+    height: 100%;
+    background-color: white;
+    transform: translateX(-50%);
+}
 .hud {
     color: white;
     background-color: rgba(0,0,0,0.6);
@@ -57,13 +87,34 @@ canvas { display: block; }
     gap: 10px;
     z-index: 10;
 }
-.top-left {
+.hud-container.top-left {
     top: 20px;
     left: 20px;
+    flex-direction: row;
+    align-items: flex-start;
 }
 .hud-container.top-right {
+    position: absolute;
     top: 20px;
     right: 20px;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 10px; /* Space between instructions and scoring guide */
+}
+.hud-column {
+    display: flex;
+    flex-direction: column;
+    gap: 10px; /* Space between time, score, and map button */
+}
+
+.hud-column > .hud, .hud-column > button.hud {
+    width: 170px; /* Set a consistent width for all items in the column */
+    box-sizing: border-box;
+}
+
+#clock-container {
+    text-align: center;
 }
 #kneeling-indicator {
     background-color: rgba(0, 0, 0, 0.7);
@@ -74,22 +125,29 @@ canvas { display: block; }
     text-transform: uppercase;
     letter-spacing: 1px;
     border: 1px solid #00ff00;
+    text-align: center;
+    margin-top: 5px;
 }
-#score-container, #clock-container {
-    font-size: 24px;
-}
+
 /* Compass HUD */
 #compass-container {
     position: absolute;
     top: 20px;
     left: 50%;
     transform: translateX(-50%);
-    z-index: 10;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    background-color: rgba(255, 255, 255, 0.5);
     padding: 10px 20px;
+    border-radius: 8px;
+    border: 1px solid rgba(255, 255, 255, 0.4);
 }
 #compass-value {
     font-size: 28px;
     font-weight: bold;
+    color: #2c3e50; /* Dark charcoal color for contrast */
+    text-shadow: none;
 }
 .collapsible-container {
     width: 240px;
@@ -108,7 +166,7 @@ canvas { display: block; }
 }
 .collapsible-body {
     margin-top: 10px;
-    max-height: 150px;
+    max-height: 300px; /* Increased height to show all content */
     overflow-y: auto;
     transition: max-height 0.3s ease-out, margin-top 0.3s ease-out, opacity 0.3s ease-out;
     line-height: 1.5;
@@ -233,7 +291,7 @@ canvas { display: block; }
 /* Main Menu Container */
 #main-menu-container {
     position: absolute;
-    top: calc(50% + 50px);
+    top: calc(50% + 120px);
     left: 50%;
     transform: translate(-50%, -50%);
     display: none; /* Hidden by default to prevent random appearance */
@@ -503,4 +561,66 @@ canvas { display: block; }
 
 .primary-button:hover {
     background-color: #45a049 !important;
+}
+
+/* Mode Selection Styling */
+.mode-buttons {
+    display: flex;
+    flex-direction: row; /* Ensure side-by-side layout */
+    gap: 20px;
+    justify-content: center;
+    align-items: stretch;
+}
+
+.mode-button {
+    background: linear-gradient(135deg, rgba(0, 100, 0, 0.8), rgba(0, 150, 0, 0.6));
+    border: 2px solid rgba(255, 255, 255, 0.3);
+    border-radius: 12px;
+    color: white;
+    padding: 25px;
+    min-width: 250px;
+    max-width: 300px;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    text-align: center;
+    font-family: 'Courier New', Courier, monospace;
+    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.3);
+}
+
+.mode-button:hover {
+    background: linear-gradient(135deg, rgba(0, 120, 0, 0.9), rgba(0, 180, 0, 0.7));
+    border-color: rgba(255, 255, 255, 0.5);
+    transform: translateY(-2px);
+    box-shadow: 0 6px 20px rgba(0, 0, 0, 0.4);
+}
+
+.mode-button:active {
+    transform: translateY(0);
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.3);
+}
+
+.mode-button h3 {
+    margin: 0 0 10px 0;
+    font-size: 20px;
+    font-weight: bold;
+    text-shadow: 1px 1px 2px black;
+}
+
+.mode-button p {
+    margin: 0;
+    font-size: 14px;
+    line-height: 1.4;
+    opacity: 0.9;
+    text-shadow: 1px 1px 1px black;
+}
+
+#mode-selection h2 {
+    font-family: 'Courier New', Courier, monospace;
+    text-shadow: 2px 2px 4px black;
+    font-weight: bold;
+}
+
+#legal-hours-display {
+    font-size: 12px;
+    opacity: 0.7;
 }

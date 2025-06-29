@@ -7,7 +7,11 @@
     <link rel="stylesheet" href="css/style.css">
 </head>
 <body>
-    <div id="crosshair"></div>
+    <div id="crosshair" class="initially-hidden"></div>
+    <div id="elegant-crosshair" class="initially-hidden">
+        <div class="h-line"></div>
+        <div class="v-line"></div>
+    </div>
     
     <div id="scope-overlay">
         <div class="crosshair-line vertical" id="line-top"></div>
@@ -18,26 +22,50 @@
     </div>
 
     <!-- HUD Elements -->
-    <div id="compass-container" class="hud initially-hidden">
+        <div id="compass-container" class="initially-hidden">
         <span id="compass-value">N</span>
     </div>
 
     <div class="hud-container top-left initially-hidden">
-        <div id="score-container" class="hud">
-            Score: <span id="score-value">0</span>
+        <div class="hud-column">
+            <div id="clock-container" class="hud">
+                Time: <span id="clock-value">04:30</span><br>
+                <span id="legal-hours-display">05:30 - 19:30</span><br>
+                <small>(Legal Hours)</small>
+            </div>
+            <button id="score-report-button" class="hud">
+                Score: <span id="score-value">0</span><br><small>(Click for Report)</small>
+            </button>
+            <button id="map-button" class="hud initially-hidden">View Map</button>
+            <div id="kneeling-indicator" class="hud initially-hidden">
+                Kneeling
+            </div>
         </div>
-        <div id="clock-container" class="hud">
-            Time: <span id="clock-value">04:30</span>
+    </div>
+
+
+
+    <div class="hud-container top-right initially-hidden">
+        <div id="instructions-container" class="hud collapsible-container">
+            <div id="instructions-header" class="collapsible-header">
+                <span>Instructions</span>
+            </div>
+            <div id="instructions-body" class="collapsible-body collapsed">
+                <b>W, A, S, D:</b> Move<br>
+                <b>Mouse:</b> Look<br>
+                <b>Left Click:</b> Shoot<br>
+                <b>Right Click:</b> Aim Scope<br>
+                <b>C:</b> Kneel<br>
+                <b>E:</b> Tag Deer<br>
+                <b>M:</b> View Map<br>
+            </div>
         </div>
-        <div id="kneeling-indicator" class="hud initially-hidden">
-            Kneeling
-        </div>
-        <div id="scoring-guide-container" class="hud collapsible-container initially-hidden">
+        <div id="scoring-guide-container" class="hud collapsible-container">
             <div id="scoring-guide-header" class="collapsible-header">
                 <span>Scoring Guide</span>
-                <span id="scoring-guide-toggle" class="collapsible-toggle">[+]</span>
+
             </div>
-            <div id="scoring-guide-body" class="collapsible-body collapsed initially-hidden">
+            <div id="scoring-guide-body" class="collapsible-body collapsed">
                 <b>Vitals Shot:</b> +100 Base<br>
                 <b>Head Shot:</b> +25 Base<br>
                 <b>Recovery Shot:</b> +20 Base<br>
@@ -51,29 +79,10 @@
             </div>
         </div>
     </div>
-
-    <div class="hud-container top-right initially-hidden">
-        <div id="instructions-container" class="hud collapsible-container">
-            <div id="instructions-header" class="collapsible-header">
-                <span>Instructions</span>
-                <span id="instructions-toggle" class="collapsible-toggle">[-]</span>
-            </div>
-            <div id="instructions-body" class="collapsible-body initially-hidden">
-                <b>W, A, S, D:</b> Move<br>
-                <b>Mouse:</b> Look<br>
-                <b>Left Click:</b> Shoot<br>
-                <b>Right Click:</b> Aim Scope<br>
-                <b>E:</b> Tag Deer<br>
-                <small>Legal Hours: 5:30 - 19:30</small>
-            </div>
-        </div>
-         <button id="report-button" class="hud initially-hidden" style="margin-top:10px; width: 240px; cursor: pointer;">View Report</button>
-         <button id="map-button" class="hud initially-hidden" style="margin-top:10px; width: 240px; cursor: pointer;">View Map</button>
-
-    </div>
     
-    <div id="message" class="initially-hidden"></div>
+    <div id="message" class="message"></div>
     <div id="interaction-prompt" class="initially-hidden"></div>
+    <div id="status-indicator" class="status" style="display: none; position: absolute; top: 80px; left: 50%; transform: translateX(-50%); color: #00ff00; font-size: 18px; font-family: Arial, sans-serif; background-color: rgba(0, 0, 0, 0.5); padding: 5px 10px; border-radius: 5px; z-index: 9999;">Kneeling</div>
 
     <!-- Modals -->
     <div id="report-modal-backdrop" class="modal-backdrop">
@@ -140,7 +149,7 @@
         </div>
     </div>
     
-    <!-- Main menu with loading bar and start button at bottom -->
+    <!-- Main menu with loading bar and mode selection buttons -->
     <div id="main-menu-container">
         <div id="loading-container">
             <svg id="progress-ring" width="120" height="120">
@@ -148,7 +157,18 @@
                 <circle id="progress-ring-fill" stroke-width="8" fill="transparent" r="52" cx="60" cy="60"/>
             </svg>
         </div>
-        <button id="start-button" style="display: none;">Start Game</button>
+        <div id="mode-selection" style="display: none;">
+            <div class="mode-buttons">
+                <button id="practice-mode-button" class="mode-button">
+                    <h3>Practice Mode</h3>
+                    <p>Learn the basics with forgiving mechanics and helpful guidance</p>
+                </button>
+                <button id="hunt-simulator-button" class="mode-button">
+                    <h3>Hunt Simulator</h3>
+                    <p>Realistic hunting experience with authentic challenges</p>
+                </button>
+            </div>
+        </div>
     </div>
     </div>
 

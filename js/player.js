@@ -123,6 +123,41 @@ export function addPlayerEventListeners() {
     }, 5000); // Check every 5 seconds
 }
 
+// Add a click event listener to ensure focus is on the game container for key events
+function ensureGameFocus() {
+    console.log('🎮 FOCUS DEBUG: Setting up click event listener for game focus');
+    const gameContainer = document.getElementById('browser-preview-root');
+    if (gameContainer) {
+        gameContainer.addEventListener('click', function() {
+            console.log('🎮 FOCUS DEBUG: Game container clicked, ensuring focus');
+            this.focus();
+            // Force focus on the document as well
+            document.focus();
+            console.log('🎮 FOCUS DEBUG: Document focus forced');
+        });
+    } else {
+        console.log('🎮 FOCUS DEBUG: Could not find browser-preview-root container');
+    }
+    
+    // Add a fallback key event listener on the document level
+    document.addEventListener('keydown', function(event) {
+        console.log('🔑 FALLBACK KEY DEBUG: Document-level key press detected - Code:', event.code, 'Key:', event.key, 'Timestamp:', Date.now());
+        if (event.code === 'KeyE') {
+            console.log('🔑 FALLBACK KEY DEBUG: Document-level E key press, canTag:', gameContext.canTag, 'Timestamp:', Date.now());
+            if (gameContext.canTag) {
+                console.log('🔑 FALLBACK KEY DEBUG: Document-level calling gameContext.tagDeer() - Timestamp:', Date.now());
+                gameContext.tagDeer();
+            } else {
+                console.log('🔑 FALLBACK KEY DEBUG: Document-level cannot tag - canTag is false - Timestamp:', Date.now());
+            }
+        }
+    });
+    console.log('🎮 FOCUS DEBUG: Document-level key event listener added');
+}
+
+// Call this function during initialization or when the game starts
+ensureGameFocus();
+
 /**
  * Updates the player's position and state based on input and game logic.
  * Handles movement, terrain height adjustment, and distance tracking.
@@ -246,6 +281,26 @@ export function updatePlayer() {
         }
     }
 
+    // --- INTERACTION LOGIC ---
+    // Check for deer tagging proximity
+    if (gameContext.deer && gameContext.deer.isFallen && !gameContext.deer.tagged) {
+        const distanceToDeer = gameContext.player.position.distanceTo(gameContext.deer.mesh.position);
+        if (distanceToDeer < 5) { // 5 units of distance to allow tagging
+            gameContext.canTag = true;
+            gameContext.interactionPromptElement.textContent = 'Press E to Tag';
+            gameContext.interactionPromptElement.style.display = 'block';
+        } else {
+            gameContext.canTag = false;
+            gameContext.interactionPromptElement.style.display = 'none';
+        }
+    } else {
+        // Ensure prompt is hidden if deer is not in a taggable state
+        if (gameContext.interactionPromptElement.style.display === 'block') {
+            gameContext.canTag = false;
+            gameContext.interactionPromptElement.style.display = 'none';
+        }
+    }
+
     // Update tree bracing
     checkTreeBracing();
 
@@ -364,6 +419,12 @@ function onMouseDown(event) {
     } else {
         console.log('🖱️ MOUSE DEBUG: Pointer lock active, handling game input');
         if (event.button === 0) { // Left click
+            // In simulator mode, only allow shooting when scoped
+            if (gameContext.gameMode === 'simulator' && !isScoped) {
+                console.log('🎯 Simulator Mode: Cannot shoot without scoping. Right-click to aim.');
+                showMessage('Cannot shoot from the hip. Right-click to aim.', 2000);
+                return;
+            }
             gameContext.shoot();
         } else if (event.button === 2) { // Right click
             toggleScope(true);
@@ -386,6 +447,16 @@ function onMouseUp(event) {
  * @param {KeyboardEvent} event - The keyboard event.
  */
 function onKeyDown(event) {
+    // If a button has focus, block movement but allow specific interaction keys.
+    // This prevents the player from moving unintentionally after clicking a HUD button.
+    if (document.activeElement.tagName === 'BUTTON') {
+        const allowedKeys = ['KeyE', 'KeyM', 'KeyR', 'KeyC']; // E for Tag, M for Map, R for Scope, C for Kneel
+        if (!allowedKeys.includes(event.code)) {
+            console.log(`🎮 KEYDOWN DEBUG: Input blocked as button has focus. Key: ${event.code}`);
+            return; // Block keys like W, A, S, D if a button is focused
+        }
+    }
+
     console.log('🎮 KEYDOWN DEBUG: Key pressed:', event.code, 'Key:', event.key);
     console.log('🎮 KEYDOWN DEBUG: Target:', event.target?.tagName || 'unknown');
     console.log('🎮 KEYDOWN DEBUG: Event details:', {
@@ -401,16 +472,15 @@ function onKeyDown(event) {
         case 'KeyA': moveLeft = true; break;
         case 'KeyD': moveRight = true; break;
         case 'KeyC': 
-            isKneeling = !isKneeling;
-            gameContext.kneelingIndicatorElement.style.display = isKneeling ? 'block' : 'none';
+            toggleKneel();
             break;
         case 'KeyE': 
-            console.log('🔑 KEY DEBUG: E key pressed, canTag:', gameContext.canTag);
+            console.log('🔑 KEY DEBUG: E key pressed, canTag:', gameContext.canTag, ' - Timestamp:', Date.now());
             if (gameContext.canTag) {
-                console.log('🔑 KEY DEBUG: Calling gameContext.tagDeer()');
+                console.log('🔑 KEY DEBUG: Calling gameContext.tagDeer() - Timestamp:', Date.now());
                 gameContext.tagDeer();
             } else {
-                console.log('🔑 KEY DEBUG: Cannot tag - canTag is false');
+                console.log('🔑 KEY DEBUG: Cannot tag - canTag is false - Timestamp:', Date.now());
             }
             break;
         case 'KeyR': 
@@ -471,6 +541,27 @@ function toggleScope(active) {
         gameContext.crosshairElement.style.display = 'block';
     }
     gameContext.camera.updateProjectionMatrix();
+}
+
+function toggleKneel() {
+    isKneeling = !isKneeling;
+    const height = isKneeling ? PLAYER_KNEEL_HEIGHT : PLAYER_EYE_HEIGHT;
+    gameContext.camera.position.set(0, height, 0);
+    console.log('🧎 PLAYER: ' + (isKneeling ? 'Kneeling' : 'Standing') + ', Camera height: ' + height);
+    console.log('🧎 PLAYER DEBUG: Attempting to update status indicator, isKneeling: ' + isKneeling);
+    // Update status indicator
+    if (gameContext.ui && typeof gameContext.ui.updateStatusIndicator === 'function') {
+        gameContext.ui.updateStatusIndicator(isKneeling);
+    } else {
+        console.error('🧎 PLAYER ERROR: UI module or updateStatusIndicator function not available');
+        // Fallback direct update
+        const indicator = document.getElementById('status-indicator');
+        if (indicator) {
+            indicator.textContent = 'Kneeling';
+            indicator.style.display = isKneeling ? 'block' : 'none';
+            console.log('🧎 PLAYER FALLBACK: Directly updated status indicator');
+        }
+    }
 }
 
 /**

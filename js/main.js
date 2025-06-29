@@ -382,49 +382,66 @@ function applyRifleRecoil() {
 }
 
 function tagDeer() {
-    console.log('🏷️ TAG DEBUG: killInfo check - killInfo exists:', !!gameContext.killInfo, 'deer tagged:', gameContext.deer.tagged);
-    if (gameContext.deer.tagged) {
-        console.log('🏷️ TAG DEBUG: Tagging blocked - deer already tagged');
-        return;
-    }
-    if (!gameContext.killInfo) {
-        console.log('🏷️ TAG DEBUG: killInfo missing, but allowing tagging since canTag is true');
-        // Fallback: If killInfo is missing but canTag is true, allow tagging for respawned deer
-        // This ensures tagging works even if killInfo state is not set properly after respawn
-    }
-    
-    const tagBonus = 25;
-    gameContext.score += tagBonus;
-    gameContext.scoreValueElement.textContent = gameContext.score;
-    
-    const shotScoreStr = gameContext.killInfo ? (gameContext.killInfo.score >= 0 ? `+${gameContext.killInfo.score}` : `${gameContext.killInfo.score}`) : '';
-    const finalMessage = gameContext.killInfo ? `${gameContext.killInfo.message} (${shotScoreStr}) | Tag Bonus: +${tagBonus}` : `Tag Bonus: +${tagBonus}`;
-    showMessage(finalMessage);
-    logEvent("Deer Tagged", `${finalMessage}`, {
-        score: tagBonus,
-        bonusType: 'tag'
-    });
-    
-    gameContext.dailyKillInfo = { ...gameContext.huntLog, ...gameContext.killInfo };
-    gameContext.huntLog = {}; 
-    gameContext.killInfo = null;
-    gameContext.canTag = false;
-    gameContext.deer.tagged = true; 
-    if(gameContext.interactionPromptElement) gameContext.interactionPromptElement.style.display = 'none';
-    
-    // REMOVED WORKAROUND: Previously re-added keydown listener after tagging to prevent audio system interference.
-    // This is no longer necessary as the audio system now uses { once: true } for its listeners,
-    // ensuring no interference with the main game controls.
-    
-    // Wait 10 seconds before spawning a new deer
-    setTimeout(() => {
-        gameContext.deer.respawn();
-        // CRITICAL FIX: Reset canTag flag after respawn to ensure it's re-evaluated for the new deer
-        gameContext.canTag = false;
-        // CRITICAL FIX: Ensure killInfo is null for a new deer to prevent stale state from blocking tagging
-        console.log('🏷️ RESPAWN DEBUG: Clearing killInfo after respawn, previous value:', gameContext.killInfo);
+    console.log('🏷️ TAG DEBUG: Attempting to tag deer - Start of function');
+    try {
+        console.log('🏷️ TAG DEBUG: killInfo check - killInfo exists:', !!gameContext.killInfo, 'deer tagged:', gameContext.deer.tagged);
+        if (gameContext.deer.tagged) {
+            console.log('🏷️ TAG DEBUG: Tagging blocked - deer already tagged');
+            return;
+        }
+        if (!gameContext.killInfo) {
+            console.log('🏷️ TAG DEBUG: killInfo missing, but allowing tagging since canTag is true');
+            // Fallback: If killInfo is missing but canTag is true, allow tagging for respawned deer
+            // This ensures tagging works even if killInfo state is not set properly after respawn
+        }
+        
+        console.log('🏷️ TAG DEBUG: Updating score and UI');
+        const tagBonus = 25;
+        gameContext.score += tagBonus;
+        gameContext.scoreValueElement.textContent = gameContext.score;
+        
+        const shotScoreStr = gameContext.killInfo ? (gameContext.killInfo.score >= 0 ? `+${gameContext.killInfo.score}` : `${gameContext.killInfo.score}`) : '';
+        const finalMessage = gameContext.killInfo ? `${gameContext.killInfo.message} (${shotScoreStr}) | Tag Bonus: +${tagBonus}` : `Tag Bonus: +${tagBonus}`;
+        showMessage(finalMessage);
+        logEvent("Deer Tagged", `${finalMessage}`, {
+            score: tagBonus,
+            bonusType: 'tag'
+        });
+        console.log('🏷️ TAG CONFIRMATION: Deer successfully tagged! Score updated: ' + gameContext.score);
+        
+        console.log('🏷️ TAG DEBUG: Updating game state');
+        gameContext.dailyKillInfo = { ...gameContext.huntLog, ...gameContext.killInfo };
+        gameContext.huntLog = {}; 
         gameContext.killInfo = null;
-    }, 10000); // 10 seconds delay
+        gameContext.canTag = false;
+        gameContext.deer.tagged = true; 
+        if(gameContext.interactionPromptElement) gameContext.interactionPromptElement.style.display = 'none';
+        
+        console.log('🏷️ TAG DEBUG: State after tagging - canTag:', gameContext.canTag, 'tagged:', gameContext.deer.tagged, 'killInfo:', gameContext.killInfo);
+        
+        // REMOVED WORKAROUND: Previously re-added keydown listener after tagging to prevent audio system interference.
+        // This is no longer necessary as the audio system now uses { once: true } for its listeners,
+        // ensuring no interference with the main game controls.
+        
+        console.log('🏷️ TAG DEBUG: Scheduling respawn');
+        // Wait 10 seconds before spawning a new deer
+        setTimeout(() => {
+            try {
+                gameContext.deer.respawn();
+                // CRITICAL FIX: Reset canTag flag after respawn to ensure it's re-evaluated for the new deer
+                gameContext.canTag = false;
+                // CRITICAL FIX: Ensure killInfo is null for a new deer to prevent stale state from blocking tagging
+                console.log('🏷️ RESPAWN DEBUG: Clearing killInfo after respawn, previous value:', gameContext.killInfo);
+                gameContext.killInfo = null;
+            } catch (respawnError) {
+                console.error('🏷️ ERROR: Exception during deer respawn:', respawnError);
+            }
+        }, 10000); // 10 seconds delay
+        
+        console.log('🏷️ TAG DEBUG: End of tagDeer function');
+    } catch (error) {
+        console.error('🏷️ ERROR: Exception in tagDeer function:', error);
+    }
 }
 
 async function handleEndOfDay() {
@@ -969,6 +986,27 @@ async function init(worldConfig) {
     document.addEventListener('contextmenu', (event) => event.preventDefault());
     showMessage("Welcome to Fairchase! Use WASD to move, Mouse to look, R to scope, Click to shoot.", 5000);
     initializeDayReport();
+    
+    // New test function for status indicator
+    window.testStatusIndicator = function() {
+        const indicator = document.getElementById('status-indicator');
+        if (indicator) {
+            const currentDisplay = indicator.style.display;
+            indicator.style.display = currentDisplay === 'none' ? 'block' : 'none';
+            indicator.style.position = 'fixed';
+            indicator.style.top = '80px';
+            indicator.style.left = '50%';
+            indicator.style.transform = 'translateX(-50%)';
+            indicator.style.zIndex = '9999';
+            console.log('🧎 STATUS INDICATOR TEST: Toggled to ' + (currentDisplay === 'none' ? 'visible (Kneeling)' : 'hidden'));
+            const computedStyle = window.getComputedStyle(indicator);
+            console.log('🧎 STATUS INDICATOR TEST: Computed display: ' + computedStyle.display);
+            console.log('🧎 STATUS INDICATOR TEST: Computed z-index: ' + computedStyle.zIndex);
+        } else {
+            console.error('🧎 STATUS INDICATOR TEST ERROR: Element not found');
+        }
+    };
+    console.log('🧎 STATUS INDICATOR: Test function added - run window.testStatusIndicator() in console to toggle visibility');
 }
 
 // --- GAME ENTRY POINT ---
@@ -976,37 +1014,6 @@ document.addEventListener('DOMContentLoaded', async () => {
     // Make gameContext globally accessible for debugging
     window.gameContext = gameContext;
     
-    // Populate UI Elements in Context
-    gameContext.timeValueElement = document.getElementById('clock-value');
-    gameContext.scoreValueElement = document.getElementById('score-value');
-    gameContext.compassElement = document.getElementById('compass-value');
-    gameContext.interactionPromptElement = document.getElementById('interaction-prompt');
-    gameContext.messageElement = document.getElementById('message');
-    gameContext.sleepOverlay = document.getElementById('sleep-overlay');
-    gameContext.sleepTimerElement = document.getElementById('sleep-timer');
-    gameContext.mainMenu = document.getElementById('main-menu-container');
-    gameContext.worldSelect = document.getElementById('world-select');
-    gameContext.startGameButton = document.getElementById('start-button');
-    gameContext.scopeOverlayElement = document.getElementById('scope-overlay');
-    gameContext.kneelingIndicatorElement = document.getElementById('kneeling-indicator');
-    gameContext.crosshairElement = document.getElementById('crosshair');
-    gameContext.reportModalBackdrop = document.getElementById('report-modal-backdrop');
-    gameContext.reportModal = document.getElementById('report-modal');
-    gameContext.reportTitle = document.getElementById('report-title');
-    gameContext.reportContent = document.getElementById('report-content');
-    gameContext.closeReportButton = document.getElementById('close-report-button');
-    gameContext.journalButton = document.getElementById('journal-button');
-    gameContext.mapButton = document.getElementById('map-button');
-    gameContext.mapModalBackdrop = document.getElementById('map-modal-backdrop');
-    gameContext.mapModal = document.getElementById('map-modal');
-    gameContext.closeMapButton = document.getElementById('close-map-button');
-    gameContext.endOfDayModalBackdrop = document.getElementById('end-of-day-modal-backdrop');
-    gameContext.endOfDayModal = document.getElementById('end-of-day-modal');
-    gameContext.endOfDayTitle = document.getElementById('end-of-day-title');
-    gameContext.endOfDayContent = document.getElementById('end-of-day-content');
-    gameContext.continueToNextDayButton = document.getElementById('continue-to-next-day-button');
-    gameContext.mapCanvas = document.getElementById('map-canvas');
-
     // Assign core functions to the context
     gameContext.init = init;
     gameContext.animate = animate;

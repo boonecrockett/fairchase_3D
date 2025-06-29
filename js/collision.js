@@ -398,21 +398,21 @@ class CollisionSystem {
     
     // Collision hitboxes ARE the debug wireframes
 
-    // Toggle hitbox visibility
+    // Toggle hitbox visibility for debugging
     toggleHitboxes() {
         this.debugMode = !this.debugMode;
         console.log(`Hitbox debug mode: ${this.debugMode ? 'ON' : 'OFF'}`);
-        
-        // Update visibility of all existing hitboxes
-        if (window.gameContext && window.gameContext.scene) {
-            window.gameContext.scene.traverse((child) => {
-                if (child.name && child.name.startsWith('hitbox_')) {
-                    child.visible = this.debugMode;
-                }
-            });
-        }
-        
-        return this.debugMode;
+        this.updateHitboxVisibility();
+    }
+    
+    // Update hitbox visibility based on current debug mode
+    updateHitboxVisibility() {
+        // Update visibility for all existing hitboxes
+        this.scene.traverse((child) => {
+            if (child.userData && child.userData.isHitbox) {
+                child.visible = this.debugMode;
+            }
+        });
     }
 
     // Remove debug visualization
