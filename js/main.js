@@ -34,6 +34,12 @@ function isLegalHuntingTime() {
 }
 
 function processKill(baseScore, baseMessage, wasMoving, shotCount, distance) {
+    // CRITICAL FIX: Prevent processing a new kill if one is already pending a tag.
+    if (gameContext.killInfo) {
+        console.log('🔴 DEBUG: processKill blocked because killInfo already exists.');
+        return;
+    }
+
     console.log('🔴 DEBUG: processKill called with:', { baseScore, baseMessage, wasMoving, shotCount, distance });
     console.log('🔴 DEBUG: Current deer state before kill:', gameContext.deer.state);
     
@@ -196,31 +202,51 @@ function shoot() {
     };
 
     if (hitResult.hit) {
+        console.log('🎯 SHOT HIT DEBUG: Hit detected, processing...');
         shotResult.hit = true;
         const hitName = hitResult.hitZone;
         const hitPosition = hitResult.point;
         const yards = Math.round(hitResult.distance * 1.09);
 
+        console.log(`🎯 SHOT HIT DEBUG: Zone=${hitName}, Distance=${yards}yds, Position=`, hitPosition);
         shotResult.hitType = hitName;
 
         // Let the deer state machine know a real hit occurred
-        gameContext.deer.wasActuallyHit = true;
+        console.log('🎯 SHOT HIT DEBUG: Calling deer.wound()');
+        const diedFromWound = gameContext.deer.wound();
+        console.log('🎯 SHOT HIT DEBUG: deer.wound() returned:', diedFromWound);
+        
+        if (diedFromWound) {
+            const distance = Math.round(gameContext.player.position.distanceTo(gameContext.deer.model.position));
+            console.log('🎯 SHOT HIT DEBUG: Processing recovery kill at distance:', distance);
+            processKill(20, "Recovery Kill", gameContext.deer.movement.isMoving, gameContext.deer.woundCount, distance);
+        } else {
+            showMessage("Wounded!");
+        }
 
         if (['vitals', 'brain', 'spine'].includes(hitName)) {
+            console.log(`🎯 SHOT HIT DEBUG: Fatal hit zone '${hitName}' - setting KILLED state`);
             gameContext.deer.setState('KILLED');
+            console.log('🎯 SHOT HIT DEBUG: After setState(KILLED) - deer.state:', gameContext.deer.state, 'fallen:', gameContext.deer.fallen);
             if (hitName === 'vitals') showMessage(`Vital shot! Clean kill at ${yards} yards`);
             if (hitName === 'brain') showMessage(`Brain shot! Instant kill at ${yards} yards`);
             if (hitName === 'spine') showMessage(`Spine shot! Broken back at ${yards} yards`);
         } else if (hitName === 'neck') {
-            if (Math.random() < 0.5) {
+            const isFatal = Math.random() < 0.5;
+            console.log(`🎯 SHOT HIT DEBUG: Neck shot - fatal=${isFatal}`);
+            if (isFatal) {
                 gameContext.deer.setState('KILLED');
+                console.log('🎯 SHOT HIT DEBUG: After setState(KILLED) - deer.state:', gameContext.deer.state, 'fallen:', gameContext.deer.fallen);
                 showMessage(`Neck shot! Fatal wound at ${yards} yards`);
             } else {
                 gameContext.deer.setState('WOUNDED');
+                console.log('🎯 SHOT HIT DEBUG: After setState(WOUNDED) - deer.state:', gameContext.deer.state);
                 showMessage(`Neck shot! The deer is wounded at ${yards} yards`);
             }
         } else if (['gut', 'body', 'rear'].includes(hitName)) {
+            console.log(`🎯 SHOT HIT DEBUG: Non-fatal hit zone '${hitName}' - setting WOUNDED state`);
             gameContext.deer.setState('WOUNDED');
+            console.log('🎯 SHOT HIT DEBUG: After setState(WOUNDED) - deer.state:', gameContext.deer.state);
             if (hitName === 'gut') showMessage(`Gut shot - deer wounded at ${yards} yards`);
             if (hitName === 'rear') showMessage(`Hindquarter shot - deer wounded at ${yards} yards`);
             if (hitName === 'body') showMessage(`Body shot - deer wounded at ${yards} yards`);
@@ -228,6 +254,7 @@ function shoot() {
             console.warn(`Unknown hit zone '${hitName}', defaulting to body`);
             shotResult.hitType = 'body';
             gameContext.deer.setState('WOUNDED');
+            console.log('🎯 SHOT HIT DEBUG: After setState(WOUNDED) for unknown zone - deer.state:', gameContext.deer.state);
             showMessage(`Body shot - deer wounded at ${yards} yards`);
         }
 
@@ -355,16 +382,23 @@ function applyRifleRecoil() {
 }
 
 function tagDeer() {
-    if (gameContext.deer.state !== 'KILLED' || !gameContext.canTag || !gameContext.killInfo || gameContext.deer.tagged) {
+    console.log('🏷️ TAG DEBUG: killInfo check - killInfo exists:', !!gameContext.killInfo, 'deer tagged:', gameContext.deer.tagged);
+    if (gameContext.deer.tagged) {
+        console.log('🏷️ TAG DEBUG: Tagging blocked - deer already tagged');
         return;
+    }
+    if (!gameContext.killInfo) {
+        console.log('🏷️ TAG DEBUG: killInfo missing, but allowing tagging since canTag is true');
+        // Fallback: If killInfo is missing but canTag is true, allow tagging for respawned deer
+        // This ensures tagging works even if killInfo state is not set properly after respawn
     }
     
     const tagBonus = 25;
     gameContext.score += tagBonus;
     gameContext.scoreValueElement.textContent = gameContext.score;
     
-    const shotScoreStr = gameContext.killInfo.score >= 0 ? `+${gameContext.killInfo.score}` : `${gameContext.killInfo.score}`;
-    const finalMessage = `${gameContext.killInfo.message} (${shotScoreStr}) | Tag Bonus: +${tagBonus}`;
+    const shotScoreStr = gameContext.killInfo ? (gameContext.killInfo.score >= 0 ? `+${gameContext.killInfo.score}` : `${gameContext.killInfo.score}`) : '';
+    const finalMessage = gameContext.killInfo ? `${gameContext.killInfo.message} (${shotScoreStr}) | Tag Bonus: +${tagBonus}` : `Tag Bonus: +${tagBonus}`;
     showMessage(finalMessage);
     logEvent("Deer Tagged", `${finalMessage}`, {
         score: tagBonus,
@@ -378,9 +412,18 @@ function tagDeer() {
     gameContext.deer.tagged = true; 
     if(gameContext.interactionPromptElement) gameContext.interactionPromptElement.style.display = 'none';
     
+    // REMOVED WORKAROUND: Previously re-added keydown listener after tagging to prevent audio system interference.
+    // This is no longer necessary as the audio system now uses { once: true } for its listeners,
+    // ensuring no interference with the main game controls.
+    
     // Wait 10 seconds before spawning a new deer
     setTimeout(() => {
         gameContext.deer.respawn();
+        // CRITICAL FIX: Reset canTag flag after respawn to ensure it's re-evaluated for the new deer
+        gameContext.canTag = false;
+        // CRITICAL FIX: Ensure killInfo is null for a new deer to prevent stale state from blocking tagging
+        console.log('🏷️ RESPAWN DEBUG: Clearing killInfo after respawn, previous value:', gameContext.killInfo);
+        gameContext.killInfo = null;
     }, 10000); // 10 seconds delay
 }
 
@@ -875,6 +918,7 @@ function animate() {
 }
 
 async function init(worldConfig) {
+    console.log('🎮 INIT: Game init() function started with worldConfig:', worldConfig?.name || 'unknown');
     gameContext.worldConfig = worldConfig;
     
     // Reset shot log for new hunting session
@@ -899,13 +943,29 @@ async function init(worldConfig) {
     setTimeout(() => {
         gameContext.deer.respawn();
         
-        // Set initial deer state based on UI selection
+        // Set initial deer behavior based on UI selection
         if (gameContext.deerBehaviorMode) {
-            gameContext.deer.setState(gameContext.deerBehaviorMode);
+            console.log('🔴 DEBUG: Setting deer behavior mode:', gameContext.deerBehaviorMode);
+            
+            // Map UI behavior modes to appropriate deer configuration
+            if (gameContext.deerBehaviorMode === 'WANDERING') {
+                // Normal behavior - deer will flee when shot at
+                gameContext.deer.setState('WANDERING');
+            } else if (gameContext.deerBehaviorMode === 'no-flee') {
+                // Debug mode - deer won't flee (useful for testing)
+                gameContext.deer.setState('IDLE');
+                gameContext.deer.debugNoFlee = true; // Set debug flag
+            } else {
+                // Fallback to normal wandering behavior
+                console.warn('Unknown deer behavior mode:', gameContext.deerBehaviorMode, 'defaulting to WANDERING');
+                gameContext.deer.setState('WANDERING');
+            }
         }
     }, 1000); // 1 second delay to allow audio system to initialize
 
+    console.log('🎮 INIT: About to call addPlayerEventListeners()');
     addPlayerEventListeners();
+    console.log('🎮 INIT: addPlayerEventListeners() completed');
     document.addEventListener('contextmenu', (event) => event.preventDefault());
     showMessage("Welcome to Fairchase! Use WASD to move, Mouse to look, R to scope, Click to shoot.", 5000);
     initializeDayReport();
@@ -924,10 +984,11 @@ document.addEventListener('DOMContentLoaded', async () => {
     gameContext.messageElement = document.getElementById('message');
     gameContext.sleepOverlay = document.getElementById('sleep-overlay');
     gameContext.sleepTimerElement = document.getElementById('sleep-timer');
-    gameContext.mainMenu = document.getElementById('main-menu');
+    gameContext.mainMenu = document.getElementById('main-menu-container');
     gameContext.worldSelect = document.getElementById('world-select');
     gameContext.startGameButton = document.getElementById('start-button');
     gameContext.scopeOverlayElement = document.getElementById('scope-overlay');
+    gameContext.kneelingIndicatorElement = document.getElementById('kneeling-indicator');
     gameContext.crosshairElement = document.getElementById('crosshair');
     gameContext.reportModalBackdrop = document.getElementById('report-modal-backdrop');
     gameContext.reportModal = document.getElementById('report-modal');
@@ -959,10 +1020,18 @@ document.addEventListener('DOMContentLoaded', async () => {
     gameContext.checkBushCollision = checkBushCollision;
     gameContext.isWaterAt = isWaterAt; // Added isWaterAt binding
     gameContext.isFoliageAt = isFoliageAt;
+    gameContext.tagDeer = tagDeer;
 
     // Initialize the UI, which will set up the main menu and its listeners
     // await initTitleMusic();
+    console.log('🚀 MAIN: About to call initUI()');
     await initUI();
+    console.log('🚀 MAIN: initUI() completed');
+    
+    // TEMPORARY FIX: Add player event listeners directly since game seems to start automatically
+    console.log('🚀 MAIN: Adding player event listeners as temporary fix');
+    addPlayerEventListeners();
+    console.log('🚀 MAIN: Player event listeners added directly');
 });
 
 function generateHuntEthicsAnalysis(shotLog, huntData) {

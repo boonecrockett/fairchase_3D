@@ -29,6 +29,9 @@
         <div id="clock-container" class="hud">
             Time: <span id="clock-value">04:30</span>
         </div>
+        <div id="kneeling-indicator" class="hud initially-hidden">
+            Kneeling
+        </div>
         <div id="scoring-guide-container" class="hud collapsible-container initially-hidden">
             <div id="scoring-guide-header" class="collapsible-header">
                 <span>Scoring Guide</span>
@@ -66,6 +69,7 @@
         </div>
          <button id="report-button" class="hud initially-hidden" style="margin-top:10px; width: 240px; cursor: pointer;">View Report</button>
          <button id="map-button" class="hud initially-hidden" style="margin-top:10px; width: 240px; cursor: pointer;">View Map</button>
+
     </div>
     
     <div id="message" class="initially-hidden"></div>
@@ -120,7 +124,7 @@
             <div>
                 <div>Deer Behavior:</div>
                 <div>
-                    <input type="radio" id="behavior-normal" name="deer-behavior-mode" value="normal" checked>
+                    <input type="radio" id="behavior-normal" name="deer-behavior-mode" value="WANDERING" checked>
                     <label for="behavior-normal">Normal</label>
                 </div>
                 <div>

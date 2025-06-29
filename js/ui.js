@@ -65,6 +65,7 @@ function animateLoadingBar() {
 }
 
 export async function initUI() {
+    console.log('🎨 UI: initUI() function started');
     // Show main menu container on page load (since it's hidden by default in CSS)
     const mainMenuContainer = document.getElementById('main-menu-container');
     if (mainMenuContainer) {
@@ -107,6 +108,8 @@ export async function initUI() {
         gameContext.mapButton.addEventListener('click', () => showMap());
         gameContext.closeMapButton.addEventListener('click', () => { gameContext.mapModalBackdrop.style.display = 'none'; });
     }
+
+
 
     populateWorldSelector();
 
@@ -160,9 +163,18 @@ export async function initUI() {
             });
             
             // Initialize the game with the selected world and start the animation loop
+            console.log('🎮 START GAME: Button clicked, checking gameContext.init:', !!gameContext.init, 'animate:', !!gameContext.animate);
             if (gameContext.init && gameContext.animate) {
+                console.log('🎮 START GAME: About to call gameContext.init with worldConfig:', worldConfig?.name || 'unknown');
                 await gameContext.init(worldConfig);
+                console.log('🎮 START GAME: gameContext.init completed, starting animation');
                 gameContext.animate();
+            } else {
+                console.error('🎮 START GAME: gameContext.init or gameContext.animate not available!', {
+                    init: !!gameContext.init,
+                    animate: !!gameContext.animate,
+                    gameContext: Object.keys(gameContext)
+                });
             }
         });
     }
@@ -207,20 +219,31 @@ function showReport() {
  * Updates the interaction prompt based on player proximity to a killed deer.
  */
 export function updateInteraction() {
+    // Debug logging to track tagging conditions
+    console.log('DEBUG: Checking tagging conditions - state:', gameContext.deer.state, 'fallen:', gameContext.deer.fallen, 'tagged:', gameContext.deer.tagged);
+    
     if (gameContext.deer.state === 'KILLED' && gameContext.deer.fallen && !gameContext.deer.tagged) {
-        const distance = gameContext.player.position.distanceTo(gameContext.deer.model.position);
+        // Calculate distance on the XZ plane only, ignoring height differences
+        const dx = gameContext.player.position.x - gameContext.deer.model.position.x;
+        const dz = gameContext.player.position.z - gameContext.deer.model.position.z;
+        const distance = Math.sqrt(dx * dx + dz * dz);
+        
+        console.log('DEBUG: Deer is taggable, distance:', distance, 'required:', TAG_INTERACTION_DISTANCE);
         
         if (distance <= TAG_INTERACTION_DISTANCE) {
             gameContext.interactionPromptElement.textContent = 'Press [E] to Tag Deer';
             gameContext.interactionPromptElement.style.display = 'block';
             gameContext.canTag = true;
+            console.log('DEBUG: Tag prompt shown, canTag set to true');
         } else {
             gameContext.interactionPromptElement.style.display = 'none';
             gameContext.canTag = false;
+            console.log('DEBUG: Too far from deer for tagging');
         }
     } else {
         gameContext.interactionPromptElement.style.display = 'none';
         gameContext.canTag = false;
+        console.log('DEBUG: Deer not taggable - conditions not met');
     }
 }
 

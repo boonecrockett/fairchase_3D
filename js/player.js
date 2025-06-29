@@ -7,6 +7,7 @@ import { updateSpatialAudioListener } from './spatial-audio.js';
 
 // --- Player Module Constants ---
 const PLAYER_EYE_HEIGHT = 6.0; // Player camera height relative to player group's origin
+const PLAYER_KNEEL_HEIGHT = 2.5; // Height when kneeling
 const INITIAL_PLAYER_X = 0;
 const INITIAL_PLAYER_Z = 10;
 const PLAYER_MOVE_SPEED = 6.05; // Increased by another 10% from 5.5 to 6.05
@@ -16,10 +17,11 @@ const CAMERA_FOV_SCOPED = 15;
 
 // Scope sway parameters for realistic breathing/nerves effect
 const SCOPE_SWAY_FREQUENCY = 2.5; // Breathing rate frequency
-const SCOPE_SWAY_AMPLITUDE = 0.0004; // Increased for more natural movement
-const SCOPE_SWAY_NOISE_AMPLITUDE = 0.0005; // Increased for more natural tremor
+const SCOPE_SWAY_AMPLITUDE = 0.00034; // Reduced by 15% for less standing sway
+const SCOPE_SWAY_NOISE_AMPLITUDE = 0.000425; // Reduced by 15% for less standing sway
 const SCOPE_SWAY_NOISE_FREQUENCY = 6.0; // Increased from 4.0 for more varied tremor
-const TREE_BRACE_REDUCTION = 0.08; // When braced against tree, reduce sway to 8% (very steady but with subtle natural motion)
+const TREE_BRACE_REDUCTION = 0.13; // When braced against tree, reduce sway to 13% (increased by 5%)
+const KNEEL_SWAY_REDUCTION = 0.35; // When kneeling, reduce sway to 35%
 
 // --- HUMAN TRACKING CONSTANTS ---
 const HUMAN_TRACK_CONFIG = {
@@ -44,6 +46,7 @@ let isWalking = false;
 let isTreeBraced = false;
 let isWalkingOnWater = false;
 let isWalkingOnFoliage = false;
+let isKneeling = false;
 
 // --- EXPORTED FUNCTIONS ---
 
@@ -51,7 +54,12 @@ let isWalkingOnFoliage = false;
  * Creates the player object, sets its initial position, and adds it to the scene.
  * The player is a THREE.Group containing the camera.
  */
-export function createPlayer() {
+export function createPlayer(camera, scene) {
+    // Ensure kneeling indicator is hidden on initialization
+    if (gameContext.kneelingIndicatorElement) {
+        gameContext.kneelingIndicatorElement.style.display = 'none';
+    }
+
     gameContext.player = new THREE.Group();
     gameContext.camera.position.set(0, PLAYER_EYE_HEIGHT, 0); // Player height relative to the group
     gameContext.player.add(gameContext.camera);
@@ -68,11 +76,51 @@ export function createPlayer() {
  * Adds all necessary event listeners for player controls (keyboard and mouse).
  */
 export function addPlayerEventListeners() {
+    console.log('🎮 SETUP: Adding player event listeners');
+    
+    // Ensure document has focus for key events
+    if (document.hasFocus && !document.hasFocus()) {
+        console.log('🎮 FOCUS: Document does not have focus, attempting to focus');
+        window.focus();
+    }
+    
+    // Add global test listener to debug keyboard events
+    document.addEventListener('keydown', (event) => {
+        console.log('🔥 GLOBAL TEST: Keyboard event detected:', event.code, event.key, 'Target:', event.target?.tagName);
+    }, true); // Use capture phase
+    
+    console.log('🎮 SETUP: Adding keydown event listener');
     document.addEventListener('keydown', onKeyDown, false);
+    console.log('🎮 SETUP: Keydown event listener added');
+    
+    // Store the listener function globally so we can re-add it if needed
+    window.gameKeydownListener = onKeyDown;
     document.addEventListener('keyup', onKeyUp, false);
     document.addEventListener('mousemove', onMouseMove, false);
     document.addEventListener('mousedown', onMouseDown, false);
     document.addEventListener('mouseup', onMouseUp, false);
+    
+    // Ensure focus on click to enable key events
+    document.addEventListener('click', function() {
+        console.log('🎮 FOCUS: Click detected, ensuring document focus');
+        document.activeElement.blur(); // Blur any other focused element
+        window.focus(); // Force focus back to the window
+    }, false);
+
+    // Additional aggressive focus check on pointer lock change to ensure input is captured
+    document.addEventListener('pointerlockchange', function() {
+        console.log('🎮 FOCUS: Pointer lock change detected, forcing focus');
+        window.focus();
+    }, false);
+
+    // Periodically ensure the keydown listener is active to catch any removals by other code
+    setInterval(function() {
+        if (window.gameKeydownListener) {
+            console.log('🎮 LISTENER DEBUG: Ensuring keydown listener is active');
+            document.removeEventListener('keydown', window.gameKeydownListener, false);
+            document.addEventListener('keydown', window.gameKeydownListener, false);
+        }
+    }, 5000); // Check every 5 seconds
 }
 
 /**
@@ -90,7 +138,13 @@ export function updatePlayer() {
 
     // Apply rotation to velocity vector
     velocity.applyQuaternion(gameContext.player.quaternion);
-    velocity.normalize().multiplyScalar(PLAYER_MOVE_SPEED * delta);
+
+    // Prevent movement when kneeling, otherwise calculate velocity
+    if (isKneeling) {
+        velocity.set(0, 0, 0);
+    } else {
+        velocity.normalize().multiplyScalar(PLAYER_MOVE_SPEED * delta);
+    }
 
     if (velocity.lengthSq() > 0) {
         // Store previous position for velocity calculation
@@ -132,8 +186,12 @@ export function updatePlayer() {
     }
 
     // Update player height based on terrain
-    const newHeight = gameContext.getHeightAt(gameContext.player.position.x, gameContext.player.position.z);
-    gameContext.player.position.y = newHeight;
+    const targetY = gameContext.getHeightAt(gameContext.player.position.x, gameContext.player.position.z);
+    gameContext.player.position.y = targetY;
+
+    // Adjust camera height for kneeling
+    const targetEyeHeight = isKneeling ? PLAYER_KNEEL_HEIGHT : PLAYER_EYE_HEIGHT;
+    gameContext.camera.position.y = THREE.MathUtils.lerp(gameContext.camera.position.y, targetEyeHeight, 0.1);
 
     // Check if player is walking on water (only when moving)
     const isOnWater = velocity.lengthSq() > 0 ? gameContext.isWaterAt(gameContext.player.position.x, gameContext.player.position.z) : isWalkingOnWater;
@@ -213,16 +271,26 @@ export function updatePlayer() {
         let microAdjustX = (Math.random() < 0.1) ? (Math.random() - 0.5) * SCOPE_SWAY_NOISE_AMPLITUDE * 0.5 : 0;
         let microAdjustY = (Math.random() < 0.1) ? (Math.random() - 0.5) * SCOPE_SWAY_NOISE_AMPLITUDE * 0.5 : 0;
         
-        // Apply tree bracing reduction
+        // Reduce sway if braced against a tree or kneeling
         if (isTreeBraced) {
-            swayX *= TREE_BRACE_REDUCTION;
-            swayY *= TREE_BRACE_REDUCTION;
-            noiseX *= TREE_BRACE_REDUCTION;
-            noiseY *= TREE_BRACE_REDUCTION;
-            randomShiftX *= TREE_BRACE_REDUCTION;
-            randomShiftY *= TREE_BRACE_REDUCTION;
-            microAdjustX *= TREE_BRACE_REDUCTION;
-            microAdjustY *= TREE_BRACE_REDUCTION;
+            const reduction = isKneeling ? TREE_BRACE_REDUCTION * KNEEL_SWAY_REDUCTION : TREE_BRACE_REDUCTION;
+            swayX *= reduction;
+            swayY *= reduction;
+            noiseX *= reduction;
+            noiseY *= reduction;
+            randomShiftX *= reduction;
+            randomShiftY *= reduction;
+            microAdjustX *= reduction;
+            microAdjustY *= reduction;
+        } else if (isKneeling) {
+            swayX *= KNEEL_SWAY_REDUCTION;
+            swayY *= KNEEL_SWAY_REDUCTION;
+            noiseX *= KNEEL_SWAY_REDUCTION;
+            noiseY *= KNEEL_SWAY_REDUCTION;
+            randomShiftX *= KNEEL_SWAY_REDUCTION;
+            randomShiftY *= KNEEL_SWAY_REDUCTION;
+            microAdjustX *= KNEEL_SWAY_REDUCTION;
+            microAdjustY *= KNEEL_SWAY_REDUCTION;
         }
         
         gameContext.camera.rotation.x += swayY + noiseY + randomShiftY + microAdjustY;
@@ -263,6 +331,9 @@ export function updatePlayer() {
             stopFoliageWalkSound();
         }
     }
+
+    // Debug focus state on every update to catch focus loss issues
+    console.log('🎮 FOCUS DEBUG: Document has focus:', document.hasFocus());
 }
 
 // --- INTERNAL EVENT HANDLERS ---
@@ -272,14 +343,26 @@ export function updatePlayer() {
  * @param {MouseEvent} event - The mouse event.
  */
 function onMouseDown(event) {
-    // Ignore clicks on UI elements to prevent pointer lock
+    console.log('🖱️ MOUSE DEBUG: Click detected, target:', event.target.tagName, 'id:', event.target.id);
+    
+    // Handle UI button clicks normally (don't prevent them)
     if (event.target.tagName === 'BUTTON' || event.target.closest('.modal')) {
-        return;
+        console.log('🖱️ MOUSE DEBUG: UI element clicked, allowing normal event handling');
+        return; // Let the button's event handler work normally
     }
 
+    // Don't request pointer lock if main menu is still visible (game not started)
+    if (gameContext.mainMenu && gameContext.mainMenu.style.display !== 'none') {
+        console.log('🖱️ MOUSE DEBUG: Main menu visible, not requesting pointer lock');
+        return; // Don't capture cursor on title screen
+    }
+
+    // Only request pointer lock for game area clicks when game is running
     if (document.pointerLockElement !== document.body) {
+        console.log('🖱️ MOUSE DEBUG: Requesting pointer lock');
         document.body.requestPointerLock();
     } else {
+        console.log('🖱️ MOUSE DEBUG: Pointer lock active, handling game input');
         if (event.button === 0) { // Left click
             gameContext.shoot();
         } else if (event.button === 2) { // Right click
@@ -303,16 +386,41 @@ function onMouseUp(event) {
  * @param {KeyboardEvent} event - The keyboard event.
  */
 function onKeyDown(event) {
+    console.log('🎮 KEYDOWN DEBUG: Key pressed:', event.code, 'Key:', event.key);
+    console.log('🎮 KEYDOWN DEBUG: Target:', event.target?.tagName || 'unknown');
+    console.log('🎮 KEYDOWN DEBUG: Event details:', {
+        bubbles: event.bubbles,
+        cancelable: event.cancelable,
+        defaultPrevented: event.defaultPrevented,
+        isTrusted: event.isTrusted
+    });
+    
     switch (event.code) {
         case 'KeyW': moveForward = true; break;
         case 'KeyS': moveBackward = true; break;
         case 'KeyA': moveLeft = true; break;
         case 'KeyD': moveRight = true; break;
-        case 'KeyE': if (gameContext.canTag) gameContext.tagDeer(); break;
+        case 'KeyC': 
+            isKneeling = !isKneeling;
+            gameContext.kneelingIndicatorElement.style.display = isKneeling ? 'block' : 'none';
+            break;
+        case 'KeyE': 
+            console.log('🔑 KEY DEBUG: E key pressed, canTag:', gameContext.canTag);
+            if (gameContext.canTag) {
+                console.log('🔑 KEY DEBUG: Calling gameContext.tagDeer()');
+                gameContext.tagDeer();
+            } else {
+                console.log('🔑 KEY DEBUG: Cannot tag - canTag is false');
+            }
+            break;
+        case 'KeyR': 
+            toggleScope();
+            break;
         case 'KeyM': showSmartphoneMap(); break; // Open smartphone-style map
     }
 }
 
+// ... (rest of the code remains the same)
 /**
  * Handles key up events to stop player movement.
  * @param {KeyboardEvent} event - The keyboard event.
@@ -333,9 +441,14 @@ function onKeyUp(event) {
  */
 function onMouseMove(event) {
     if (document.pointerLockElement === document.body) {
-        gameContext.player.rotation.y -= event.movementX * mouseSensitivity;
-        gameContext.camera.rotation.x -= event.movementY * mouseSensitivity;
-        gameContext.camera.rotation.x = Math.max(-Math.PI / 2, Math.min(Math.PI / 2, gameContext.camera.rotation.x));
+        // Null check to prevent TypeError if camera or player objects are not fully initialized
+        if (gameContext.player && gameContext.camera) {
+            gameContext.player.rotation.y -= event.movementX * mouseSensitivity;
+            gameContext.camera.rotation.x -= event.movementY * mouseSensitivity;
+            gameContext.camera.rotation.x = Math.max(-Math.PI / 2, Math.min(Math.PI / 2, gameContext.camera.rotation.x));
+        } else {
+            console.warn('⚠️ MOUSE MOVE DEBUG: gameContext.player or gameContext.camera is null, skipping rotation update');
+        }
     }
 }
 
