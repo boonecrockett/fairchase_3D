@@ -62,6 +62,9 @@ export function setupScene() {
     gameContext.scene.sun = light;
     gameContext.scene.ambientLight = ambientLight;
 
+    // Create a clock for delta time management
+    gameContext.clock = new THREE.Clock(true); // Auto-start the clock
+
     // Handle window resize events to keep the scene responsive
     window.addEventListener('resize', () => {
         const newWidth = window.innerWidth || 800;

@@ -36,13 +36,9 @@ function isLegalHuntingTime() {
 function processKill(baseScore, baseMessage, wasMoving, shotCount, distance) {
     // CRITICAL FIX: Prevent processing a new kill if one is already pending a tag.
     if (gameContext.killInfo) {
-        console.log('🔴 DEBUG: processKill blocked because killInfo already exists.');
         return;
     }
 
-    console.log('🔴 DEBUG: processKill called with:', { baseScore, baseMessage, wasMoving, shotCount, distance });
-    console.log('🔴 DEBUG: Current deer state before kill:', gameContext.deer.state);
-    
     let finalScore = baseScore;
     let finalMessage = baseMessage;
     let ethical = true;
@@ -51,7 +47,6 @@ function processKill(baseScore, baseMessage, wasMoving, shotCount, distance) {
         finalScore = -50; // Penalty for illegal harvest
         finalMessage = "Unethical Harvest (Out of Hours)";
         ethical = false;
-        console.log('🔴 DEBUG: Illegal hunting time detected');
     }
 
     gameContext.score += finalScore;
@@ -68,9 +63,7 @@ function processKill(baseScore, baseMessage, wasMoving, shotCount, distance) {
     const scoreText = finalScore >= 0 ? ` +${finalScore}` : ` ${finalScore}`;
     showMessage(`${finalMessage}!${scoreText} Points`);
     
-    console.log('🔴 DEBUG: About to set deer state to KILLED');
     gameContext.deer.setState('KILLED');
-    console.log('🔴 DEBUG: Deer state after kill:', gameContext.deer.state);
     const isBraced = getIsTreeBraced();
     logEvent("Deer Killed", `${finalMessage} at ${distance} yards${isBraced ? ' (Braced)' : ''}`, {
         distance: distance,
@@ -92,29 +85,7 @@ function determineHitboxFromPoint(intersectionPoint, deerModel) {
     const localPoint = new THREE.Vector3();
     deerModel.worldToLocal(localPoint.copy(intersectionPoint));
     
-    console.log('DEBUG: Intersection point (world):', intersectionPoint);
-    console.log('DEBUG: Intersection point (local):', localPoint);
-    
     // Check if deer has hitbox property and what's in it
-    console.log('DEBUG: Deer object structure:', {
-        hasModel: !!deer.model,
-        hasHitbox: !!deer.hitbox,
-        modelKeys: deer.model ? Object.keys(deer.model) : 'no model',
-        hitboxKeys: deer.hitbox ? Object.keys(deer.hitbox) : 'no hitbox'
-    });
-    
-    // Show actual contents of deer.hitbox
-    if (deer.hitbox) {
-        console.log('DEBUG: deer.hitbox contents:', deer.hitbox);
-        console.log('DEBUG: deer.hitbox properties:', {
-            config: !!deer.hitbox.config,
-            deer: !!deer.hitbox.deer,
-            vitals: !!deer.hitbox.vitals,
-            gut: !!deer.hitbox.gut,
-            rear: !!deer.hitbox.rear
-        });
-    }
-    
     const hitboxes = ['vitals', 'brain', 'gut', 'rear', 'body'];
     
     for (const hitboxName of hitboxes) {
@@ -122,32 +93,21 @@ function determineHitboxFromPoint(intersectionPoint, deerModel) {
         const hitboxOnModel = deerModel[hitboxName];
         const hitboxOnHitboxObj = deer.hitbox ? deer.hitbox[hitboxName] : null;
         
-        console.log(`DEBUG: ${hitboxName} - on model: ${!!hitboxOnModel}, on hitbox obj: ${!!hitboxOnHitboxObj}`);
-        
         const hitbox = hitboxOnModel || hitboxOnHitboxObj;
         if (hitbox) {
-            console.log(`DEBUG: ${hitboxName} hitbox found - visible: ${hitbox.visible}, name: ${hitbox.name}`);
+            // Get hitbox bounding box in world coordinates
+            const box = new THREE.Box3().setFromObject(hitbox);
             
-            if (hitbox.visible) {
-                // Get hitbox bounding box in world coordinates
-                const box = new THREE.Box3().setFromObject(hitbox);
-                
-                console.log(`DEBUG: ${hitboxName} hitbox bounding box:`, box);
-                console.log(`DEBUG: ${hitboxName} hitbox position:`, hitbox.position);
-                
-                // Check if intersection point is within this hitbox (using world coordinates)
-                if (box.containsPoint(intersectionPoint)) {
-                    console.log(`DEBUG: Manual collision detected in ${hitboxName} hitbox`);
-                    return hitbox;
-                }
+            // Check if intersection point is within this hitbox (using world coordinates)
+            if (box.containsPoint(intersectionPoint)) {
+                return hitbox;
             }
         } else {
-            console.log(`DEBUG: ${hitboxName} hitbox not found on deerModel or deer.hitbox`);
+            // console.log(`DEBUG: ${hitboxName} hitbox not found on deerModel or deer.hitbox`);
         }
     }
     
     // If no specific hitbox contains the point, default to body
-    console.log('DEBUG: Manual collision defaulting to body hitbox');
     return deerModel.body || null;
 }
 
@@ -191,8 +151,6 @@ function shoot() {
     const rayEnd = rayOrigin.clone().add(rayDirection.clone().multiplyScalar(1000));
 
     const hitResult = collisionSystem.raycast(rayOrigin, rayEnd, gameContext.deer);
-    console.log('Physics raycast result:', hitResult);
-
     let shotResult = {
         distance: shotDistanceYards,
         hitType: 'miss',
@@ -202,59 +160,42 @@ function shoot() {
     };
 
     if (hitResult.hit) {
-        console.log('🎯 SHOT HIT DEBUG: Hit detected, processing...');
         shotResult.hit = true;
         const hitName = hitResult.hitZone;
         const hitPosition = hitResult.point;
         const yards = Math.round(hitResult.distance * 1.09);
 
-        console.log(`🎯 SHOT HIT DEBUG: Zone=${hitName}, Distance=${yards}yds, Position=`, hitPosition);
-        shotResult.hitType = hitName;
-
         // Let the deer state machine know a real hit occurred
-        console.log('🎯 SHOT HIT DEBUG: Calling deer.wound()');
-        const diedFromWound = gameContext.deer.wound();
-        console.log('🎯 SHOT HIT DEBUG: deer.wound() returned:', diedFromWound);
+        gameContext.deer.wound();
         
-        if (diedFromWound) {
+        if (gameContext.deer.state === 'KILLED') {
             const distance = Math.round(gameContext.player.position.distanceTo(gameContext.deer.model.position));
-            console.log('🎯 SHOT HIT DEBUG: Processing recovery kill at distance:', distance);
             processKill(20, "Recovery Kill", gameContext.deer.movement.isMoving, gameContext.deer.woundCount, distance);
         } else {
             showMessage("Wounded!");
         }
 
         if (['vitals', 'brain', 'spine'].includes(hitName)) {
-            console.log(`🎯 SHOT HIT DEBUG: Fatal hit zone '${hitName}' - setting KILLED state`);
             gameContext.deer.setState('KILLED');
-            console.log('🎯 SHOT HIT DEBUG: After setState(KILLED) - deer.state:', gameContext.deer.state, 'fallen:', gameContext.deer.fallen);
             if (hitName === 'vitals') showMessage(`Vital shot! Clean kill at ${yards} yards`);
             if (hitName === 'brain') showMessage(`Brain shot! Instant kill at ${yards} yards`);
             if (hitName === 'spine') showMessage(`Spine shot! Broken back at ${yards} yards`);
         } else if (hitName === 'neck') {
             const isFatal = Math.random() < 0.5;
-            console.log(`🎯 SHOT HIT DEBUG: Neck shot - fatal=${isFatal}`);
             if (isFatal) {
                 gameContext.deer.setState('KILLED');
-                console.log('🎯 SHOT HIT DEBUG: After setState(KILLED) - deer.state:', gameContext.deer.state, 'fallen:', gameContext.deer.fallen);
                 showMessage(`Neck shot! Fatal wound at ${yards} yards`);
             } else {
                 gameContext.deer.setState('WOUNDED');
-                console.log('🎯 SHOT HIT DEBUG: After setState(WOUNDED) - deer.state:', gameContext.deer.state);
                 showMessage(`Neck shot! The deer is wounded at ${yards} yards`);
             }
         } else if (['gut', 'body', 'rear'].includes(hitName)) {
-            console.log(`🎯 SHOT HIT DEBUG: Non-fatal hit zone '${hitName}' - setting WOUNDED state`);
             gameContext.deer.setState('WOUNDED');
-            console.log('🎯 SHOT HIT DEBUG: After setState(WOUNDED) - deer.state:', gameContext.deer.state);
             if (hitName === 'gut') showMessage(`Gut shot - deer wounded at ${yards} yards`);
             if (hitName === 'rear') showMessage(`Hindquarter shot - deer wounded at ${yards} yards`);
             if (hitName === 'body') showMessage(`Body shot - deer wounded at ${yards} yards`);
         } else {
-            console.warn(`Unknown hit zone '${hitName}', defaulting to body`);
-            shotResult.hitType = 'body';
             gameContext.deer.setState('WOUNDED');
-            console.log('🎯 SHOT HIT DEBUG: After setState(WOUNDED) for unknown zone - deer.state:', gameContext.deer.state);
             showMessage(`Body shot - deer wounded at ${yards} yards`);
         }
 
@@ -266,7 +207,6 @@ function shoot() {
 
         gameContext.deer.createShotBloodIndicator(hitPosition);
     } else {
-        console.log('Physics raycast: No hit detected');
         shotResult.hitType = 'miss';
         showMessage("Missed!");
         if (gameContext.deer.state !== 'KILLED' && gameContext.deer.state !== 'FLEEING') {
@@ -382,20 +322,15 @@ function applyRifleRecoil() {
 }
 
 function tagDeer() {
-    console.log('🏷️ TAG DEBUG: Attempting to tag deer - Start of function');
     try {
-        console.log('🏷️ TAG DEBUG: killInfo check - killInfo exists:', !!gameContext.killInfo, 'deer tagged:', gameContext.deer.tagged);
         if (gameContext.deer.tagged) {
-            console.log('🏷️ TAG DEBUG: Tagging blocked - deer already tagged');
             return;
         }
         if (!gameContext.killInfo) {
-            console.log('🏷️ TAG DEBUG: killInfo missing, but allowing tagging since canTag is true');
             // Fallback: If killInfo is missing but canTag is true, allow tagging for respawned deer
             // This ensures tagging works even if killInfo state is not set properly after respawn
         }
         
-        console.log('🏷️ TAG DEBUG: Updating score and UI');
         const tagBonus = 25;
         gameContext.score += tagBonus;
         gameContext.scoreValueElement.textContent = gameContext.score;
@@ -407,9 +342,7 @@ function tagDeer() {
             score: tagBonus,
             bonusType: 'tag'
         });
-        console.log('🏷️ TAG CONFIRMATION: Deer successfully tagged! Score updated: ' + gameContext.score);
         
-        console.log('🏷️ TAG DEBUG: Updating game state');
         gameContext.dailyKillInfo = { ...gameContext.huntLog, ...gameContext.killInfo };
         gameContext.huntLog = {}; 
         gameContext.killInfo = null;
@@ -417,13 +350,6 @@ function tagDeer() {
         gameContext.deer.tagged = true; 
         if(gameContext.interactionPromptElement) gameContext.interactionPromptElement.style.display = 'none';
         
-        console.log('🏷️ TAG DEBUG: State after tagging - canTag:', gameContext.canTag, 'tagged:', gameContext.deer.tagged, 'killInfo:', gameContext.killInfo);
-        
-        // REMOVED WORKAROUND: Previously re-added keydown listener after tagging to prevent audio system interference.
-        // This is no longer necessary as the audio system now uses { once: true } for its listeners,
-        // ensuring no interference with the main game controls.
-        
-        console.log('🏷️ TAG DEBUG: Scheduling respawn');
         // Wait 10 seconds before spawning a new deer
         setTimeout(() => {
             try {
@@ -431,14 +357,11 @@ function tagDeer() {
                 // CRITICAL FIX: Reset canTag flag after respawn to ensure it's re-evaluated for the new deer
                 gameContext.canTag = false;
                 // CRITICAL FIX: Ensure killInfo is null for a new deer to prevent stale state from blocking tagging
-                console.log('🏷️ RESPAWN DEBUG: Clearing killInfo after respawn, previous value:', gameContext.killInfo);
                 gameContext.killInfo = null;
             } catch (respawnError) {
                 console.error('🏷️ ERROR: Exception during deer respawn:', respawnError);
             }
         }, 10000); // 10 seconds delay
-        
-        console.log('🏷️ TAG DEBUG: End of tagDeer function');
     } catch (error) {
         console.error('🏷️ ERROR: Exception in tagDeer function:', error);
     }
@@ -861,10 +784,17 @@ function startSleepSequence() {
 }
 
 function updateDayNightCycle() {
-    if (gameContext.isSleeping) return;
+    if (gameContext.isSleeping) {
+        return;
+    }
+    if (!gameContext.clock.running) {
+        gameContext.clock.start();
+    }
     const delta = gameContext.clock.getDelta();
     gameContext.deltaTime = delta; // Store delta time for other modules
-    gameContext.gameTime += delta * GAME_TIME_SPEED_MULTIPLIER;
+    const oldGameTime = gameContext.gameTime;
+    const timeIncrement = Math.max(delta * GAME_TIME_SPEED_MULTIPLIER, 0.0001); // Force minimum increment
+    gameContext.gameTime += timeIncrement;
     if (gameContext.gameTime >= HOURS_IN_DAY) {
         gameContext.gameTime = 0;
         startSleepSequence(); 
@@ -1185,6 +1115,26 @@ function updateTimeDisplay() {
         const minutes = Math.floor((gameContext.gameTime - hours) * 60);
         const timeString = `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}`;
         gameContext.timeValueElement.textContent = timeString;
+    } else {
+        const clockElement = document.getElementById('clock-value');
+        if (clockElement) {
+            const hours = Math.floor(gameContext.gameTime);
+            const minutes = Math.floor((gameContext.gameTime - hours) * 60);
+            const timeString = `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}`;
+            clockElement.textContent = timeString;
+            gameContext.timeValueElement = clockElement;
+        } else {
+            // Periodic retry in case DOM loads later
+            if (!gameContext.clockRetryCount || gameContext.clockRetryCount < 10) {
+                gameContext.clockRetryCount = (gameContext.clockRetryCount || 0) + 1;
+                setTimeout(() => {
+                    const retryElement = document.getElementById('clock-value');
+                    if (retryElement) {
+                        gameContext.timeValueElement = retryElement;
+                    }
+                }, 1000 * gameContext.clockRetryCount);
+            }
+        }
     }
 }
 

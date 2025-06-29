@@ -69,6 +69,12 @@ export async function initUI() {
 
     // Populate UI Elements in Context
     gameContext.timeValueElement = document.getElementById('clock-value');
+    if (!gameContext.timeValueElement) {
+        // Aggressive fallback - retry after a short delay in case DOM isn't fully loaded
+        setTimeout(() => {
+            gameContext.timeValueElement = document.getElementById('clock-value');
+        }, 1000);
+    }
     gameContext.scoreValueElement = document.getElementById('score-value');
     gameContext.compassElement = document.getElementById('compass-value');
     gameContext.interactionPromptElement = document.getElementById('interaction-prompt');
