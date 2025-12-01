@@ -108,11 +108,14 @@ export const gameContext = {
     waterBodies: [],
     drinkingSpots: [],
     trees: null,
+    grass: null,
+    grassClusterPositions: null,
     tracks: [],
     bloodDrops: [],
 
     // Game state
     gameTime: 4.5, // Start at 4:30 AM (30 minutes before legal hunting hours)
+    currentDay: 1, // Current day number
     eveningCrossfadeTriggered: false, // Track whether evening ambiance crossfade has occurred
     morningCrossfadeTriggered: false, // Track whether morning ambiance crossfade has occurred
     gameSpeed: 1,
@@ -162,6 +165,7 @@ export const gameContext = {
     mainMenu: null,
     worldSelect: null,
     gameMode: 'simulator', // Default to simulator mode
+    gameStartedAndReady: false, // Flag to prevent auto pointer lock on game start
     scopeOverlayElement: null,
     crosshairElement: null,
     reportModalBackdrop: null,

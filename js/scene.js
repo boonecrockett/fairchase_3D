@@ -10,31 +10,53 @@ const SHADOW_MAP_SIZE = 2048;
  * Populates the shared gameContext object with essential scene components.
  */
 export function setupScene() {
-    gameContext.scene = new THREE.Scene();
-    gameContext.scene.background = new THREE.Color(DEFAULT_SKY_COLOR);
+    if (!gameContext.scene) {
+        gameContext.scene = new THREE.Scene();
+    }
+    // Initial background is transparent to show title screen
+    // gameContext.scene.background = new THREE.Color(DEFAULT_SKY_COLOR); 
     gameContext.scene.fog = new THREE.Fog(DEFAULT_SKY_COLOR, 50, 200); // color, near, far
 
     // Ensure we have valid dimensions for the camera and renderer
     const width = window.innerWidth || 800;
     const height = window.innerHeight || 600;
     
-    gameContext.camera = new THREE.PerspectiveCamera(75, width / height, 0.1, 1000);
+    if (!gameContext.camera) {
+        gameContext.camera = new THREE.PerspectiveCamera(75, width / height, 0.1, 1000);
+    }
 
-    gameContext.renderer = new THREE.WebGLRenderer({ antialias: true });
-    gameContext.renderer.setSize(width, height);
-    gameContext.renderer.shadowMap.enabled = true;
-    gameContext.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-    
-    // Enhanced shadow settings for softer, more natural shadows
-    gameContext.renderer.shadowMap.autoUpdate = true;
-    gameContext.renderer.outputColorSpace = THREE.SRGBColorSpace;
-    
-    // Ensure the canvas is properly styled
-    gameContext.renderer.domElement.style.display = 'block';
-    gameContext.renderer.domElement.style.width = '100%';
-    gameContext.renderer.domElement.style.height = '100%';
-    
-    document.body.appendChild(gameContext.renderer.domElement);
+    // Enable alpha for transparency
+    if (!gameContext.renderer) {
+        gameContext.renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+        gameContext.renderer.setClearColor(0x000000, 0); // Transparent background
+        gameContext.renderer.setSize(width, height);
+        gameContext.renderer.shadowMap.enabled = true;
+        gameContext.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+        
+        // Enhanced shadow settings for softer, more natural shadows
+        gameContext.renderer.shadowMap.autoUpdate = true;
+        gameContext.renderer.outputColorSpace = THREE.SRGBColorSpace;
+        
+        // Ensure the canvas is properly styled
+        gameContext.renderer.domElement.style.display = 'block';
+        gameContext.renderer.domElement.style.width = '100%';
+        gameContext.renderer.domElement.style.height = '100%';
+        
+        document.body.appendChild(gameContext.renderer.domElement);
+
+        // Handle window resize events to keep the scene responsive
+        window.addEventListener('resize', () => {
+            const newWidth = window.innerWidth || 800;
+            const newHeight = window.innerHeight || 600;
+            if (gameContext.camera) {
+                gameContext.camera.aspect = newWidth / newHeight;
+                gameContext.camera.updateProjectionMatrix();
+            }
+            if (gameContext.renderer) {
+                gameContext.renderer.setSize(newWidth, newHeight);
+            }
+        }, false);
+    }
     
     const light = new THREE.DirectionalLight(0xffffff, 1);
     light.position.set(100, 100, 50);
@@ -63,16 +85,11 @@ export function setupScene() {
     gameContext.scene.ambientLight = ambientLight;
 
     // Create a clock for delta time management
-    gameContext.clock = new THREE.Clock(true); // Auto-start the clock
-
-    // Handle window resize events to keep the scene responsive
-    window.addEventListener('resize', () => {
-        const newWidth = window.innerWidth || 800;
-        const newHeight = window.innerHeight || 600;
-        gameContext.camera.aspect = newWidth / newHeight;
-        gameContext.camera.updateProjectionMatrix();
-        gameContext.renderer.setSize(newWidth, newHeight);
-    }, false);
+    if (!gameContext.clock) {
+        gameContext.clock = new THREE.Clock(true); // Auto-start the clock
+    } else {
+        gameContext.clock.start();
+    }
 }
 
 /**

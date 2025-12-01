@@ -64,10 +64,10 @@ export class DeerEffects {
 
         track.position.copy(this.deer.model.position);
         
-        // Add subtle left/right randomization (max half the width of a track)
+        // Add subtle left/right randomization (max quarter the width of a track)
         const trackWidth = this.config.tracking.trackShapeRadius * 2;
-        const maxOffset = trackWidth * 0.5; // Half the width of a track
-        const randomOffsetX = (Math.random() - 0.5) * maxOffset; // Random between -maxOffset/2 and +maxOffset/2
+        const maxOffset = trackWidth * 0.25; // Quarter the width of a track for less randomization
+        const randomOffsetX = (Math.random() - 0.5) * maxOffset; // Random between -maxOffset/4 and +maxOffset/4
         const randomOffsetZ = (Math.random() - 0.5) * maxOffset;
         
         track.position.x += randomOffsetX;
@@ -150,9 +150,9 @@ export class DeerEffects {
         const bloodDropGeometry = new THREE.PlaneGeometry(randomDropSize, randomDropSize);
         const drop = new THREE.Mesh(bloodDropGeometry, this.bloodDropMaterial.clone());
 
-        // Randomize position (±2 units left/right/forward/backward from deer position)
-        const randomOffsetX = (Math.random() - 0.5) * 4; // -2 to +2 units (reduced from 20 to 4)
-        const randomOffsetZ = (Math.random() - 0.5) * 4; // -2 to +2 units (reduced from 20 to 4)
+        // Randomize position (±1 units left/right/forward/backward from deer position)
+        const randomOffsetX = (Math.random() - 0.5) * 2; // -1 to +1 units (reduced from 4 to 2)
+        const randomOffsetZ = (Math.random() - 0.5) * 2; // -1 to +1 units (reduced from 4 to 2)
         
         drop.position.copy(this.deer.model.position);
         drop.position.x += randomOffsetX;
@@ -167,6 +167,10 @@ export class DeerEffects {
 
         this.lastBloodDropPosition.copy(this.deer.model.position);
         this.bloodDrops.push({ mesh: drop, creationTime: gameContext.clock.getElapsedTime() });
+        
+        // Store blood drop position for GPS map
+        if (!gameContext.bloodDrops) gameContext.bloodDrops = [];
+        gameContext.bloodDrops.push({ x: drop.position.x, z: drop.position.z });
         
         // Ensure scene exists before adding
         if (gameContext.scene) {

@@ -3,6 +3,7 @@
 // Replaces manual hitbox system with robust collision detection
 
 import { deerConfig } from './deer-config.js';
+import { gameContext } from './context.js';
 import * as THREE from 'three';
 
 class CollisionSystem {
@@ -27,7 +28,7 @@ class CollisionSystem {
         }
 
         // Create hitbox meshes for each hit zone using current config
-        const hitZones = ['vitals', 'gut', 'rear', 'brain', 'spine', 'neck'];
+        const hitZones = ['vitals', 'gut', 'rear', 'brain', 'spine', 'neck', 'shoulderLeft', 'shoulderRight'];
         const hitboxes = {};
         
         hitZones.forEach(zoneName => {
@@ -110,7 +111,10 @@ class CollisionSystem {
                 gut: 0x00FF00,       // Bright green  
                 rear: 0x0000FF,      // Bright blue
                 brain: 0xFFFF00,     // Bright yellow
-                spine: 0xFF00FF      // Magenta
+                spine: 0xFF00FF,     // Magenta
+                neck: 0x00FFFF,      // Cyan
+                shoulderLeft: 0xFFA500,  // Orange
+                shoulderRight: 0xFFA500  // Orange
             };
             
             const material = new THREE.MeshBasicMaterial({
@@ -150,181 +154,37 @@ class CollisionSystem {
             // Add to deer model so it inherits position/rotation automatically
             deer.model.add(hitbox);
             hitboxes[zoneName] = hitbox;
-            
-            console.log(`Created collision hitbox for ${zoneName}:`, {
-                size: config.size,
-                offset: config.offset
-            });
         });
 
         deer.hitboxes = hitboxes;
         deer.hitboxMeshes = Object.values(hitboxes);
 
         // Hitboxes are now always visible as wireframes - no separate debug system needed
-        console.log('🔴 DEBUG: Collision hitboxes created as visible wireframes for debugging');
+        // console.log('🔴 DEBUG: Collision hitboxes created as visible wireframes for debugging');
     }
 
     // Perform raycast and return hit information
     raycast(from, to, deer) {
         if (!deer || !deer.hitboxMeshes || deer.hitboxMeshes.length === 0) {
-            console.log('🔴 DEBUG: No hitboxMeshes found for raycast');
             return { hit: false, hitZone: null, distance: null };
         }
-
-        // Perform raycast using debug hitboxes (which ARE the collision hitboxes)
-        console.log('DEBUG: Raycast called with deer:', deer);
-        console.log('DEBUG: deer.hitboxMeshes exists:', !!deer.hitboxMeshes);
-        console.log('DEBUG: deer.hitboxMeshes length:', deer.hitboxMeshes.length);
 
         // Set up raycaster
         const direction = new THREE.Vector3().subVectors(to, from).normalize();
         const maxDistance = from.distanceTo(to);
         this.raycaster.set(from, direction);
         this.raycaster.far = maxDistance;
-        console.log('DEBUG: Raycaster setup - from:', from, 'direction:', direction, 'maxDistance:', maxDistance);
-        console.log('DEBUG: Raycaster near/far:', this.raycaster.near, this.raycaster.far);
-        console.log('DEBUG: Testing intersection with', deer.hitboxMeshes.length, 'hitbox meshes');
         
-        // Debug: Calculate distances from player to each hitbox center
-        console.log('DEBUG: Player to hitbox distances:');
-        deer.hitboxMeshes.forEach((hitbox, index) => {
-            const hitZone = hitbox.userData.hitZone || 'unknown';
-            const hitboxWorldPos = new THREE.Vector3();
-            hitbox.getWorldPosition(hitboxWorldPos);
-            const distanceToPlayer = from.distanceTo(hitboxWorldPos);
-            console.log(`  ${hitZone}: ${distanceToPlayer.toFixed(2)} units from player`);
-        });
-        
-        // CRITICAL: Force update world matrices for all hitboxes before raycasting
+        // Force update world matrices for all hitboxes before raycasting
         deer.hitboxMeshes.forEach(hitbox => {
             hitbox.updateMatrixWorld(true);
         });
         
-        // Debug: Check if ray passes through hitbox bounds
-        const firstHitbox = deer.hitboxMeshes[0];
-        
-        // Force update world matrix before bounds calculation
-        firstHitbox.updateMatrixWorld(true);
-        
-        const hitboxBounds = new THREE.Box3().setFromObject(firstHitbox);
-        console.log('DEBUG: First hitbox bounds:', hitboxBounds);
-        console.log('DEBUG: First hitbox position:', firstHitbox.position);
-        console.log('DEBUG: First hitbox world position:', firstHitbox.getWorldPosition(new THREE.Vector3()));
-        console.log('DEBUG: Bounds min:', hitboxBounds.min, 'max:', hitboxBounds.max);
-        console.log('DEBUG: Bounds size:', hitboxBounds.getSize(new THREE.Vector3()));
-        
-        // Debug: Calculate ray at various distances
-        let foundIntersection = false;
-        for (let t = 0; t <= Math.min(maxDistance, 200); t += 5) {
-            const rayPoint = new THREE.Vector3().copy(from).add(direction.clone().multiplyScalar(t));
-            if (hitboxBounds.containsPoint(rayPoint)) {
-                console.log('DEBUG: Ray passes through hitbox at distance', t, 'point:', rayPoint);
-                foundIntersection = true;
-                break;
-            }
-        }
-        
-        if (!foundIntersection) {
-            console.log('DEBUG: Ray does NOT pass through hitbox bounds');
-            console.log('DEBUG: Ray start:', from);
-            console.log('DEBUG: Ray direction:', direction);
-            console.log('DEBUG: Max distance:', maxDistance);
-            console.log('DEBUG: Sample ray points (extended):');
-            for (let t = 0; t <= Math.min(maxDistance, 200); t += 25) {
-                const rayPoint = new THREE.Vector3().copy(from).add(direction.clone().multiplyScalar(t));
-                console.log(`  t=${t}: ${rayPoint.x.toFixed(2)}, ${rayPoint.y.toFixed(2)}, ${rayPoint.z.toFixed(2)}`);
-                
-                // Check if this point is close to the hitbox
-                const distanceToHitbox = rayPoint.distanceTo(firstHitbox.position);
-                if (distanceToHitbox < 5) {
-                    console.log(`    ^ This point is close to hitbox! Distance: ${distanceToHitbox.toFixed(2)}`);
-                }
-            }
-            
-            // Calculate the exact distance where ray should intersect hitbox
-            const hitboxCenter = firstHitbox.position;
-            const rayToHitbox = new THREE.Vector3().subVectors(hitboxCenter, from);
-            const projectionLength = rayToHitbox.dot(direction);
-            const projectedPoint = new THREE.Vector3().copy(from).add(direction.clone().multiplyScalar(projectionLength));
-            const distanceToProjection = projectedPoint.distanceTo(hitboxCenter);
-            
-            console.log('DEBUG: Ray-to-hitbox analysis:');
-            console.log('  Hitbox center:', hitboxCenter);
-            console.log('  Projection length:', projectionLength.toFixed(2));
-            console.log('  Projected point:', projectedPoint);
-            console.log('  Distance from projection to hitbox center:', distanceToProjection.toFixed(2));
-            console.log('  Hitbox size:', hitboxBounds.getSize(new THREE.Vector3()));
-        }
-        
-        // Debug: Log deer model position and world matrix
-        const deerWorldPos = new THREE.Vector3();
-        deer.model.getWorldPosition(deerWorldPos);
-        console.log('DEBUG: Deer model world position:', deerWorldPos);
-        console.log('DEBUG: Deer model local position:', deer.model.position);
-        
-        // Debug: Log hitbox world positions
-        deer.hitboxMeshes.forEach((hitbox, index) => {
-            // Force update the world matrix first
-            hitbox.updateMatrixWorld(true);
-            const worldPos = new THREE.Vector3();
-            hitbox.getWorldPosition(worldPos);
-            console.log(`DEBUG: Hitbox ${index} (${hitbox.userData.hitZone}) world position:`, worldPos);
-        });
-
-        // Test intersection with deer hitboxes
-        // Debug: Check hitbox mesh properties before raycasting
-        deer.hitboxMeshes.forEach((hitbox, index) => {
-            console.log(`DEBUG: Hitbox ${index} - visible: ${hitbox.visible}, material.visible: ${hitbox.material.visible}, geometry vertices: ${hitbox.geometry.attributes.position.count}`);
-        });
-        
         const intersections = this.raycaster.intersectObjects(deer.hitboxMeshes, false);
-        
-        console.log('DEBUG: Intersections found:', intersections.length);
-        
-        // Debug: Test raycaster against a simple test object
-        const testGeometry = new THREE.BoxGeometry(5, 5, 5); // Make it bigger
-        const testMaterial = new THREE.MeshBasicMaterial({ color: 0xff0000, transparent: true, opacity: 0.5 });
-        const testMesh = new THREE.Mesh(testGeometry, testMaterial);
-        testMesh.position.copy(deer.hitboxMeshes[0].position);
-        
-        // Also test with a much simpler raycaster setup
-        const simpleRaycaster = new THREE.Raycaster();
-        simpleRaycaster.set(from, direction);
-        simpleRaycaster.far = 1000; // Much larger far distance
-        
-        const testIntersections = simpleRaycaster.intersectObject(testMesh, false);
-        console.log('DEBUG: Test mesh intersections (simple raycaster):', testIntersections.length);
-        
-        // Test original raycaster too
-        const originalTestIntersections = this.raycaster.intersectObject(testMesh, false);
-        console.log('DEBUG: Test mesh intersections (original raycaster):', originalTestIntersections.length);
-        
-        testGeometry.dispose();
-        testMaterial.dispose();
         
         if (intersections.length > 0) {
             // Sort intersections by distance to get the closest hit
             intersections.sort((a, b) => a.distance - b.distance);
-            
-            // Debug: Show all intersections and their hit zones
-            console.log('DEBUG: All intersections:');
-            intersections.forEach((intersection, index) => {
-                const hitZone = intersection.object.userData.hitZone || 'unknown';
-                console.log(`  ${index}: ${hitZone} at distance ${intersection.distance.toFixed(2)}`);
-                
-                // Debug: Show intersection point and verify it makes sense
-                const intersectionPoint = intersection.point;
-                const distanceFromPlayer = from.distanceTo(intersectionPoint);
-                console.log(`    Intersection point:`, intersectionPoint);
-                console.log(`    Direct distance from player: ${distanceFromPlayer.toFixed(2)}`);
-                console.log(`    Raycaster reported distance: ${intersection.distance.toFixed(2)}`);
-                
-                // Verify the intersection point is along the ray direction
-                const rayToIntersection = new THREE.Vector3().subVectors(intersectionPoint, from);
-                const rayDirection = new THREE.Vector3().subVectors(to, from).normalize();
-                const dotProduct = rayToIntersection.normalize().dot(rayDirection);
-                console.log(`    Ray alignment (should be ~1.0): ${dotProduct.toFixed(3)}`);
-            });
             
             // Conservative hit zone selection: trust the closest intersection unless there's a compelling reason not to
             const vitalZones = ['brain', 'vitals'];
@@ -335,17 +195,6 @@ class CollisionSystem {
             const closestDistance = intersections[0].distance;
             const closestHitZone = intersections[0].object.userData.hitZone || 'unknown';
             
-            console.log(`DEBUG: Closest intersection is ${closestHitZone} at distance ${closestDistance.toFixed(2)}`);
-            
-            // Debug: Show all hit zones and their distances for analysis
-            console.log('DEBUG: All hit zones by distance:');
-            intersections.forEach((intersection, index) => {
-                const hitZone = intersection.object.userData.hitZone || 'unknown';
-                console.log(`  ${index}: ${hitZone} at ${intersection.distance.toFixed(2)} units`);
-            });
-            
-            // ONLY override the closest intersection in very specific cases:
-            
             // Case 1: If closest is gut, check if rear is very close behind (anatomical overlap)
             if (closestHitZone === 'gut') {
                 for (const intersection of intersections) {
@@ -355,24 +204,13 @@ class CollisionSystem {
                     // Only prioritize rear if it's very close behind gut (≤3 units)
                     if (hitZone === 'rear' && distanceDiff <= 3) {
                         selectedIntersection = intersection;
-                        console.log(`DEBUG: Prioritizing rear over gut: rear at +${distanceDiff.toFixed(2)} units (anatomical overlap)`);
                         break;
                     }
                 }
             }
             
-            // Case 2: NEVER prioritize vitals over gut/rear - if you hit gut, it's gut!
-            // The closest intersection is the most accurate for body shots
-            
-            // Case 3: Only prioritize vitals if the closest hit is already a vital zone
-            if (vitalZones.includes(closestHitZone)) {
-                console.log(`DEBUG: Closest hit is a vital zone: ${closestHitZone}`);
-            }
-            
             const hitbox = selectedIntersection.object;
             const hitZone = hitbox.userData.hitZone || 'body';
-            
-            console.log(`DEBUG: Selected hit zone: ${hitZone} (smart selection)`);
             
             return {
                 hit: true,
@@ -394,10 +232,6 @@ class CollisionSystem {
         return { hit: false };
     }
 
-
-    
-    // Collision hitboxes ARE the debug wireframes
-
     // Toggle hitbox visibility for debugging
     toggleHitboxes() {
         this.debugMode = !this.debugMode;
@@ -407,8 +241,13 @@ class CollisionSystem {
     
     // Update hitbox visibility based on current debug mode
     updateHitboxVisibility() {
+        // Safety check for scene
+        if (!gameContext.scene) {
+            return;
+        }
+        
         // Update visibility for all existing hitboxes
-        this.scene.traverse((child) => {
+        gameContext.scene.traverse((child) => {
             if (child.userData && child.userData.isHitbox) {
                 child.visible = this.debugMode;
             }
@@ -441,9 +280,107 @@ class CollisionSystem {
         }
         this.removeDebugVisualization(deer);
     }
+
+    /**
+     * Checks for collision between a position and trees in the game world.
+     * @param {THREE.Vector3} position - The position to check for collision
+     * @param {number} radius - The collision radius (default: 1.0)
+     * @returns {THREE.Object3D|null} - The colliding tree object or null if no collision
+     */
+    checkTreeCollision(position, radius = 1.0) {
+        // Safety check: ensure trees exist
+        if (!gameContext.trees || !gameContext.trees.children) {
+            return null;
+        }
+        
+        // Performance optimization: Use spatial partitioning to only check nearby trees
+        const MAX_CHECK_DISTANCE = 50; // Only check trees within 50 units
+        const MAX_TREES_TO_CHECK = 20; // Limit to checking at most 20 trees per call
+        
+        let treesChecked = 0;
+        
+        // Check collision with nearby trees only
+        for (const tree of gameContext.trees.children) {
+            // Quick distance check to skip far away trees
+            const roughDistance = Math.abs(position.x - tree.position.x) + Math.abs(position.z - tree.position.z);
+            if (roughDistance > MAX_CHECK_DISTANCE) {
+                continue; // Skip trees that are definitely too far away
+            }
+            
+            // Calculate precise 2D distance (ignore Y axis for collision)
+            const distance = new THREE.Vector2(
+                position.x - tree.position.x,
+                position.z - tree.position.z
+            ).length();
+            
+            // Estimate tree collision radius based on scale
+            const treeRadius = (tree.scale.x || 1.0) * 1.8;
+            
+            // Check if collision occurs
+            if (distance < treeRadius + radius) {
+                return tree; // Return the colliding tree
+            }
+            
+            // Limit the number of trees we check per call to prevent performance issues
+            treesChecked++;
+            if (treesChecked >= MAX_TREES_TO_CHECK) {
+                break;
+            }
+        }
+        
+        return null; // No collision detected
+    }
+
+    /**
+     * Checks for collision between a position and bushes in the game world.
+     * @param {THREE.Vector3} position - The position to check for collision
+     * @param {number} radius - The collision radius (default: 1.0)
+     * @returns {THREE.Object3D|null} - The colliding bush object or null if no collision
+     */
+    checkBushCollision(position, radius = 1.0) {
+        // Safety check: ensure bushes exist
+        if (!gameContext.bushes || !gameContext.bushes.children) {
+            return null;
+        }
+        
+        // Performance optimization: Use spatial partitioning to only check nearby bushes
+        const MAX_CHECK_DISTANCE = 30; // Only check bushes within 30 units
+        const MAX_BUSHES_TO_CHECK = 15; // Limit to checking at most 15 bushes per call
+        
+        let bushesChecked = 0;
+        
+        // Check collision with nearby bushes only
+        for (const bush of gameContext.bushes.children) {
+            // Quick distance check to skip far away bushes
+            const roughDistance = Math.abs(position.x - bush.position.x) + Math.abs(position.z - bush.position.z);
+            if (roughDistance > MAX_CHECK_DISTANCE) {
+                continue; // Skip bushes that are definitely too far away
+            }
+            
+            bushesChecked++;
+            
+            // Calculate precise 2D distance (ignore Y axis for collision)
+            const distance = new THREE.Vector2(
+                position.x - bush.position.x,
+                position.z - bush.position.z
+            ).length();
+            
+            // Estimate bush collision radius
+            const bushRadius = (bush.scale.x || 1.0) * 1.2;
+            
+            // Check if collision occurs
+            if (distance < bushRadius + radius) {
+                return bush;
+            }
+            
+            if (bushesChecked >= MAX_BUSHES_TO_CHECK) {
+                break;
+            }
+        }
+        
+        return null;
+    }
 }
 
 // Export singleton instance
 export const collisionSystem = new CollisionSystem();
-
-

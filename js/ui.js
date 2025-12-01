@@ -89,7 +89,6 @@ export async function initUI() {
     gameContext.reportTitle = document.getElementById('report-title');
     gameContext.reportContent = document.getElementById('report-content');
     gameContext.closeReportButton = document.getElementById('close-report-button');
-    gameContext.mapButton = document.getElementById('map-button');
     gameContext.mapModalBackdrop = document.getElementById('map-modal-backdrop');
     gameContext.mapModal = document.getElementById('map-modal');
     gameContext.closeMapButton = document.getElementById('close-map-button');
@@ -151,15 +150,71 @@ export async function initUI() {
 
     if (gameContext.reportModalBackdrop && gameContext.closeReportButton) {
         gameContext.closeReportButton.addEventListener('click', () => { gameContext.reportModalBackdrop.style.display = 'none'; });
+        
+        // Close report modal when clicking on backdrop
+        gameContext.reportModalBackdrop.addEventListener('click', (e) => {
+            if (e.target === gameContext.reportModalBackdrop) {
+                gameContext.reportModalBackdrop.style.display = 'none';
+            }
+        });
+    }
+    
+    // Screenshot report button
+    const screenshotReportButton = document.getElementById('screenshot-report-button');
+    if (screenshotReportButton) {
+        screenshotReportButton.addEventListener('click', async (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            
+            const reportModal = document.getElementById('report-modal');
+            if (!reportModal || !window.html2canvas) return;
+            
+            try {
+                // Temporarily hide the button group for cleaner screenshot
+                const buttonGroup = reportModal.querySelector('.button-group');
+                if (buttonGroup) buttonGroup.style.visibility = 'hidden';
+                
+                const canvas = await window.html2canvas(reportModal, {
+                    backgroundColor: '#1a1c18',
+                    scale: 2,
+                    useCORS: true
+                });
+                
+                // Restore button group
+                if (buttonGroup) buttonGroup.style.visibility = 'visible';
+                
+                // Create download link
+                const link = document.createElement('a');
+                const timestamp = new Date().toISOString().slice(0, 10);
+                link.download = `ethical-pursuit-report-${timestamp}.png`;
+                link.href = canvas.toDataURL('image/png');
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+            } catch (error) {
+                console.error('Screenshot failed:', error);
+            }
+        });
     }
 
     const scoreReportButton = document.getElementById('score-report-button');
     if (scoreReportButton) {
         scoreReportButton.addEventListener('click', () => showReport());
     }
+    
+    // R key to open report
+    document.addEventListener('keydown', (e) => {
+        if (e.code === 'KeyR' && gameContext.gameStartedAndReady) {
+            // Don't open report if a modal is already open
+            if (gameContext.reportModalBackdrop?.style.display === 'flex') {
+                gameContext.reportModalBackdrop.style.display = 'none';
+            } else {
+                showReport();
+            }
+        }
+    });
 
-    if (gameContext.mapButton && gameContext.mapModalBackdrop && gameContext.closeMapButton) {
-        gameContext.mapButton.addEventListener('click', () => showMap());
+    if (gameContext.mapModalBackdrop && gameContext.closeMapButton) {
         gameContext.closeMapButton.addEventListener('click', () => { gameContext.mapModalBackdrop.style.display = 'none'; });
     }
 
@@ -186,18 +241,143 @@ export async function initUI() {
     
     if (practiceModeButton) {
         practiceModeButton.addEventListener('click', async () => {
+            // Start AudioContext immediately on user gesture
+            if (window.Tone && Tone.context.state !== 'running') {
+                await Tone.start();
+                console.log('🔊 AudioContext started on user gesture');
+            }
             await startGameWithMode('practice');
         });
     }
     
     if (huntSimulatorButton) {
         huntSimulatorButton.addEventListener('click', async () => {
+            // Start AudioContext immediately on user gesture
+            if (window.Tone && Tone.context.state !== 'running') {
+                await Tone.start();
+                console.log('🔊 AudioContext started on user gesture');
+            }
             await startGameWithMode('simulator');
+        });
+    }
+    
+    // Instructions button (main menu)
+    const instructionsButton = document.getElementById('instructions-button');
+    const instructionsModal = document.getElementById('instructions-modal-backdrop');
+    const closeInstructionsButton = document.getElementById('close-instructions-button');
+    
+    if (instructionsButton && instructionsModal) {
+        instructionsButton.addEventListener('click', () => {
+            instructionsModal.style.display = 'flex';
+        });
+    }
+    
+    // HUD instructions button (in-game)
+    const hudInstructionsButton = document.getElementById('hud-instructions-button');
+    if (hudInstructionsButton && instructionsModal) {
+        hudInstructionsButton.addEventListener('click', () => {
+            // Exit pointer lock when opening instructions
+            if (document.pointerLockElement) {
+                document.exitPointerLock();
+            }
+            instructionsModal.style.display = 'flex';
+        });
+    }
+    
+    if (closeInstructionsButton && instructionsModal) {
+        closeInstructionsButton.addEventListener('click', () => {
+            instructionsModal.style.display = 'none';
+        });
+    }
+    
+    // Close instructions on backdrop click
+    if (instructionsModal) {
+        instructionsModal.addEventListener('click', (e) => {
+            if (e.target === instructionsModal) {
+                instructionsModal.style.display = 'none';
+            }
+        });
+        
+        // Close instructions on Escape key
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape' && instructionsModal.style.display === 'flex') {
+                instructionsModal.style.display = 'none';
+            }
+        });
+    }
+    
+    // Restart buttons (main menu and HUD)
+    const restartButton = document.getElementById('restart-button');
+    const hudRestartButton = document.getElementById('hud-restart-button');
+    
+    if (restartButton) {
+        restartButton.addEventListener('click', () => {
+            location.reload();
+        });
+    }
+    
+    if (hudRestartButton) {
+        hudRestartButton.addEventListener('click', () => {
+            location.reload();
+        });
+    }
+    
+    // Next Day button
+    const nextDayButton = document.getElementById('next-day-button');
+    if (nextDayButton) {
+        nextDayButton.addEventListener('click', () => {
+            advanceToNextDay();
         });
     }
     
     initMap();
     // startTitleMusic();
+}
+
+/**
+ * Advances the game to the next day.
+ * Resets player position to starting point, resets time to 4:30 AM.
+ * Keeps score, wounded deer state, and other stats intact.
+ */
+function advanceToNextDay() {
+    // Exit pointer lock if active
+    if (document.pointerLockElement) {
+        document.exitPointerLock();
+    }
+    
+    // Reset player position to starting point
+    const INITIAL_PLAYER_X = 60;
+    const INITIAL_PLAYER_Z = 60;
+    const initialY = gameContext.getHeightAt(INITIAL_PLAYER_X, INITIAL_PLAYER_Z);
+    gameContext.player.position.set(INITIAL_PLAYER_X, initialY, INITIAL_PLAYER_Z);
+    gameContext.lastPlayerPosition.copy(gameContext.player.position);
+    
+    // Reset time to 4:30 AM
+    gameContext.gameTime = 4.5;
+    
+    // Reset ambiance crossfade triggers for new day
+    gameContext.eveningCrossfadeTriggered = false;
+    gameContext.morningCrossfadeTriggered = false;
+    
+    // Reset map battery for new day
+    gameContext.mapUsageCount = 0;
+    gameContext.batteryLevel = 100;
+    
+    // Increment day counter (add if not exists)
+    if (!gameContext.currentDay) {
+        gameContext.currentDay = 1;
+    }
+    gameContext.currentDay++;
+    
+    // Update clock display
+    if (gameContext.clockValueElement) {
+        gameContext.clockValueElement.textContent = '04:30';
+    }
+    
+    // Show message
+    showMessage(`Day ${gameContext.currentDay} - New dawn breaks`, 3000);
+    
+    console.log(`🌅 Advanced to Day ${gameContext.currentDay}`);
 }
 
 // New function to handle game start with selected mode
@@ -244,8 +424,8 @@ async function startGameWithMode(mode) {
     }
     
     // Show the in-game UI by removing the helper class
-    // Exclude kneeling indicator, which is controlled separately by player state
-    const gameUiElements = document.querySelectorAll('.initially-hidden:not(#kneeling-indicator)');
+    // Exclude indicators controlled separately by game state
+    const gameUiElements = document.querySelectorAll('.initially-hidden:not(#kneeling-indicator):not(#mouse-look-indicator)');
     gameUiElements.forEach(el => {
         el.classList.remove('initially-hidden');
     });
@@ -253,13 +433,34 @@ async function startGameWithMode(mode) {
     // Apply mode-specific configurations
     applyModeConfiguration(mode);
     
+    // Add class to body to hide title screen background
+    document.body.classList.add('game-active');
+    
+    // Show restart button now that game has started
+    const restartButton = document.getElementById('restart-button');
+    if (restartButton) {
+        restartButton.style.display = 'inline-block';
+    }
+    
     // Initialize the game with the selected world and start the animation loop
     console.log('🎮 START GAME: Button clicked, checking gameContext.init:', !!gameContext.init, 'animate:', !!gameContext.animate);
     if (gameContext.init && gameContext.animate) {
-        console.log('🎮 START GAME: About to call gameContext.init with worldConfig:', worldConfig?.name || 'unknown');
-        await gameContext.init(worldConfig);
-        console.log('🎮 START GAME: gameContext.init completed, starting animation');
-        gameContext.animate();
+        console.log('🎮 START GAME: About to call gameContext.init with world ID:', selectedWorld);
+        try {
+            await gameContext.init(selectedWorld);
+            console.log('🎮 START GAME: gameContext.init completed, starting animation');
+            gameContext.animate();
+            
+            // Set flag after a short delay to allow player to see the game before mouse control
+            setTimeout(() => {
+                gameContext.gameStartedAndReady = true;
+            }, 500);
+        } catch (error) {
+            console.error('🛑 FATAL ERROR in gameContext.init:', error);
+            showMessage('Error starting game: ' + error.message, 5000);
+            // Restore main menu so user isn't stuck
+            if (mainMenuContainer) mainMenuContainer.style.display = 'flex';
+        }
     } else {
         console.error('🎮 START GAME: gameContext.init or gameContext.animate not available!', {
             init: !!gameContext.init,
@@ -356,45 +557,27 @@ function showReport() {
  * Updates the interaction prompt based on player proximity to a killed deer.
  */
 export function updateInteraction() {
-    // Debug logging to track tagging conditions
-    console.log('DEBUG: Checking tagging conditions - state:', gameContext.deer.state, 'fallen:', gameContext.deer.fallen, 'tagged:', gameContext.deer.tagged);
-    
     if (gameContext.deer.state === 'KILLED' && gameContext.deer.fallen && !gameContext.deer.tagged) {
         // Calculate distance on the XZ plane only, ignoring height differences
         const dx = gameContext.player.position.x - gameContext.deer.model.position.x;
         const dz = gameContext.player.position.z - gameContext.deer.model.position.z;
         const distance = Math.sqrt(dx * dx + dz * dz);
         
-        console.log('DEBUG: Deer is taggable, distance:', distance, 'required:', TAG_INTERACTION_DISTANCE);
-        
         if (distance <= TAG_INTERACTION_DISTANCE) {
-            gameContext.interactionPromptElement.textContent = 'Press [E] to Tag Deer (or click Tag button) - Auto-tagging in 5 seconds';
             gameContext.interactionPromptElement.style.display = 'block';
+            gameContext.interactionPromptElement.textContent = INTERACTION_PROMPT_TAG_DEER;
             gameContext.canTag = true;
-            console.log('DEBUG: Tag prompt shown, canTag set to true');
             // Show manual tag button for testing
             showManualTagButton();
-            // Automatically trigger tagging after a short delay for testing
-            console.log('🔄 AUTO TAG DEBUG: Scheduling automatic tagging in 5 seconds for testing');
-            setTimeout(() => {
-                if (gameContext.canTag && gameContext.deer.state === 'KILLED' && gameContext.deer.fallen && !gameContext.deer.tagged) {
-                    console.log('🔄 AUTO TAG DEBUG: Automatic tagging triggered');
-                    gameContext.tagDeer();
-                } else {
-                    console.log('🔄 AUTO TAG DEBUG: Automatic tagging skipped - conditions no longer met');
-                }
-            }, 5000); // 5 second delay for auto-tagging
         } else {
             gameContext.interactionPromptElement.style.display = 'none';
             gameContext.canTag = false;
-            console.log('DEBUG: Too far from deer for tagging, distance:', distance);
             // Hide manual tag button if too far
             hideManualTagButton();
         }
     } else {
         gameContext.interactionPromptElement.style.display = 'none';
         gameContext.canTag = false;
-        console.log('DEBUG: Deer not taggable - conditions not met. State:', gameContext.deer.state, 'Fallen:', gameContext.deer.fallen, 'Tagged:', gameContext.deer.tagged);
         // Hide manual tag button if conditions not met
         hideManualTagButton();
     }
@@ -418,42 +601,28 @@ function showManualTagButton() {
         tagButton.style.cursor = 'pointer';
         tagButton.style.zIndex = '1000';
         tagButton.addEventListener('click', function() {
-            console.log('🔘 BUTTON DEBUG: Manual tag button clicked, canTag:', gameContext.canTag);
-            if (gameContext.canTag) {
-                console.log('🔘 BUTTON DEBUG: Manual tag button triggering gameContext.tagDeer()');
+            if (gameContext.canTag && gameContext.tagDeer) {
                 gameContext.tagDeer();
-            } else {
-                console.log('🔘 BUTTON DEBUG: Cannot tag - canTag is false');
             }
         });
         document.body.appendChild(tagButton);
-        console.log('🔘 BUTTON DEBUG: Manual tag button created and added to DOM');
     }
     tagButton.style.display = 'block';
-    console.log('🔘 BUTTON DEBUG: Manual tag button shown');
 }
 
 function hideManualTagButton() {
     const tagButton = document.getElementById('manual-tag-button');
     if (tagButton) {
         tagButton.style.display = 'none';
-        console.log('🔘 BUTTON DEBUG: Manual tag button hidden');
     }
 }
 
 // New function for status indicator
 export function updateStatusIndicator(isKneeling) {
-    try {
-        let indicator = document.getElementById('status-indicator');
-        if (indicator) {
-            indicator.textContent = 'Kneeling';
-            indicator.style.display = isKneeling ? 'block' : 'none';
-            console.log('🧎 STATUS INDICATOR: Updated to ' + (isKneeling ? 'visible (Kneeling)' : 'hidden'));
-        } else {
-            console.error('🧎 STATUS INDICATOR ERROR: Element not found');
-        }
-    } catch (error) {
-        console.error('🧎 STATUS INDICATOR ERROR: Failed to update indicator:', error);
+    const indicator = document.getElementById('status-indicator');
+    if (indicator) {
+        indicator.textContent = 'Kneeling';
+        indicator.style.display = isKneeling ? 'block' : 'none';
     }
 }
 

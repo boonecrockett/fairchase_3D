@@ -7,7 +7,7 @@ const FOREST_SOUND_VOLUME = -5; // dB, raised by 1 dB for better balance
 const RIFLE_SOUND_VOLUME = 0; // dB, normal volume for rifle shot
 const WALK_SOUND_VOLUME = -7; // dB, reduced by 1 dB for better balance
 const WATERWALK_SOUND_VOLUME = -5; // dB, moderate volume for water walking sound
-const FOLIAGEWALK_SOUND_VOLUME = -5; // dB, increased by 1 dB for better audibility
+const FOLIAGEWALK_SOUND_VOLUME = 0; // dB, louder for better audibility when walking through brush
 const TITLE_MUSIC_VOLUME = -8; // dB, moderate volume for title screen music
 const RIFLE_SOUND_INSTANCES = 3; // Number of rifle sound instances for instant playback
 const FOREST_FADE_IN_DURATION = 2; // seconds for forest sound fade-in
@@ -46,9 +46,6 @@ export function initTitleMusic() {
  * Initializes the audio components, including rifle shot sound, walk sound, and ambient forest sound.
  */
 export function initAudio() {
-    console.log('DEBUG: ===== AUDIO INITIALIZATION STARTED =====');
-    console.log('DEBUG: Initializing all audio components...');
-    
     // Initialize multiple rifle shot sound instances for instant playback
     gameContext.rifleSounds = [];
     gameContext.rifleCurrentIndex = 0;

@@ -54,24 +54,7 @@ export class Animal {
 
             // Create vitals hitbox and attach it to the identified body mesh.
             if (this.config.vitals && bodyMesh) {
-                console.log('DEBUG: Animal loadModel calling createVitals with bodyMesh:', bodyMesh);
                 this.createVitals(bodyMesh);
-                console.log('DEBUG: Animal loadModel after createVitals');
-                
-                // Check if hitboxes are still attached immediately after creation
-                setTimeout(() => {
-                    console.log('DEBUG: Checking hitboxes 1 second after model load:', {
-                        vitals: !!this.model.vitals,
-                        gut: !!this.model.gut,
-                        rear: !!this.model.rear,
-                        modelKeys: Object.keys(this.model)
-                    });
-                }, 1000);
-            } else {
-                console.log('DEBUG: Animal loadModel - vitals config or bodyMesh missing:', {
-                    hasVitalsConfig: !!this.config.vitals,
-                    hasBodyMesh: !!bodyMesh
-                });
             }
 
 
@@ -81,13 +64,16 @@ export class Animal {
             gltf.animations.forEach((clip, index) => {
                 this.animations[clip.name] = clip;
             });
+            
+            // Log available animations for debugging
+            console.log(`🦌 ${this.config.name} animations:`, Object.keys(this.animations));
 
             // Set the loaded model as the new model.
             this.model = gltf.scene;
 
             // RESTORE HITBOXES: Re-attach hitboxes from the hitboxMeshes array to the new model.
             if (this.hitboxMeshes && this.hitboxMeshes.length > 0) {
-                console.log(`🔴 DEBUG: Re-attaching ${this.hitboxMeshes.length} hitboxes to new model.`);
+                // console.log(`🔴 DEBUG: Re-attaching ${this.hitboxMeshes.length} hitboxes to new model.`);
                 this.hitboxMeshes.forEach(hitbox => {
                     this.model.add(hitbox);
                 });
@@ -189,8 +175,21 @@ export class Animal {
     }
 
     update(delta) {
+        // Store position before mixer update to prevent root motion from moving the model
+        // during stationary states (animations may have position changes baked in)
+        const stationaryStates = ['IDLE', 'GRAZING', 'DRINKING', 'ALERT', 'KILLED'];
+        const isStationary = stationaryStates.includes(this.state);
+        const savedX = this.model.position.x;
+        const savedZ = this.model.position.z;
+        
         if (this.mixer) {
             this.mixer.update(delta);
+        }
+        
+        // Restore X/Z position for stationary states to prevent animation root motion drift
+        if (isStationary) {
+            this.model.position.x = savedX;
+            this.model.position.z = savedZ;
         }
 
         this.stateTimer += delta;

@@ -4,9 +4,11 @@ import { gameContext } from './context.js';
 import { ImprovedNoise } from './libs/ImprovedNoise.js';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { DEFAULT_WORLD_SIZE } from './constants.js';
+import { createGrassShaderMaterial, createGrassBladeGeometry, updateGrassWind } from './grass-shader.js';
+import { createWaterMaterial } from './water-shader.js';
 
 // --- Constants for World Generation ---
-const WORLD_PLANE_SEGMENTS = 63; // Number of segments for the terrain plane width and depth
+const WORLD_PLANE_SEGMENTS = 63; // Number of segments for the terrain plane
 
 // getHeightAt defaults
 const DEFAULT_SINE_COSINE_PARAMS = { freq1: 77.8, amp1: 8, freq2: 40.0, amp2: 4 };
@@ -70,8 +72,30 @@ export function createHills(worldConfig) {
     gameContext.terrain.receiveShadow = true;
     gameContext.scene.add(gameContext.terrain);
 
-    // Attach a function to the context that can get the height at any world coordinate (x, z)
-    gameContext.getHeightAt = (x, z) => getHeightAt(x, z, worldConfig);
+    // Create a raycaster for accurate terrain height detection
+    const terrainRaycaster = new THREE.Raycaster();
+    
+    // Attach a function to the context that raycasts against the actual terrain mesh
+    // This ensures objects are placed on the visible terrain, not the mathematical approximation
+    gameContext.getHeightAt = (x, z) => {
+        // Ensure terrain world matrix is up to date for accurate raycasting
+        if (gameContext.terrain) {
+            gameContext.terrain.updateMatrixWorld(true);
+        }
+        
+        // Raycast from above the terrain downward
+        const rayOrigin = new THREE.Vector3(x, 500, z);
+        const rayDirection = new THREE.Vector3(0, -1, 0);
+        terrainRaycaster.set(rayOrigin, rayDirection);
+        
+        const intersects = terrainRaycaster.intersectObject(gameContext.terrain);
+        if (intersects.length > 0) {
+            return intersects[0].point.y;
+        }
+        
+        // Fallback to mathematical calculation if raycast fails
+        return getHeightAt(x, z, worldConfig);
+    };
 }
 
 /**
@@ -127,12 +151,14 @@ function getHeightAt(x_world_plane, y_world_plane, worldConfig) {
                     (y_world_plane - pondZ) * (y_world_plane - pondZ)
                 );
                 
-                // Create depression within pond radius with smooth falloff
-                if (distanceToPond < pondRadius * 1.2) { // Slightly larger than pond for natural slope
-                    const depressionDepth = 12; // Increased from 8 to 12 units deep for better water integration
-                    const falloffFactor = Math.max(0, 1 - (distanceToPond / (pondRadius * 1.2)));
-                    const depression = depressionDepth * falloffFactor * falloffFactor; // Smooth quadratic falloff
-                    height -= depression;
+                // Create depression with very smooth cosine falloff for natural-looking edges
+                const transitionZone = pondRadius * 1.5; // Wider transition for smoother appearance
+                if (distanceToPond < transitionZone) {
+                    const depressionDepth = 10;
+                    // Use smoothstep-like cosine interpolation for very smooth edges
+                    const t = distanceToPond / transitionZone;
+                    const smoothFactor = 0.5 * (1 + Math.cos(t * Math.PI)); // Cosine falloff: 1 at center, 0 at edge
+                    height -= depressionDepth * smoothFactor;
                 }
             }
         }
@@ -158,65 +184,32 @@ export function createWater(worldConfig) {
         let waterGeometry;
         
         if (bodyConfig.shape === 'circle') {
-            // Create natural-looking circular pond with organic edges
+            // Create smooth circular pond using CircleGeometry for perfect edges
             const radius = bodyConfig.size / 2;
-            const segments = 64; // More segments for smoother, more natural curves
+            const segments = 128; // High segment count for very smooth circle
             
-            // Create custom geometry for natural pond shape
-            const vertices = [];
-            const indices = [];
-            
-            // Center vertex
-            vertices.push(0, 0, 0);
-            
-            // Create irregular edge vertices for natural look
-            for (let i = 0; i <= segments; i++) {
-                const angle = (i / segments) * Math.PI * 2;
-                
-                // Use only very gentle sine wave variations for extremely smooth edges
-                const fineNoise = Math.sin(angle * 20) * 0.015; // Very subtle high frequency ripples
-                const mediumNoise = Math.sin(angle * 8) * 0.025; // Gentle medium frequency variation
-                const coarseNoise = Math.sin(angle * 4) * 0.035; // Gentle low frequency major shape variation
-                
-                const totalVariation = 1.0 + fineNoise + mediumNoise + coarseNoise;
-                const naturalRadius = radius * Math.max(0.85, Math.min(1.15, totalVariation)); // Clamp between 85% and 115% (very tight range)
-                
-                // Remove angle noise for smoother edges
-                const naturalAngle = angle;
-                
-                const x = Math.cos(naturalAngle) * naturalRadius;
-                const z = Math.sin(naturalAngle) * naturalRadius;
-                vertices.push(x, 0, z);
-                
-                // Create triangles from center to edge
-                if (i < segments) {
-                    indices.push(0, i + 1, i + 2);
-                }
-            }
-            
-            // Create BufferGeometry from vertices
-            waterGeometry = new THREE.BufferGeometry();
-            waterGeometry.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3));
-            waterGeometry.setIndex(indices);
-            waterGeometry.computeVertexNormals();
+            // Use built-in CircleGeometry for smooth edges
+            waterGeometry = new THREE.CircleGeometry(radius, segments);
+            // Rotate to be horizontal (CircleGeometry is vertical by default)
+            waterGeometry.rotateX(-Math.PI / 2);
             
         } else {
             // Fallback to simple plane for other shapes
             waterGeometry = new THREE.PlaneGeometry(bodyConfig.size, bodyConfig.size);
+            waterGeometry.rotateX(-Math.PI / 2);
         }
 
-        const waterMaterial = new THREE.MeshPhongMaterial({
+        // Create animated water shader material
+        const waterMaterial = createWaterMaterial({
             color: waterColor,
-            transparent: true,
             opacity: bodyConfig.opacity || defaultOpacity,
-            side: THREE.DoubleSide,
-            reflectivity: 0.8,
-            shininess: 50
+            speed: 0.5,
+            rippleScale: 0.12,
         });
 
         const waterMesh = new THREE.Mesh(waterGeometry, waterMaterial);
         
-        // Position the water body (revert to original working approach)
+        // Position the water body
         waterMesh.position.set(
             bodyConfig.position.x || 0,
             bodyConfig.position.y || 0,
@@ -226,11 +219,42 @@ export function createWater(worldConfig) {
         
         // Store original config for easy removal/modification
         waterMesh.userData.config = bodyConfig;
-        waterMesh.userData.isPond = bodyConfig.shape === 'circle' && bodyConfig.size <= 100; // Mark small circular bodies as ponds
+        waterMesh.userData.isPond = bodyConfig.shape === 'circle' && bodyConfig.size <= 100;
         
         gameContext.scene.add(waterMesh);
         gameContext.waterBodies.push(waterMesh);
     });
+    
+    // Store water animation time
+    gameContext.waterTime = 0;
+}
+
+// Throttle water updates
+let waterUpdateAccumulator = 0;
+const WATER_UPDATE_INTERVAL = 0.05; // Update every 50ms instead of every frame
+
+/**
+ * Updates water animation for subtle ripple effect.
+ * Call this from the main game loop with delta time.
+ * @param {number} delta - Time since last frame in seconds
+ */
+export function updateWater(delta) {
+    if (!gameContext.waterBodies || gameContext.waterBodies.length === 0) return;
+    
+    gameContext.waterTime = (gameContext.waterTime || 0) + delta;
+    
+    // Throttle uniform updates
+    waterUpdateAccumulator += delta;
+    if (waterUpdateAccumulator < WATER_UPDATE_INTERVAL) return;
+    waterUpdateAccumulator = 0;
+    
+    // Update shader uniforms
+    for (let i = 0; i < gameContext.waterBodies.length; i++) {
+        const water = gameContext.waterBodies[i];
+        if (water.material?.uniforms?.uTime) {
+            water.material.uniforms.uTime.value = gameContext.waterTime;
+        }
+    }
 }
 
 /**
@@ -327,10 +351,10 @@ export async function createTrees(worldConfig) {
             }
 
             const treeInstance = treeModel.clone();
-            const scale = (Math.random() * (worldConfig.vegetation.treeScale.max - worldConfig.vegetation.treeScale.min) + worldConfig.vegetation.treeScale.min) * 0.81;
+            const scale = (Math.random() * (worldConfig.vegetation.treeScale.max - worldConfig.vegetation.treeScale.min) + worldConfig.vegetation.treeScale.min);
             treeInstance.scale.set(scale, scale, scale);
-            // Position tree at terrain height - Y is the vertical axis after terrain rotation
-            treeInstance.position.set(x, terrainHeight, z);
+            // Position tree slightly into the ground (-0.5) to ensure it's always grounded
+            treeInstance.position.set(x, terrainHeight - 0.5, z);
             treeInstance.rotation.y = Math.random() * Math.PI * 2;
             treesGroup.add(treeInstance);
         }
@@ -363,7 +387,7 @@ export async function createTrees(worldConfig) {
             }
 
             const tree = new THREE.Group();
-            const scale = (Math.random() * (worldConfig.vegetation.treeScale.max - worldConfig.vegetation.treeScale.min) + worldConfig.vegetation.treeScale.min) * 0.81;
+                        const scale = (Math.random() * (worldConfig.vegetation.treeScale.max - worldConfig.vegetation.treeScale.min) + worldConfig.vegetation.treeScale.min);
 
             const trunkHeight = (TREE_TRUNK_BASE_HEIGHT + Math.random() * TREE_TRUNK_RAND_HEIGHT) * scale;
             const trunkGeometry = new THREE.CylinderGeometry(TREE_TRUNK_SCALE_MIN_RADIUS * scale, TREE_TRUNK_SCALE_MAX_RADIUS * scale, trunkHeight, TREE_TRUNK_SEGMENTS);
@@ -403,14 +427,12 @@ export async function createTrees(worldConfig) {
  * @param {object} worldConfig - The world configuration, containing vegetation settings.
  */
 export async function createBushes(worldConfig) {
-    console.log('DEBUG: createBushes called');
     const vegetationConfig = worldConfig.vegetation || {};
     const bushDensity = vegetationConfig.bushDensity || 0.6; // Default density
 
     const bushesGroup = new THREE.Group();
     gameContext.bushes = bushesGroup;
     gameContext.scene.add(gameContext.bushes);
-    console.log('DEBUG: bushesGroup created and added to scene');
 
     const loader = new GLTFLoader();
 
@@ -426,30 +448,45 @@ export async function createBushes(worldConfig) {
         });
 
         const worldSize = worldConfig.terrain.size || DEFAULT_WORLD_SIZE;
-        console.log(`DEBUG: Bush creation using worldSize: ${worldSize}, range: [${-worldSize/2}, ${worldSize/2}]`);
         
         // Create fewer bush thickets than trees - about 1/4 the density
         const thicketCount = Math.floor((worldConfig.vegetation.treeCount || 50) / 4);
-        console.log(`DEBUG: Creating ${thicketCount} bush thickets`);
 
         for (let i = 0; i < thicketCount; i++) {
             // Create a thicket center point
-            const centerX = Math.random() * worldSize - worldSize / 2;
-            const centerZ = Math.random() * worldSize - worldSize / 2;
-            const centerHeight = gameContext.getHeightAt(centerX, centerZ);
+            let centerX, centerZ, centerHeight;
+            
+            // 30% chance to place bushes around water edges (but not in water)
+            const placeNearWater = Math.random() < 0.3 && gameContext.waterBodies && gameContext.waterBodies.length > 0;
+            
+            if (placeNearWater) {
+                // Pick a random water body and place bushes around its edge
+                const water = gameContext.waterBodies[Math.floor(Math.random() * gameContext.waterBodies.length)];
+                const waterRadius = water.userData.config ? (water.userData.config.size / 2) : 50;
+                const angle = Math.random() * Math.PI * 2;
+                // Place 5-15 units outside the water edge
+                const distFromWater = waterRadius + 5 + Math.random() * 10;
+                centerX = water.position.x + Math.cos(angle) * distFromWater;
+                centerZ = water.position.z + Math.sin(angle) * distFromWater;
+                centerHeight = gameContext.getHeightAt(centerX, centerZ);
+            } else {
+                centerX = Math.random() * worldSize - worldSize / 2;
+                centerZ = Math.random() * worldSize - worldSize / 2;
+                centerHeight = gameContext.getHeightAt(centerX, centerZ);
+            }
 
-            // Check if thicket center is submerged
-            let isSubmerged = false;
+            // Check if thicket center is submerged or too close to water
+            let tooCloseToWater = false;
             for (const water of gameContext.waterBodies) {
                 const distanceToWaterCenter = new THREE.Vector2(centerX - water.position.x, centerZ - water.position.z).length();
-                // Get water radius from stored config instead of geometry parameters
-                const waterRadius = water.userData.config ? (water.userData.config.size / 2) : 50; // Default 50 unit radius
-                if (distanceToWaterCenter < waterRadius && centerHeight < water.position.y + 1) {
-                    isSubmerged = true;
+                const waterRadius = water.userData.config ? (water.userData.config.size / 2) : 50;
+                // Keep bushes at least 3 units outside water edge
+                if (distanceToWaterCenter < waterRadius + 3) {
+                    tooCloseToWater = true;
                     break;
                 }
             }
-            if (isSubmerged) continue;
+            if (tooCloseToWater) continue;
 
             // Avoid player spawn area
             if (new THREE.Vector3(centerX, centerHeight, centerZ).distanceTo(new THREE.Vector3(0, gameContext.getHeightAt(0, 10), 10)) < TREE_SPAWN_AVOID_PLAYER_RADIUS) {
@@ -468,18 +505,18 @@ export async function createBushes(worldConfig) {
                 const bushZ = centerZ + Math.sin(angle) * distance;
                 const bushHeight = gameContext.getHeightAt(bushX, bushZ);
 
-                // Check if this bush position is submerged
-                let bushSubmerged = false;
+                // Check if this bush position is too close to water
+                let bushTooCloseToWater = false;
                 for (const water of gameContext.waterBodies) {
                     const distanceToWaterCenter = new THREE.Vector2(bushX - water.position.x, bushZ - water.position.z).length();
-                    // Get water radius from stored config instead of geometry parameters
-                    const waterRadius = water.userData.config ? (water.userData.config.size / 2) : 50; // Default 50 unit radius
-                    if (distanceToWaterCenter < waterRadius && bushHeight < water.position.y + 1) {
-                        bushSubmerged = true;
+                    const waterRadius = water.userData.config ? (water.userData.config.size / 2) : 50;
+                    // Keep individual bushes at least 2 units outside water edge
+                    if (distanceToWaterCenter < waterRadius + 2) {
+                        bushTooCloseToWater = true;
                         break;
                     }
                 }
-                if (bushSubmerged) continue;
+                if (bushTooCloseToWater) continue;
 
                 const bushInstance = bushModel.clone();
                 
@@ -501,20 +538,17 @@ export async function createBushes(worldConfig) {
                 }
                 
                 bushInstance.scale.set(scale, scale, scale);
-                // Bushes should be smaller than trees - scale between 0.5 and 1.2
-                // const scale = 0.5 + Math.random() * 0.7;
-                // bushInstance.scale.set(scale, scale, scale);
-                // Position bush at terrain height
-                bushInstance.position.set(bushX, bushHeight, bushZ);
+                // Position bush at terrain height, sunk into ground to ensure grounding
+                // Sink depth based on scale to keep bushes anchored
+                const sinkDepth = 0.5 + scale * 0.5;
+                bushInstance.position.set(bushX, bushHeight - sinkDepth, bushZ);
                 bushInstance.rotation.y = Math.random() * Math.PI * 2;
                 bushesGroup.add(bushInstance);
             }
         }
 
-        console.log(`DEBUG: Bushes created, final bushesGroup size: ${bushesGroup.children.length}`);
     } catch (error) {
         // console.error("Failed to load bush model:", error); // Logging disabled
-        // No fallback for bushes - they're decorative
     }
 }
 
@@ -522,168 +556,361 @@ export async function createBushes(worldConfig) {
  * Procedurally generates and places grass throughout the game world.
  * Creates scattered grass patches for natural-looking ground cover.
  * @param {object} worldConfig - The world configuration, containing vegetation settings.
+ * @returns {Promise} Resolves when grass is loaded and placed
  */
 export function createGrass(worldConfig) {
+    console.log('🌿 GRASS: Starting grass creation...');
     const loader = new GLTFLoader();
     
-    try {
-        loader.load('assets/landscapes/redgrass1.glb', (gltf) => {
-            const grassModel = gltf.scene;
-            grassModel.traverse((child) => {
-                if (child.isMesh) {
-                    child.castShadow = false; // Disable shadow casting to eliminate harsh shadows
-                    child.receiveShadow = true; // Keep shadow receiving for natural lighting
+    return new Promise((resolve, reject) => {
+        // Delay to ensure terrain is fully ready
+        setTimeout(() => {
+            loader.load('assets/landscapes/redgrass1.glb', (gltf) => {
+                console.log('🌿 GRASS: Model loaded successfully');
+                
+                let grassGeometry = null;
+                let grassMaterial = null;
+                
+                // Find the first mesh to use as a template
+                let modelBoundingBox = null;
+            gltf.scene.traverse((child) => {
+                if (child.isMesh && !grassGeometry) {
+                    grassGeometry = child.geometry;
                     
-                    // Simple material handling - let the model use its original materials
+                    // Compute bounding box to find model's vertical extent
+                    grassGeometry.computeBoundingBox();
+                    modelBoundingBox = grassGeometry.boundingBox;
+                    
                     if (child.material) {
-                        const materials = Array.isArray(child.material) ? child.material : [child.material];
-                        materials.forEach(material => {
-                            if (material) {
-                                material.side = THREE.DoubleSide; // Ensure grass is visible from both sides
-                                
-                                // Fix specular highlights - make grass more matte and natural
-                                if (material.shininess !== undefined) {
-                                    material.shininess = 0; // Remove shininess for matte appearance
-                                }
-                                if (material.specular !== undefined) {
-                                    material.specular.setHex(0x000000); // Remove specular highlights
-                                }
-                                if (material.reflectivity !== undefined) {
-                                    material.reflectivity = 0; // Remove reflectivity
-                                }
-                                
-                                // Set natural forest floor grass color for midday
-                                if (material.color !== undefined) {
-                                    material.color.setHex(0x9eb529); // Natural forest floor green
-                                }
-                                
-                                material.needsUpdate = true;
-                            }
-                        });
+                        grassMaterial = child.material;
+                        if (Array.isArray(grassMaterial)) grassMaterial = grassMaterial[0];
+                        
+                        grassMaterial.side = THREE.DoubleSide;
+                        grassMaterial.shininess = 0;
+                        grassMaterial.specular = new THREE.Color(0x000000);
+                        grassMaterial.reflectivity = 0;
+                        grassMaterial.color.setHex(0xc4d44a);
+                        grassMaterial.needsUpdate = true;
                     }
                 }
             });
+            
+            // Log model bounds to understand its origin
+            if (modelBoundingBox) {
+                console.log('🌿 GRASS: Model bounding box:', modelBoundingBox.min.y, 'to', modelBoundingBox.max.y);
+            }
 
-            const grassGroup = new THREE.Group();
-            grassGroup.name = 'grass';
+            if (!grassGeometry || !grassMaterial) {
+                console.warn('No mesh found in grass model');
+                return;
+            }
+
+            // Check terrain is ready
+            if (!gameContext.terrain || !gameContext.terrain.geometry) {
+                console.warn('🌿 GRASS: Terrain not ready, skipping brush creation');
+                return;
+            }
             
-            // Get vegetation config with defaults
+            console.log('🌿 GRASS: Terrain ready, proceeding with placement... v2');
+
             const vegetationConfig = worldConfig?.environment?.vegetation || {};
-            const grassDensity = vegetationConfig.grassDensity || 0.8; // Higher density than bushes
+            const grassDensity = vegetationConfig.grassDensity || 0.8;
             const worldSize = worldConfig?.terrain?.size || DEFAULT_WORLD_SIZE;
-            const halfSize = worldSize / 2;
             
-            // Calculate number of grass clusters based on density and world size (much fewer clusters, very large size)
-            const numGrassClusters = Math.floor((worldSize * worldSize * grassDensity) / 16000); // Much fewer clusters since each is very large
+            const numGrassClusters = Math.floor((worldSize * worldSize * grassDensity) / 8000);
+            const maxPlantsPerCluster = 80;
+            const maxInstances = numGrassClusters * maxPlantsPerCluster;
+
+            const instancedMesh = new THREE.InstancedMesh(grassGeometry, grassMaterial, maxInstances);
+            instancedMesh.receiveShadow = true;
+            instancedMesh.castShadow = false;
+            instancedMesh.name = 'grass';
+
+            const dummy = new THREE.Object3D();
+            let instanceIndex = 0;
             
+            // Ensure terrain world matrix is updated before raycasting
+            gameContext.terrain.updateMatrixWorld(true);
+            
+            // Test terrain height at multiple points to verify raycasting works
+            const testHeight1 = gameContext.getHeightAt(0, 0);
+            const testHeight2 = gameContext.getHeightAt(100, 0);
+            const testHeight3 = gameContext.getHeightAt(-100, 0);
+            const testHeight4 = gameContext.getHeightAt(0, 100);
+            console.log('🌿 GRASS: Test heights - origin:', testHeight1.toFixed(2), 'x+100:', testHeight2.toFixed(2), 'x-100:', testHeight3.toFixed(2), 'z+100:', testHeight4.toFixed(2));
+            
+            // Debug: Check if water body exists and log its position
+            if (gameContext.waterBodies && gameContext.waterBodies.length > 0) {
+                const water = gameContext.waterBodies[0];
+                console.log('🌿 GRASS: Water body at:', water.position.x.toFixed(2), water.position.y.toFixed(2), water.position.z.toFixed(2));
+                // Test height at water center
+                const waterCenterHeight = gameContext.getHeightAt(water.position.x, water.position.z);
+                console.log('🌿 GRASS: Terrain height at water center:', waterCenterHeight.toFixed(2), 'Water Y:', water.position.y.toFixed(2));
+            }
+            
+            // Track min/max heights for debugging
+            let minHeight = Infinity, maxHeight = -Infinity;
+            let sampleCount = 0;
+            
+            // Store grass cluster positions for collision/sound detection
+            const grassClusterPositions = [];
+
             for (let i = 0; i < numGrassClusters; i++) {
-                // Try to position clusters near trees or bushes for natural appearance
-                let clusterCenterX, clusterCenterZ, clusterCenterHeight;
-                let foundVegetationLocation = false;
+                // Random position for cluster
+                const clusterCenterX = (Math.random() - 0.5) * worldSize * 0.9;
+                const clusterCenterZ = (Math.random() - 0.5) * worldSize * 0.9;
+                const clusterCenterHeight = gameContext.getHeightAt(clusterCenterX, clusterCenterZ);
                 
-                // Attempt to find a tree or bush location for natural grass placement
-                const vegetationSources = [];
-                if (gameContext.trees && gameContext.trees.children.length > 0) {
-                    vegetationSources.push(...gameContext.trees.children);
-                }
-                if (gameContext.bushes && gameContext.bushes.children.length > 0) {
-                    vegetationSources.push(...gameContext.bushes.children);
-                }
+                if (clusterCenterHeight === null) continue;
                 
-                if (vegetationSources.length > 0) {
-                    // Try up to 15 times to find a good vegetation location
-                    for (let attempt = 0; attempt < 15; attempt++) {
-                        const randomVegetation = vegetationSources[Math.floor(Math.random() * vegetationSources.length)];
-                        if (randomVegetation && randomVegetation.position) {
-                            // Position cluster near the vegetation base with some random offset
-                            const offsetDistance = 2 + Math.random() * 5; // 2-7 units from vegetation base
-                            const offsetAngle = Math.random() * Math.PI * 2;
-                            clusterCenterX = randomVegetation.position.x + Math.cos(offsetAngle) * offsetDistance;
-                            clusterCenterZ = randomVegetation.position.z + Math.sin(offsetAngle) * offsetDistance;
-                            clusterCenterHeight = gameContext.getHeightAt(clusterCenterX, clusterCenterZ);
-                            foundVegetationLocation = true;
+                // Skip if in water
+                let isSubmerged = false;
+                if (gameContext.waterBodies) {
+                    for (const water of gameContext.waterBodies) {
+                        const dist = new THREE.Vector2(clusterCenterX - water.position.x, clusterCenterZ - water.position.z).length();
+                        const waterRadius = water.userData.config ? (water.userData.config.size / 2) : 50;
+                        if (dist < waterRadius && clusterCenterHeight < water.position.y + 0.5) {
+                            isSubmerged = true;
                             break;
                         }
-                    }
-                }
-                
-                // Fallback to random position if no vegetation location found
-                if (!foundVegetationLocation) {
-                    clusterCenterX = (Math.random() - 0.5) * worldSize * 0.9;
-                    clusterCenterZ = (Math.random() - 0.5) * worldSize * 0.9;
-                    clusterCenterHeight = gameContext.getHeightAt(clusterCenterX, clusterCenterZ);
-                }
-                
-                // Skip if cluster center is underwater
-                let isSubmerged = false;
-                for (const water of gameContext.waterBodies) {
-                    const distanceToWaterCenter = new THREE.Vector2(clusterCenterX - water.position.x, clusterCenterZ - water.position.z).length();
-                    const waterRadius = water.userData.config ? (water.userData.config.size / 2) : 50;
-                    if (distanceToWaterCenter < waterRadius && clusterCenterHeight < water.position.y + 0.5) {
-                        isSubmerged = true;
-                        break;
                     }
                 }
                 if (isSubmerged) continue;
                 
-                // Skip if too close to player spawn
-                if (new THREE.Vector3(clusterCenterX, clusterCenterHeight, clusterCenterZ).distanceTo(new THREE.Vector3(0, gameContext.getHeightAt(0, 10), 10)) < 10) {
-                    continue;
-                }
+                // Skip near player spawn
+                if (Math.sqrt(clusterCenterX * clusterCenterX + (clusterCenterZ - 10) ** 2) < 10) continue;
                 
-                // Create 40-50 grass plants in a very large natural cluster
-                const plantsInCluster = 40 + Math.floor(Math.random() * 11); // 40-50 plants per cluster
-                const clusterRadius = 1.5 + Math.random() * 2; // 1.5-3.5 unit radius for tighter clustering (reduced from 4-10)
+                const plantsInCluster = 40 + Math.floor(Math.random() * 11);
+                const clusterRadius = 1.5 + Math.random() * 2;
+                
+                // Store cluster position for sound/collision detection
+                // Use slightly larger radius for detection since grass visually spreads a bit
+                const detectionRadius = clusterRadius * 1.2;
+                grassClusterPositions.push({ x: clusterCenterX, z: clusterCenterZ, radius: detectionRadius });
                 
                 for (let j = 0; j < plantsInCluster; j++) {
-                    // Position plants randomly within the cluster radius
+                    if (instanceIndex >= maxInstances) break;
+
                     const angle = Math.random() * Math.PI * 2;
                     const distance = Math.random() * clusterRadius;
                     const grassX = clusterCenterX + Math.cos(angle) * distance;
                     const grassZ = clusterCenterZ + Math.sin(angle) * distance;
-                    const grassHeight = gameContext.getHeightAt(grassX, grassZ);
                     
-                    // Check if this grass position is submerged
+                    const grassHeight = gameContext.getHeightAt(grassX, grassZ);
+                    if (grassHeight === null || grassHeight === undefined) continue;
+                    
+                    // Skip if in water
                     let grassSubmerged = false;
-                    for (const water of gameContext.waterBodies) {
-                        const distanceToWaterCenter = new THREE.Vector2(grassX - water.position.x, grassZ - water.position.z).length();
-                        const waterRadius = water.userData.config ? (water.userData.config.size / 2) : 50;
-                        if (distanceToWaterCenter < waterRadius && grassHeight < water.position.y + 0.2) {
-                            grassSubmerged = true;
-                            break;
+                    if (gameContext.waterBodies) {
+                        for (const water of gameContext.waterBodies) {
+                            const dist = new THREE.Vector2(grassX - water.position.x, grassZ - water.position.z).length();
+                            const waterRadius = water.userData.config ? (water.userData.config.size / 2) : 50;
+                            if (dist < waterRadius && grassHeight < water.position.y + 0.2) {
+                                grassSubmerged = true;
+                                break;
+                            }
                         }
                     }
                     if (grassSubmerged) continue;
                     
-                    const grassInstance = grassModel.clone();
+                    const baseScale = 0.12 + Math.random() * 0.08;
                     
-                    // Use optimized cached height detection for better performance
-                    const finalY = gameContext.getCachedHeightAt(grassX, grassZ);
+                    // Track height range
+                    if (grassHeight < minHeight) minHeight = grassHeight;
+                    if (grassHeight > maxHeight) maxHeight = grassHeight;
+                    sampleCount++;
                     
-                    // Position grass at exact terrain height with minimal vertical offset
-                    grassInstance.position.set(grassX, finalY + 0.05, grassZ); // Reduced offset from 0.1 to 0.05
+                    // The model is rotated 90 degrees on X axis, so original Z becomes Y
+                    // After rotation: original Z-min (-17.77) becomes the bottom of the model
+                    // We need to offset DOWN by the scaled min.z value to place the base at ground level
+                    // Since min.z is negative (-17.77), multiplying by scale and adding moves it down
+                    const yOffset = modelBoundingBox ? modelBoundingBox.min.z * baseScale : 0;
                     
-                    // Small realistic scale for grass - ground cover size (doubled)
-                    const baseScale = 0.1 + Math.random() * 0.1; // 0.1-0.2 base scale (doubled from 0.05-0.1)
-                    const scaleX = baseScale;
-                    const scaleY = baseScale * 0.5; // Even shorter height
-                    const scaleZ = baseScale;
-                    grassInstance.scale.set(scaleX, scaleY, scaleZ);
+                    dummy.position.set(grassX, grassHeight + yOffset, grassZ);
+                    dummy.rotation.set(Math.PI / 2, 0, Math.random() * Math.PI * 2);
+                    dummy.scale.set(baseScale, baseScale, baseScale);
+                    dummy.updateMatrix();
                     
-                    // Random rotation for natural variation
-                    grassInstance.rotation.y = Math.random() * Math.PI * 2;
-                    
-                    grassGroup.add(grassInstance);
+                    instancedMesh.setMatrixAt(instanceIndex, dummy.matrix);
+                    instanceIndex++;
                 }
             }
             
-            gameContext.grass = grassGroup;
-            gameContext.scene.add(grassGroup);
+            // Log height range and offset used for grass placement
+            const sampleOffset = modelBoundingBox ? modelBoundingBox.min.z * 0.15 : 0;
+            console.log(`🌿 GRASS: Height range - min: ${minHeight.toFixed(2)}, max: ${maxHeight.toFixed(2)}, samples: ${sampleCount}`);
+            console.log(`🌿 GRASS: Model min.z: ${modelBoundingBox?.min.z}, yOffset at scale 0.15: ${sampleOffset.toFixed(2)}`);
+            
+            instancedMesh.count = instanceIndex;
+            instancedMesh.instanceMatrix.needsUpdate = true; // Force matrix update
+            gameContext.grass = instancedMesh;
+            gameContext.grassClusterPositions = grassClusterPositions;
+            gameContext.scene.add(instancedMesh);
+            console.log(`🌿 GRASS: Created ${instanceIndex} grass instances in ${grassClusterPositions.length} clusters`);
+            
+            resolve(); // Grass loading complete
+        }, 
+        undefined,
+        (error) => {
+            console.error('🌿 GRASS: Failed to load grass model:', error);
+            reject(error);
+        });
+    }, 1000); // Wait 1 second for terrain to be ready
+    });
+}
+
+/**
+ * Creates efficient GPU shader-based grass with wind animation.
+ * This is more performant than model-based grass and includes realistic wind effects.
+ * @param {object} worldConfig - The world configuration, containing vegetation settings.
+ */
+export function createShaderGrass(worldConfig) {
+    const vegetationConfig = worldConfig?.environment?.vegetation || {};
+    const grassDensity = vegetationConfig.grassDensity || 0.8;
+    const worldSize = worldConfig?.terrain?.size || DEFAULT_WORLD_SIZE;
+    
+    // Use procedural geometry and shader material
+    const grassGeometry = createGrassBladeGeometry();
+    const grassMaterial = createGrassShaderMaterial();
+    
+    // Higher density for shader grass since it's more efficient
+    const grassCount = Math.floor(worldSize * worldSize * grassDensity * 0.5);
+    const instancedGrass = new THREE.InstancedMesh(grassGeometry, grassMaterial, grassCount);
+    instancedGrass.name = 'shaderGrass';
+    instancedGrass.frustumCulled = true;
+    
+    const dummy = new THREE.Object3D();
+    let instanceIndex = 0;
+    
+    // Distribute grass across the terrain
+    for (let i = 0; i < grassCount; i++) {
+        const x = (Math.random() - 0.5) * worldSize * 0.95;
+        const z = (Math.random() - 0.5) * worldSize * 0.95;
+        const y = gameContext.getHeightAt(x, z);
+        
+        // Skip if in water
+        let inWater = false;
+        if (gameContext.waterBodies) {
+            for (const water of gameContext.waterBodies) {
+                const dist = Math.sqrt((x - water.position.x) ** 2 + (z - water.position.z) ** 2);
+                const radius = water.userData?.config?.size / 2 || 50;
+                if (dist < radius && y < water.position.y + 0.5) {
+                    inWater = true;
+                    break;
+                }
+            }
+        }
+        if (inWater) continue;
+        
+        // Skip near player spawn
+        if (Math.sqrt(x * x + (z - 10) ** 2) < 8) continue;
+        
+        // Random scale and rotation for variety
+        const scale = 0.8 + Math.random() * 0.6;
+        const rotY = Math.random() * Math.PI * 2;
+        
+        dummy.position.set(x, y, z);
+        dummy.rotation.set(0, rotY, 0);
+        dummy.scale.set(scale, scale + Math.random() * 0.5, scale);
+        dummy.updateMatrix();
+        
+        instancedGrass.setMatrixAt(instanceIndex, dummy.matrix);
+        instanceIndex++;
+    }
+    
+    instancedGrass.count = instanceIndex;
+    instancedGrass.instanceMatrix.needsUpdate = true;
+    
+    gameContext.shaderGrass = instancedGrass;
+    gameContext.scene.add(instancedGrass);
+    
+    // Store update function for animation loop
+    gameContext.updateGrassWind = (delta) => updateGrassWind(instancedGrass, delta);
+}
+
+/**
+ * Creates short ground cover grass across the terrain.
+ * This is ankle-high grass that covers the ground for a natural forest floor.
+ * @param {object} worldConfig - The world configuration
+ */
+export function createGroundCover(worldConfig) {
+    console.log('🌱 GROUND COVER: Starting ground cover creation...');
+    
+    // Use setTimeout to avoid blocking the main thread
+    setTimeout(() => {
+        const worldSize = worldConfig?.terrain?.size || DEFAULT_WORLD_SIZE;
+        
+        // Create simple grass blade geometry (thin triangular blade)
+        const bladeWidth = 0.1;
+        const bladeHeight = 0.25; // Short ankle-high grass
+        
+        const geometry = new THREE.BufferGeometry();
+        const vertices = new Float32Array([
+            -bladeWidth/2, 0, 0,           // bottom left
+            bladeWidth/2, 0, 0,            // bottom right
+            0, bladeHeight, 0,             // top center
+        ]);
+        geometry.setAttribute('position', new THREE.BufferAttribute(vertices, 3));
+        geometry.computeVertexNormals();
+        
+        // Natural grass green material
+        const material = new THREE.MeshLambertMaterial({
+            color: 0x4a7f2e,  // Forest grass green
+            side: THREE.DoubleSide,
         });
         
-    } catch (error) {
-        // Silently handle grass loading errors - grass is decorative
-    }
+        // Reasonable grass count - 10,000 max for performance
+        const grassCount = Math.min(10000, Math.floor(worldSize * worldSize * 0.04));
+        const instancedGrass = new THREE.InstancedMesh(geometry, material, grassCount);
+        instancedGrass.name = 'groundCover';
+        instancedGrass.receiveShadow = true;
+        
+        const dummy = new THREE.Object3D();
+        let instanceIndex = 0;
+        
+        for (let i = 0; i < grassCount; i++) {
+            const x = (Math.random() - 0.5) * worldSize * 0.95;
+            const z = (Math.random() - 0.5) * worldSize * 0.95;
+            const y = gameContext.getHeightAt ? gameContext.getHeightAt(x, z) : 0;
+            
+            // Skip if in water
+            let inWater = false;
+            if (gameContext.waterBodies) {
+                for (const water of gameContext.waterBodies) {
+                    const dist = Math.sqrt((x - water.position.x) ** 2 + (z - water.position.z) ** 2);
+                    const radius = water.userData?.config?.size / 2 || 50;
+                    if (dist < radius + 2) {
+                        inWater = true;
+                        break;
+                    }
+                }
+            }
+            if (inWater) continue;
+            
+            // Skip near player spawn
+            if (Math.sqrt(x * x + (z - 10) ** 2) < 5) continue;
+            
+            // Random scale and rotation for natural variety
+            const scale = 0.8 + Math.random() * 0.8; // 0.8-1.6 scale
+            const rotY = Math.random() * Math.PI * 2;
+            
+            dummy.position.set(x, y, z);
+            dummy.rotation.set(0, rotY, 0);
+            dummy.scale.set(scale, scale + Math.random() * 0.5, scale);
+            dummy.updateMatrix();
+            
+            instancedGrass.setMatrixAt(instanceIndex, dummy.matrix);
+            instanceIndex++;
+        }
+        
+        instancedGrass.count = instanceIndex;
+        instancedGrass.instanceMatrix.needsUpdate = true;
+        
+        gameContext.groundCover = instancedGrass;
+        gameContext.scene.add(instancedGrass);
+        
+        console.log(`🌱 GROUND COVER: Created ${instanceIndex} grass blades`);
+    }, 100); // Delay to let other initialization complete first
 }
 
 /**
@@ -710,17 +937,20 @@ export function isWaterAt(x, z) {
             waterRadius = waterBody.userData.config.size / 2;
         }
         
-        // Use a larger detection radius for initial check
-        const detectionRadius = waterRadius * 1.1;
+        // Use ACTUAL water radius (not expanded) - must be inside the water body
+        // Reduce by 5% to account for natural pond edge variations
+        const detectionRadius = waterRadius * 0.95;
         
-        // Check if player is within expanded water body radius
+        // Check if player is within actual water body radius
         if (distance <= detectionRadius) {
-            // Height check that accounts for pond depression depth
-            const playerHeight = gameContext.getHeightAt(x, z);
+            // Get the actual terrain height at this position
+            const terrainHeight = gameContext.getHeightAt(x, z);
             
-            // Check if player is below water surface (in the depression) or very close to water level
-            // Player should be at or below water surface level, with some tolerance for slopes
-            if (playerHeight <= waterY + 1.5) {
+            // Player is in water only if:
+            // 1. They are within the water radius AND
+            // 2. The terrain at their position is at or below water level
+            // Use a small tolerance (0.3) for slight terrain variations
+            if (terrainHeight <= waterY + 0.3) {
                 return true;
             }
         }

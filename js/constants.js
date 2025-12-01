@@ -17,7 +17,7 @@ export const MOUSE_SENSITIVITY = 0.002;
  * Higher values mean faster days.
  * @type {number}
  */
-export const GAME_TIME_SPEED_MULTIPLIER = 0.05;
+export const GAME_TIME_SPEED_MULTIPLIER = 0.0167; // 1 real minute = 1 game hour
 /**
  * Total hours in a game day.
  * @type {number}

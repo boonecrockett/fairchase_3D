@@ -11,7 +11,7 @@ export class DeerHitbox {
         this.deer = deer;
         this.config = config;
         this.collisionBody = null;
-        this.debugMode = false;
+        this.debugMode = true;
     }
 
     /**
@@ -21,7 +21,8 @@ export class DeerHitbox {
     createVitals(parent) {
         // Create visible wireframe hitboxes that ARE the collision hitboxes
         collisionSystem.createDebugHitboxes(this.deer);
-        console.log('Visible wireframe hitboxes created for collision detection');
+        // DEBUG: Comment out debug logging
+        // console.log('Visible wireframe hitboxes created for collision detection');
     }
 
 

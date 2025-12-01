@@ -18,8 +18,12 @@ const MAP_DIRECTIONAL_LIGHT_COLOR = 0xffffff;
 const MAP_DIRECTIONAL_LIGHT_INTENSITY = 0.5;
 const MAP_DIRECTIONAL_LIGHT_POSITION = { x: 100, y: 300, z: 200 };
 const MAP_TREE_COLOR = 0x14501e;
-const MAP_PLAYER_DOT_COLOR = 'red';
-const MAP_PLAYER_DOT_STROKE_COLOR = 'white';
+const MAP_TRAIL_COLOR = 0xbeb5a3;       // Tan - brand color
+const MAP_HUNTER_COLOR = 0xba5216;      // Autumn - brand color for player
+const MAP_DEER_COLOR = 0x5f4d4d;        // Hide - brand color for deer
+const MAP_HIT_MARKER_COLOR = 0xa63d2a;  // Danger red for hit marker
+const MAP_TAGGED_COLOR = 0x9eb529;      // Leaf - brand color for tagged deer
+const MAP_PLAYER_DOT_STROKE_COLOR = '#beb5a3'; // Tan
 const MAP_PLAYER_DOT_RADIUS = 6;
 const MAP_PLAYER_DOT_LINE_WIDTH = 2;
 
@@ -31,6 +35,84 @@ export function initMap() {
         gameContext.mapRenderer = new THREE.WebGLRenderer({ antialias: true, canvas: gameContext.mapCanvas });
         gameContext.mapRenderer.setSize(MAP_CANVAS_SIZE, MAP_CANVAS_SIZE);
     }
+}
+
+/**
+ * Creates an X marker for the map at a given position
+ */
+function createHitMarker(position, size = 8) {
+    const group = new THREE.Group();
+    
+    // Create two crossed lines for the X
+    const material = new THREE.LineBasicMaterial({ color: MAP_HIT_MARKER_COLOR, linewidth: 3 });
+    
+    // Line 1: top-left to bottom-right
+    const points1 = [
+        new THREE.Vector3(-size, 0, -size),
+        new THREE.Vector3(size, 0, size)
+    ];
+    const geometry1 = new THREE.BufferGeometry().setFromPoints(points1);
+    const line1 = new THREE.Line(geometry1, material);
+    group.add(line1);
+    
+    // Line 2: top-right to bottom-left
+    const points2 = [
+        new THREE.Vector3(size, 0, -size),
+        new THREE.Vector3(-size, 0, size)
+    ];
+    const geometry2 = new THREE.BufferGeometry().setFromPoints(points2);
+    const line2 = new THREE.Line(geometry2, material);
+    group.add(line2);
+    
+    group.position.copy(position);
+    group.position.y = 25; // Elevate above terrain
+    
+    return group;
+}
+
+/**
+ * Adds a distance scale legend to the map canvas
+ */
+function addDistanceLegend(canvas) {
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+    
+    // Get world size for scale calculation
+    const worldSize = gameContext.terrain ? gameContext.terrain.geometry.parameters.width : 1000;
+    const pixelsPerUnit = MAP_CANVAS_SIZE / worldSize;
+    
+    // Calculate 100 yard bar length (1 yard ≈ 0.9144 meters, game uses ~1 unit = 1 meter)
+    const yardsToUnits = 0.9144;
+    const legendYards = 100;
+    const legendUnits = legendYards * yardsToUnits;
+    const legendPixels = legendUnits * pixelsPerUnit;
+    
+    // Position in bottom-left corner
+    const x = 20;
+    const y = MAP_CANVAS_SIZE - 25;
+    
+    // Draw scale bar background
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.6)';
+    ctx.fillRect(x - 5, y - 20, legendPixels + 40, 35);
+    
+    // Draw scale bar
+    ctx.strokeStyle = 'white';
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.moveTo(x, y);
+    ctx.lineTo(x + legendPixels, y);
+    // End caps
+    ctx.moveTo(x, y - 5);
+    ctx.lineTo(x, y + 5);
+    ctx.moveTo(x + legendPixels, y - 5);
+    ctx.lineTo(x + legendPixels, y + 5);
+    ctx.stroke();
+    
+    // Draw label
+    ctx.fillStyle = 'white';
+    ctx.font = 'bold 12px Arial';
+    ctx.textAlign = 'center';
+    ctx.fillText(`${legendYards} yds`, x + legendPixels / 2, y - 8);
 }
 
 /**
@@ -105,12 +187,88 @@ export function showMap() {
             tempScene.add(mapTree);
         });
     }
+    
+    // --- Game Trails (rendered for map visibility) ---
+    if (gameContext.trails && gameContext.trails.children && gameContext.trails.children.length > 0) {
+        console.log(`🗺️ MAP: Adding ${gameContext.trails.children.length} trails to map`);
+        gameContext.trails.children.forEach(trail => {
+            // Extract trail points and create a wider line for the map
+            const positions = trail.geometry.attributes.position.array;
+            
+            // Create a simple wide line using PlaneGeometry segments
+            const trailPoints = [];
+            for (let i = 0; i < positions.length; i += 6) {
+                // Get center point of each segment (average of left and right vertices)
+                const centerX = (positions[i] + positions[i + 3]) / 2;
+                const centerZ = (positions[i + 2] + positions[i + 5]) / 2;
+                trailPoints.push(new THREE.Vector3(centerX, 100, centerZ));
+            }
+            
+            // Create wider trail geometry for map
+            if (trailPoints.length >= 2) {
+                const mapTrailWidth = 4; // Wider for map visibility
+                const vertices = [];
+                const indices = [];
+                
+                for (let i = 0; i < trailPoints.length; i++) {
+                    const point = trailPoints[i];
+                    let perpX, perpZ;
+                    
+                    if (i === 0) {
+                        const next = trailPoints[1];
+                        const dx = next.x - point.x;
+                        const dz = next.z - point.z;
+                        const len = Math.sqrt(dx * dx + dz * dz) || 1;
+                        perpX = -dz / len * mapTrailWidth;
+                        perpZ = dx / len * mapTrailWidth;
+                    } else if (i === trailPoints.length - 1) {
+                        const prev = trailPoints[i - 1];
+                        const dx = point.x - prev.x;
+                        const dz = point.z - prev.z;
+                        const len = Math.sqrt(dx * dx + dz * dz) || 1;
+                        perpX = -dz / len * mapTrailWidth;
+                        perpZ = dx / len * mapTrailWidth;
+                    } else {
+                        const prev = trailPoints[i - 1];
+                        const next = trailPoints[i + 1];
+                        const dx = next.x - prev.x;
+                        const dz = next.z - prev.z;
+                        const len = Math.sqrt(dx * dx + dz * dz) || 1;
+                        perpX = -dz / len * mapTrailWidth;
+                        perpZ = dx / len * mapTrailWidth;
+                    }
+                    
+                    vertices.push(point.x - perpX, 100, point.z - perpZ);
+                    vertices.push(point.x + perpX, 100, point.z + perpZ);
+                    
+                    if (i > 0) {
+                        const base = (i - 1) * 2;
+                        indices.push(base, base + 1, base + 2);
+                        indices.push(base + 1, base + 3, base + 2);
+                    }
+                }
+                
+                const geometry = new THREE.BufferGeometry();
+                geometry.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3));
+                geometry.setIndex(indices);
+                
+                const mapTrail = new THREE.Mesh(geometry, new THREE.MeshBasicMaterial({
+                    color: MAP_TRAIL_COLOR,
+                    side: THREE.DoubleSide,
+                    depthTest: false
+                }));
+                mapTrail.rotation.x = -Math.PI / 2; // Lay flat
+                mapTrail.rotation.x = 0; // Already in XZ plane
+                mapTrail.renderOrder = 100;
+                tempScene.add(mapTrail);
+            }
+        });
+    }
 
-
-    // --- Player Dot (3D) ---
+    // --- Hunter Dot (3D) - Hunter's Orange ---
     const playerDotGeometry = new THREE.CircleGeometry(10, 16); // Radius in world units
     const playerDotMaterial = new THREE.MeshBasicMaterial({
-        color: MAP_PLAYER_DOT_COLOR,
+        color: MAP_HUNTER_COLOR,
         depthTest: false // Render on top of other map elements
     });
     const playerDot = new THREE.Mesh(playerDotGeometry, playerDotMaterial);
@@ -123,34 +281,68 @@ export function showMap() {
 
     tempScene.add(playerDot);
 
-    // --- Deer Dot (3D) ---
+    // --- Deer Marker Logic ---
+    // Show different markers based on deer state:
+    // - Alive: Brown dot (live tracking)
+    // - Wounded/Dead untagged: Red X at hit location + blood trail
+    // - Tagged: Green dot at actual location
+    
     if (gameContext.deer && gameContext.deer.isModelLoaded) {
-        const deerDotGeometry = new THREE.CircleGeometry(10, 16);
-        const deerDotMaterial = new THREE.MeshBasicMaterial({
-            color: 'yellow',
-            depthTest: false
-        });
-        const deerDot = new THREE.Mesh(deerDotGeometry, deerDotMaterial);
-        deerDot.renderOrder = 1000; // Render on top of player dot
-
-        deerDot.position.copy(gameContext.deer.model.position);
-        deerDot.position.y = gameContext.getHeightAt(deerDot.position.x, deerDot.position.z) + 21;
-        deerDot.rotation.x = -Math.PI / 2;
-
-        tempScene.add(deerDot);
+        const isWounded = gameContext.deer.state === 'WOUNDED';
+        const isDead = gameContext.deer.state === 'KILLED';
+        const isTagged = gameContext.deer.tagged;
+        
+        if (isTagged) {
+            // Tagged deer - show green dot at actual location
+            const deerDotGeometry = new THREE.CircleGeometry(10, 16);
+            const deerDotMaterial = new THREE.MeshBasicMaterial({
+                color: MAP_TAGGED_COLOR,
+                depthTest: false
+            });
+            const deerDot = new THREE.Mesh(deerDotGeometry, deerDotMaterial);
+            deerDot.renderOrder = 1000;
+            deerDot.position.copy(gameContext.deer.model.position);
+            deerDot.position.y = gameContext.getHeightAt(deerDot.position.x, deerDot.position.z) + 21;
+            deerDot.rotation.x = -Math.PI / 2;
+            tempScene.add(deerDot);
+            
+        } else if (isWounded || isDead) {
+            // Wounded or dead untagged - show red X at hit location only
+            if (gameContext.lastHitPosition) {
+                const hitMarker = createHitMarker(gameContext.lastHitPosition, 10);
+                tempScene.add(hitMarker);
+            }
+            
+        } else {
+            // Alive deer - show brown dot (GPS tracking)
+            const deerDotGeometry = new THREE.CircleGeometry(10, 16);
+            const deerDotMaterial = new THREE.MeshBasicMaterial({
+                color: MAP_DEER_COLOR,
+                depthTest: false
+            });
+            const deerDot = new THREE.Mesh(deerDotGeometry, deerDotMaterial);
+            deerDot.renderOrder = 1000;
+            deerDot.position.copy(gameContext.deer.model.position);
+            deerDot.position.y = gameContext.getHeightAt(deerDot.position.x, deerDot.position.z) + 21;
+            deerDot.rotation.x = -Math.PI / 2;
+            tempScene.add(deerDot);
+        }
     }
 
     gameContext.mapRenderer.render(tempScene, tempCamera);
+    
+    // Add distance legend overlay
+    addDistanceLegend(gameContext.mapCanvas);
 }
 
 /**
  * Shows a smartphone-style map popup with score penalty
+ * Map stays open while M key is held down
  */
 export function showSmartphoneMap() {
-    // Check if map is already open - if so, close it
+    // Check if map is already open - don't reopen/charge again
     const modal = document.getElementById('smartphone-map-modal');
     if (modal && modal.style.display === 'flex') {
-        closeSmartphoneMap();
         return;
     }
     
@@ -269,19 +461,27 @@ function showBatteryDepletedMessage() {
  * Updates the battery indicator based on usage count
  */
 function updateBatteryIndicator() {
-    const statusBar = document.querySelector('#smartphone-map-modal .status-bar');
-    if (statusBar) {
+    const batteryText = document.querySelector('#smartphone-map-modal .battery-text');
+    const batteryFill = document.querySelector('#smartphone-map-modal .battery-fill');
+    
+    if (batteryText && batteryFill) {
         const batteryPercentage = Math.max(0, 100 - (gameContext.mapUsageCount * 10));
-        const batteryIcon = batteryPercentage > 20 ? '🔋' : '🪫';
-        statusBar.innerHTML = `
-            <span>📶 Hunting GPS</span>
-            <span>${batteryIcon} ${batteryPercentage}%</span>
-        `;
+        batteryText.textContent = `${batteryPercentage}%`;
+        batteryFill.style.width = `${batteryPercentage}%`;
+        
+        // Change color based on battery level - using brand colors
+        if (batteryPercentage <= 20) {
+            batteryFill.style.background = 'linear-gradient(90deg, #a63d2a, #8a3322)'; // Danger red
+        } else if (batteryPercentage <= 50) {
+            batteryFill.style.background = 'linear-gradient(90deg, #ba5216, #9a4412)'; // Autumn
+        } else {
+            batteryFill.style.background = 'linear-gradient(90deg, #9eb529, #7a8c20)'; // Leaf
+        }
     }
 }
 
 /**
- * Creates the smartphone-style map modal UI
+ * Creates a modern GPS device-style map modal UI
  */
 function createSmartphoneMapModal() {
     const modal = document.createElement('div');
@@ -292,150 +492,213 @@ function createSmartphoneMapModal() {
         left: 0;
         width: 100%;
         height: 100%;
-        background: rgba(0, 0, 0, 0.8);
+        background: rgba(0, 0, 0, 0.85);
         display: none;
         justify-content: center;
         align-items: center;
         z-index: 1000;
-        backdrop-filter: blur(5px);
+        backdrop-filter: blur(8px);
     `;
     
-    const phone = document.createElement('div');
-    phone.style.cssText = `
-        width: 320px;
-        height: 640px;
-        background: #1a1a1a;
-        border-radius: 25px;
-        padding: 20px 5px;
-        box-shadow: 0 20px 40px rgba(0, 0, 0, 0.5);
+    // GPS device frame - Brand styled
+    const device = document.createElement('div');
+    device.style.cssText = `
+        width: 380px;
+        height: min(520px, 85vh);
+        background: linear-gradient(145deg, #2a2b2f 0%, #1a1b1f 50%, #121315 100%);
+        border-radius: 16px;
+        padding: 12px;
+        box-shadow: 
+            0 25px 50px rgba(0, 0, 0, 0.6),
+            0 0 0 1px rgba(158, 181, 41, 0.2),
+            inset 0 1px 0 rgba(190, 181, 163, 0.1);
         position: relative;
-        border: 3px solid #333;
         box-sizing: border-box;
+        max-height: 85vh;
+        overflow: hidden;
     `;
     
-    const statusBar = document.createElement('div');
-    statusBar.style.cssText = `
-        height: 20px;
-        background: #000;
-        border-radius: 10px;
-        margin-bottom: 10px;
+    // Top bar with device info - Brand colors
+    const topBar = document.createElement('div');
+    topBar.style.cssText = `
         display: flex;
         justify-content: space-between;
         align-items: center;
-        padding: 0 10px;
-        font-size: 12px;
-        color: white;
-        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+        padding: 10px 14px;
+        margin-bottom: 8px;
+        background: linear-gradient(180deg, #5f4d4d 0%, #3d3532 100%);
+        border-radius: 8px;
+        font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+        border-bottom: 2px solid #9eb529;
     `;
-    statusBar.innerHTML = `
-        <span>📶 Hunting GPS</span>
-        <span>🔋 100%</span>
+    topBar.innerHTML = `
+        <div style="display: flex; align-items: center; gap: 8px;">
+            <div style="width: 8px; height: 8px; background: #9eb529; border-radius: 50%; box-shadow: 0 0 8px #9eb529;"></div>
+            <span style="color: #beb5a3; font-size: 13px; font-weight: 600; letter-spacing: 1px; text-transform: uppercase;">Hunting GPS</span>
+        </div>
+        <div style="display: flex; align-items: center; gap: 6px;">
+            <span style="color: #9a9488; font-size: 11px;" class="battery-text">100%</span>
+            <div style="width: 24px; height: 12px; border: 1.5px solid #9a9488; border-radius: 3px; position: relative; padding: 1px;">
+                <div class="battery-fill" style="width: 100%; height: 100%; background: linear-gradient(90deg, #9eb529, #7a8c20); border-radius: 1px;"></div>
+                <div style="position: absolute; right: -4px; top: 50%; transform: translateY(-50%); width: 2px; height: 6px; background: #9a9488; border-radius: 0 1px 1px 0;"></div>
+            </div>
+        </div>
     `;
-    statusBar.classList.add('status-bar');
+    topBar.classList.add('status-bar');
     
-    const header = document.createElement('div');
-    header.style.cssText = `
-        background: #2c2c2e;
-        border-radius: 15px;
-        padding: 15px;
-        margin-bottom: 10px;
-        text-align: center;
-        color: white;
-        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-    `;
-    header.innerHTML = `
-        <h3 style="margin: 0; font-size: 18px;">📍 Hunting Map</h3>
-        <p style="margin: 5px 0 0 0; font-size: 12px; color: #ff6b6b;">-5 points for GPS usage</p>
+    // Map screen container with bezel effect
+    const screenBezel = document.createElement('div');
+    screenBezel.style.cssText = `
+        background: #1a1b1f;
+        border-radius: 10px;
+        padding: 3px;
+        box-shadow: inset 0 2px 8px rgba(0,0,0,0.8);
+        margin-bottom: 8px;
+        border: 1px solid #3d3e42;
     `;
     
     const mapContainer = document.createElement('div');
     mapContainer.style.cssText = `
         width: 100%;
-        height: 310px;
-        background: #000;
-        border-radius: 15px;
+        height: min(340px, calc(85vh - 180px));
+        background: linear-gradient(180deg, #1a3d2a 0%, #0f2419 100%);
+        border-radius: 8px;
         overflow: hidden;
         position: relative;
-        margin: auto;
-        margin-bottom: 15px;
         box-sizing: border-box;
     `;
     
     const mapCanvas = document.createElement('canvas');
     mapCanvas.id = 'smartphone-map-canvas';
-    mapCanvas.width = 310;
-    mapCanvas.height = 310;
+    mapCanvas.width = 350;
+    mapCanvas.height = 340;
     mapCanvas.style.cssText = `
         width: 100%;
         height: 100%;
         display: block;
-        border-radius: 15px;
-        box-sizing: border-box;
+        border-radius: 8px;
     `;
-    
-    const northIndicator = document.createElement('div');
-    northIndicator.style.cssText = `
-        position: absolute;
-        top: 10px;
-        left: 50%;
-        transform: translateX(-50%);
-        background: rgba(0, 0, 0, 0.7);
-        color: white;
-        padding: 5px 10px;
-        border-radius: 15px;
-        font-size: 12px;
-        font-weight: bold;
-        z-index: 10;
-        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-        border: 1px solid rgba(255, 255, 255, 0.3);
-    `;
-    northIndicator.textContent = '↑ N';
     
     mapContainer.appendChild(mapCanvas);
-    mapContainer.appendChild(northIndicator);
-    phone.appendChild(statusBar);
-    phone.appendChild(header);
-    phone.appendChild(mapContainer);
+    screenBezel.appendChild(mapContainer);
+    
+    // Legend bar BELOW the map - Brand styled
+    const legendBar = document.createElement('div');
+    legendBar.style.cssText = `
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 10px 14px;
+        background: linear-gradient(180deg, #3d3e42 0%, #2a2b2f 100%);
+        border-radius: 8px;
+        margin-top: 8px;
+        font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+        font-size: 11px;
+        color: #beb5a3;
+        border-top: 1px solid #5f4d4d;
+    `;
+    legendBar.innerHTML = `
+        <div style="display: flex; align-items: center; gap: 14px;">
+            <div style="display: flex; align-items: center; gap: 5px;">
+                <div style="width: 10px; height: 10px; background: #ba5216; border-radius: 50%; border: 1px solid #d4691a;"></div>
+                <span>You</span>
+            </div>
+            <div style="display: flex; align-items: center; gap: 5px;">
+                <div style="width: 10px; height: 10px; background: #5f4d4d; border-radius: 50%; border: 1px solid #7a6363;"></div>
+                <span>Deer</span>
+            </div>
+            <div style="display: flex; align-items: center; gap: 5px;">
+                <span style="color: #a63d2a; font-weight: bold; font-size: 14px;">✕</span>
+                <span>Hit</span>
+            </div>
+        </div>
+        <div style="display: flex; align-items: center; gap: 6px;">
+            <span style="color: #ba5216; font-weight: bold;">N↑</span>
+            <span style="color: #5f4d4d; margin: 0 4px;">│</span>
+            <div style="width: 32px; height: 2px; background: #beb5a3; position: relative;">
+                <div style="position: absolute; left: 0; top: -3px; width: 2px; height: 8px; background: #beb5a3;"></div>
+                <div style="position: absolute; right: 0; top: -3px; width: 2px; height: 8px; background: #beb5a3;"></div>
+            </div>
+            <span style="font-size: 10px; color: #9a9488;">100 yds</span>
+        </div>
+    `;
+    
+    // Bottom controls
+    const controls = document.createElement('div');
+    controls.style.cssText = `
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        gap: 12px;
+        padding: 8px 0;
+    `;
     
     const closeButton = document.createElement('button');
     closeButton.style.cssText = `
-        width: 40px;
-        height: 40px;
-        background: rgba(102, 102, 102, 0.7);
-        border: none;
+        width: 44px;
+        height: 44px;
+        background: linear-gradient(180deg, #5f4d4d 0%, #3d3532 100%);
+        border: 2px solid #9eb529;
         border-radius: 50%;
-        color: white;
-        font-size: 20px;
+        color: #beb5a3;
+        font-size: 16px;
         cursor: pointer;
-        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-        transition: background 0.2s;
-        position: absolute;
-        bottom: 20px;
-        left: 50%;
-        transform: translateX(-50%);
-        z-index: 20;
-        backdrop-filter: blur(5px);
+        font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+        transition: all 0.2s ease;
+        box-shadow: 
+            0 4px 12px rgba(0,0,0,0.4),
+            inset 0 1px 0 rgba(190, 181, 163, 0.1);
+        display: flex;
+        justify-content: center;
+        align-items: center;
     `;
+    closeButton.innerHTML = '✕';
     closeButton.onclick = closeSmartphoneMap;
     
-    closeButton.onmouseover = () => closeButton.style.background = 'rgba(136, 136, 136, 0.8)';
-    closeButton.onmouseout = () => closeButton.style.background = 'rgba(102, 102, 102, 0.7)';
+    closeButton.onmouseover = () => {
+        closeButton.style.background = 'linear-gradient(180deg, #7a6363 0%, #5f4d4d 100%)';
+        closeButton.style.borderColor = '#b5cc3a';
+        closeButton.style.transform = 'scale(1.05)';
+    };
+    closeButton.onmouseout = () => {
+        closeButton.style.background = 'linear-gradient(180deg, #5f4d4d 0%, #3d3532 100%)';
+        closeButton.style.borderColor = '#9eb529';
+        closeButton.style.transform = 'scale(1)';
+    };
     
-    phone.appendChild(closeButton);
-    modal.appendChild(phone);
+    // Hint text
+    const hint = document.createElement('div');
+    hint.style.cssText = `
+        text-align: center;
+        color: #6b675f;
+        font-size: 11px;
+        font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+        margin-top: 4px;
+        letter-spacing: 0.5px;
+    `;
+    hint.textContent = 'Press M or ESC to close';
+    
+    controls.appendChild(closeButton);
+    
+    device.appendChild(topBar);
+    device.appendChild(screenBezel);
+    device.appendChild(legendBar);
+    device.appendChild(controls);
+    device.appendChild(hint);
+    modal.appendChild(device);
     document.body.appendChild(modal);
 }
 
 /**
- * Renders the map in smartphone style
+ * Renders the map in modern GPS style
  */
 function renderSmartphoneMap() {
     const canvas = document.getElementById('smartphone-map-canvas');
     if (!canvas || !gameContext.terrain) return;
     
-    // Create renderer for smartphone map
+    // Create renderer for GPS map with larger size
     const renderer = new THREE.WebGLRenderer({ canvas: canvas, antialias: true });
-    renderer.setSize(310, 310);
+    renderer.setSize(350, 340);
     renderer.setPixelRatio(window.devicePixelRatio);
     renderer.setClearColor(0x1a472a);
     
@@ -486,10 +749,25 @@ function renderSmartphoneMap() {
         });
     }
     
-    // Add player dot
+    // Add game trails
+    if (gameContext.trails) {
+        gameContext.trails.children.forEach(trail => {
+            const mapTrail = trail.clone();
+            mapTrail.material = new THREE.MeshBasicMaterial({ 
+                color: MAP_TRAIL_COLOR,
+                side: THREE.DoubleSide,
+                transparent: true,
+                opacity: 0.8
+            });
+            mapTrail.position.y += 5;
+            tempScene.add(mapTrail);
+        });
+    }
+    
+    // Add hunter dot - Hunter's Orange
     const playerDotGeometry = new THREE.CircleGeometry(10, 16);
     const playerDotMaterial = new THREE.MeshBasicMaterial({
-        color: 'red',
+        color: MAP_HUNTER_COLOR,
         depthTest: false
     });
     const playerDot = new THREE.Mesh(playerDotGeometry, playerDotMaterial);
@@ -500,29 +778,59 @@ function renderSmartphoneMap() {
     playerDot.rotation.x = -Math.PI / 2;
     tempScene.add(playerDot);
     
-    // Add deer dot if visible
+    // --- Deer Marker Logic (same as showMap) ---
     if (gameContext.deer && gameContext.deer.isModelLoaded) {
-        const deerDotGeometry = new THREE.CircleGeometry(10, 16);
-        const deerDotMaterial = new THREE.MeshBasicMaterial({
-            color: 'yellow',
-            depthTest: false
-        });
-        const deerDot = new THREE.Mesh(deerDotGeometry, deerDotMaterial);
-        deerDot.renderOrder = 1000;
+        const isWounded = gameContext.deer.state === 'WOUNDED';
+        const isDead = gameContext.deer.state === 'KILLED';
+        const isTagged = gameContext.deer.tagged;
         
-        deerDot.position.copy(gameContext.deer.model.position);
-        deerDot.position.y = gameContext.getHeightAt(deerDot.position.x, deerDot.position.z) + 21;
-        deerDot.rotation.x = -Math.PI / 2;
-        tempScene.add(deerDot);
+        if (isTagged) {
+            // Tagged deer - show green dot at actual location
+            const deerDotGeometry = new THREE.CircleGeometry(10, 16);
+            const deerDotMaterial = new THREE.MeshBasicMaterial({
+                color: MAP_TAGGED_COLOR,
+                depthTest: false
+            });
+            const deerDot = new THREE.Mesh(deerDotGeometry, deerDotMaterial);
+            deerDot.renderOrder = 1000;
+            deerDot.position.copy(gameContext.deer.model.position);
+            deerDot.position.y = gameContext.getHeightAt(deerDot.position.x, deerDot.position.z) + 21;
+            deerDot.rotation.x = -Math.PI / 2;
+            tempScene.add(deerDot);
+            
+        } else if (isWounded || isDead) {
+            // Wounded or dead untagged - show red X at hit location only
+            if (gameContext.lastHitPosition) {
+                const hitMarker = createHitMarker(gameContext.lastHitPosition, 10);
+                tempScene.add(hitMarker);
+            }
+            
+        } else {
+            // Alive deer - show brown dot (GPS tracking)
+            const deerDotGeometry = new THREE.CircleGeometry(10, 16);
+            const deerDotMaterial = new THREE.MeshBasicMaterial({
+                color: MAP_DEER_COLOR,
+                depthTest: false
+            });
+            const deerDot = new THREE.Mesh(deerDotGeometry, deerDotMaterial);
+            deerDot.renderOrder = 1000;
+            deerDot.position.copy(gameContext.deer.model.position);
+            deerDot.position.y = gameContext.getHeightAt(deerDot.position.x, deerDot.position.z) + 21;
+            deerDot.rotation.x = -Math.PI / 2;
+            tempScene.add(deerDot);
+        }
     }
     
     renderer.render(tempScene, tempCamera);
+    
+    // Add distance legend overlay
+    addDistanceLegend(canvas);
 }
 
 /**
  * Closes the smartphone map modal
  */
-function closeSmartphoneMap() {
+export function closeSmartphoneMap() {
     const modal = document.getElementById('smartphone-map-modal');
     if (modal) {
         modal.style.display = 'none';

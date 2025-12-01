@@ -2,23 +2,62 @@ import * as THREE from 'three';
 import { gameContext } from './context.js';
 import { MOUSE_SENSITIVITY as MOUSE_SENSITIVITY_NORMAL } from './constants.js';
 import { startWalkSound, stopWalkSound, startWaterWalkSound, stopWaterWalkSound, startFoliageWalkSound, stopFoliageWalkSound } from './audio.js';
-import { showSmartphoneMap } from './map.js';
+import { showSmartphoneMap, closeSmartphoneMap } from './map.js';
 import { updateSpatialAudioListener } from './spatial-audio.js';
+import { tagDeer } from './hunting-mechanics.js';
+import { updateDistanceTraveled } from './report-logger.js';
 
 // --- Player Module Constants ---
-const PLAYER_EYE_HEIGHT = 6.0; // Player camera height relative to player group's origin
-const PLAYER_KNEEL_HEIGHT = 2.5; // Height when kneeling
-const INITIAL_PLAYER_X = 0;
-const INITIAL_PLAYER_Z = 10;
-const PLAYER_MOVE_SPEED = 6.05; // Increased by another 10% from 5.5 to 6.05
+
+/**
+ * Checks if player input should be allowed based on game state.
+ * @returns {boolean} True if input is allowed, false otherwise.
+ */
+function isInputAllowed() {
+    return !gameContext.isSleeping;
+}
+
+/**
+ * Checks if the player can tag a deer.
+ * @returns {boolean} True if deer can be tagged, false otherwise.
+ */
+function canTagDeer() {
+    if (!gameContext.deer) return false;
+    if (gameContext.deer.state !== 'KILLED') return false;
+    if (gameContext.deer.tagged) return false;
+    
+    // Check if player is close enough to the deer (within 4 units)
+    const distance = gameContext.player.position.distanceTo(gameContext.deer.model.position);
+    return distance < 4;
+}
+const PLAYER_EYE_HEIGHT = 2.04; // Scaled down from 6.0
+const PLAYER_KNEEL_HEIGHT = 0.85; // Scaled down from 2.5
+// Spawn player at edge of pond, overlooking the water (pond is at 0,0 with radius ~46)
+const INITIAL_PLAYER_X = 60;
+const INITIAL_PLAYER_Z = 60;
+
+// Realistic walking speeds (1 unit ≈ 1 yard ≈ 0.91 meters)
+// Normal walking: 1.4 m/s = ~1.54 units/s (3.1 mph - average human walking)
+// Sprinting: 4.0 m/s = ~4.4 units/s (9 mph - jogging pace)
+const PLAYER_WALK_SPEED = 1.54;   // Normal walking speed
+const PLAYER_SPRINT_SPEED = 4.4; // Faster sprint speed (hold Shift)
+const PLAYER_MOVE_SPEED = PLAYER_WALK_SPEED; // Default to normal walk
+
+// Stamina system constants
+const STAMINA_MAX = 100;
+const STAMINA_DRAIN_RATE = 10; // Drain per second while sprinting (10 seconds to deplete)
+const STAMINA_REGEN_RATE = 15; // Regen per second while not sprinting (6.7 seconds to full)
+const STAMINA_REGEN_RATE_KNEELING = 25; // Faster regen while kneeling
+const STAMINA_EXHAUSTED_THRESHOLD = 20; // Below this, bar turns red
+const STAMINA_DEPLETED_THRESHOLD = 50; // Below this, bar turns yellow
 const MOUSE_SENSITIVITY_SCOPED = 0.0005; // Restored to normal scoped sensitivity
 const CAMERA_FOV_NORMAL = 60; // Reduced from 75 for a more natural perspective
 const CAMERA_FOV_SCOPED = 15;
 
 // Scope sway parameters for realistic breathing/nerves effect
 const SCOPE_SWAY_FREQUENCY = 2.5; // Breathing rate frequency
-const SCOPE_SWAY_AMPLITUDE = 0.00034; // Reduced by 15% for less standing sway
-const SCOPE_SWAY_NOISE_AMPLITUDE = 0.000425; // Reduced by 15% for less standing sway
+const SCOPE_SWAY_AMPLITUDE = 0.00017; // Reduced by 50% for less standing sway
+const SCOPE_SWAY_NOISE_AMPLITUDE = 0.0002125; // Reduced by 50% for less standing sway
 const SCOPE_SWAY_NOISE_FREQUENCY = 6.0; // Increased from 4.0 for more varied tremor
 const TREE_BRACE_REDUCTION = 0.13; // When braced against tree, reduce sway to 13% (increased by 5%)
 const KNEEL_SWAY_REDUCTION = 0.35; // When kneeling, reduce sway to 35%
@@ -26,10 +65,12 @@ const KNEEL_SWAY_REDUCTION = 0.35; // When kneeling, reduce sway to 35%
 // --- HUMAN TRACKING CONSTANTS ---
 const HUMAN_TRACK_CONFIG = {
     trackColor: 0x000000, // Black color for human tracks
-    trackShapeRadius: 0.7776, // Reduced by 10% from 0.864 for better proportions
     trackOpacityStart: 0.5, // 50% opacity
     trackFadeDurationS: 4500, // Same as deer tracks
-    trackCreationDistanceThreshold: 1.5, // Create tracks every 1.5 units of movement
+    trackWidth: 0.33, // Width of the track geometry (184/304 aspect ratio)
+    trackLength: 0.55, // Length of the track geometry
+    trackCreationDistanceThreshold: 0.55, // Place tracks end-to-end
+    footprintSpacing: 0, // Deprecated, spacing is handled by threshold
 };
 
 // --- Local state for player module ---
@@ -37,7 +78,13 @@ let moveForward = false;
 let moveBackward = false;
 let moveLeft = false;
 let moveRight = false;
+let wheelMoveForward = false;
+let wheelMoveBackward = false;
+let wheelTimeout = null;
 let isScoped = false;
+let isSprinting = false; // Shift key for faster movement
+let stamina = STAMINA_MAX; // Current stamina level
+let isExhausted = false; // Can't sprint when exhausted until stamina recovers
 let mouseSensitivity = MOUSE_SENSITIVITY_NORMAL; // Initialized with normal sensitivity
 let scopeSwayTime = 0; // Time accumulator for scope sway animation
 let lastTrackCreationPosition = null;
@@ -47,6 +94,15 @@ let isTreeBraced = false;
 let isWalkingOnWater = false;
 let isWalkingOnFoliage = false;
 let isKneeling = false;
+
+// Noise detection system
+let foliageNoiseTimer = 0; // Time spent making noise on foliage
+const FOLIAGE_NOISE_THRESHOLD = 2.0; // Seconds of foliage noise before deer can hear
+const SPRINT_NOISE_RANGE = 60; // Detection range when sprinting
+const FOLIAGE_NOISE_RANGE = 40; // Detection range when walking on foliage for extended time
+let currentNoiseLevel = 0; // 0 = silent, 1 = foliage noise, 2 = sprint noise
+let lastMovementDirection = new THREE.Vector3(); // Store last movement direction for footprint orientation
+let humanTrackTexture = null; // Cached texture
 
 // --- EXPORTED FUNCTIONS ---
 
@@ -76,87 +132,111 @@ export function createPlayer(camera, scene) {
  * Adds all necessary event listeners for player controls (keyboard and mouse).
  */
 export function addPlayerEventListeners() {
-    console.log('🎮 SETUP: Adding player event listeners');
+    // Expose map function globally for UI buttons
+    window.toggleMap = showSmartphoneMap;
     
     // Ensure document has focus for key events
     if (document.hasFocus && !document.hasFocus()) {
-        console.log('🎮 FOCUS: Document does not have focus, attempting to focus');
         window.focus();
     }
     
-    // Add global test listener to debug keyboard events
-    document.addEventListener('keydown', (event) => {
-        console.log('🔥 GLOBAL TEST: Keyboard event detected:', event.code, event.key, 'Target:', event.target?.tagName);
-    }, true); // Use capture phase
-    
-    console.log('🎮 SETUP: Adding keydown event listener');
+    document.addEventListener('pointerlockchange', function() {
+        const indicator = document.getElementById('mouse-look-indicator');
+        if (document.pointerLockElement) {
+            window.focus();
+            if (indicator) indicator.classList.remove('initially-hidden');
+        } else {
+            if (indicator) indicator.classList.add('initially-hidden');
+        }
+    }, false);
+    document.addEventListener('mozpointerlockchange', function() {
+        const indicator = document.getElementById('mouse-look-indicator');
+        if (document.mozPointerLockElement) {
+            window.focus();
+            if (indicator) indicator.classList.remove('initially-hidden');
+        } else {
+            if (indicator) indicator.classList.add('initially-hidden');
+        }
+    }, false);
+    document.addEventListener('webkitpointerlockchange', function() {
+        const indicator = document.getElementById('mouse-look-indicator');
+        if (document.webkitPointerLockElement) {
+            window.focus();
+            if (indicator) indicator.classList.remove('initially-hidden');
+        } else {
+            if (indicator) indicator.classList.add('initially-hidden');
+        }
+    }, false);
+
     document.addEventListener('keydown', onKeyDown, false);
-    console.log('🎮 SETUP: Keydown event listener added');
-    
-    // Store the listener function globally so we can re-add it if needed
-    window.gameKeydownListener = onKeyDown;
     document.addEventListener('keyup', onKeyUp, false);
-    document.addEventListener('mousemove', onMouseMove, false);
+    
     document.addEventListener('mousedown', onMouseDown, false);
     document.addEventListener('mouseup', onMouseUp, false);
     
-    // Ensure focus on click to enable key events
-    document.addEventListener('click', function() {
-        console.log('🎮 FOCUS: Click detected, ensuring document focus');
-        document.activeElement.blur(); // Blur any other focused element
-        window.focus(); // Force focus back to the window
+    document.addEventListener('mousemove', onMouseMove, false);
+    document.addEventListener('wheel', onWheel, { passive: false });
+    
+    document.addEventListener('pointerlockerror', function() {
+        showMessage('Pointer lock failed. Please try again or refresh the page.', 3000);
+    }, false);
+    document.addEventListener('mozpointerlockerror', function() {
+        showMessage('Pointer lock failed. Please try again or refresh the page.', 3000);
+    }, false);
+    document.addEventListener('webkitpointerlockerror', function() {
+        showMessage('Pointer lock failed. Please try again or refresh the page.', 3000);
     }, false);
 
-    // Additional aggressive focus check on pointer lock change to ensure input is captured
-    document.addEventListener('pointerlockchange', function() {
-        console.log('🎮 FOCUS: Pointer lock change detected, forcing focus');
-        window.focus();
-    }, false);
-
-    // Periodically ensure the keydown listener is active to catch any removals by other code
-    setInterval(function() {
-        if (window.gameKeydownListener) {
-            console.log('🎮 LISTENER DEBUG: Ensuring keydown listener is active');
-            document.removeEventListener('keydown', window.gameKeydownListener, false);
-            document.addEventListener('keydown', window.gameKeydownListener, false);
-        }
-    }, 5000); // Check every 5 seconds
+    // Ensure we have focus
+    ensureGameFocus();
 }
 
 // Add a click event listener to ensure focus is on the game container for key events
 function ensureGameFocus() {
-    console.log('🎮 FOCUS DEBUG: Setting up click event listener for game focus');
-    const gameContainer = document.getElementById('browser-preview-root');
-    if (gameContainer) {
-        gameContainer.addEventListener('click', function() {
-            console.log('🎮 FOCUS DEBUG: Game container clicked, ensuring focus');
-            this.focus();
-            // Force focus on the document as well
-            document.focus();
-            console.log('🎮 FOCUS DEBUG: Document focus forced');
-        });
-    } else {
-        console.log('🎮 FOCUS DEBUG: Could not find browser-preview-root container');
-    }
+    // Try to find specific container, fall back to body
+    const gameContainer = document.getElementById('browser-preview-root') || document.body;
     
-    // Add a fallback key event listener on the document level
-    document.addEventListener('keydown', function(event) {
-        console.log('🔑 FALLBACK KEY DEBUG: Document-level key press detected - Code:', event.code, 'Key:', event.key, 'Timestamp:', Date.now());
-        if (event.code === 'KeyE') {
-            console.log('🔑 FALLBACK KEY DEBUG: Document-level E key press, canTag:', gameContext.canTag, 'Timestamp:', Date.now());
-            if (gameContext.canTag) {
-                console.log('🔑 FALLBACK KEY DEBUG: Document-level calling gameContext.tagDeer() - Timestamp:', Date.now());
-                gameContext.tagDeer();
-            } else {
-                console.log('🔑 FALLBACK KEY DEBUG: Document-level cannot tag - canTag is false - Timestamp:', Date.now());
-            }
+    gameContainer.addEventListener('click', function() {
+        if (!document.hasFocus()) {
+            window.focus();
         }
     });
-    console.log('🎮 FOCUS DEBUG: Document-level key event listener added');
+
+    // Add a document-level key event listener to ensure key events are captured
+    document.addEventListener('keydown', function(event) {
+        if (event.key === 'Escape') {
+            if (document.activeElement && typeof document.activeElement.blur === 'function') {
+                document.activeElement.blur();
+            }
+            window.focus();
+        }
+    });
 }
 
-// Call this function during initialization or when the game starts
-ensureGameFocus();
+/**
+ * Updates the stamina bar UI based on current stamina level.
+ */
+function updateStaminaUI() {
+    const staminaContainer = document.getElementById('stamina-container');
+    const staminaFill = document.getElementById('stamina-fill');
+    
+    if (!staminaContainer || !staminaFill) return;
+    
+    // Show stamina bar when not full or when sprinting
+    const shouldShow = stamina < STAMINA_MAX || isSprinting;
+    staminaContainer.classList.toggle('visible', shouldShow);
+    
+    // Update fill width
+    staminaFill.style.width = `${stamina}%`;
+    
+    // Update color based on stamina level
+    staminaFill.classList.remove('depleted', 'exhausted');
+    if (stamina <= STAMINA_EXHAUSTED_THRESHOLD) {
+        staminaFill.classList.add('exhausted');
+    } else if (stamina <= STAMINA_DEPLETED_THRESHOLD) {
+        staminaFill.classList.add('depleted');
+    }
+}
 
 /**
  * Updates the player's position and state based on input and game logic.
@@ -166,8 +246,8 @@ export function updatePlayer() {
     const delta = gameContext.deltaTime;
     const velocity = new THREE.Vector3();
 
-    if (moveForward) velocity.z -= 1;
-    if (moveBackward) velocity.z += 1;
+    if (moveForward || wheelMoveForward) velocity.z -= 1;
+    if (moveBackward || wheelMoveBackward) velocity.z += 1;
     if (moveLeft) velocity.x -= 1;
     if (moveRight) velocity.x += 1;
 
@@ -176,9 +256,78 @@ export function updatePlayer() {
 
     // Prevent movement when kneeling, otherwise calculate velocity
     if (isKneeling) {
+        // Show warning if trying to move while kneeling
+        const tryingToMove = moveForward || moveBackward || moveLeft || moveRight;
+        const kneelingWarning = document.getElementById('kneeling-warning');
+        if (kneelingWarning) {
+            kneelingWarning.style.display = tryingToMove ? 'block' : 'none';
+        }
         velocity.set(0, 0, 0);
+        
+        // Regenerate stamina faster while kneeling
+        stamina = Math.min(STAMINA_MAX, stamina + STAMINA_REGEN_RATE_KNEELING * delta);
+        if (stamina >= STAMINA_DEPLETED_THRESHOLD) {
+            isExhausted = false;
+        }
     } else {
-        velocity.normalize().multiplyScalar(PLAYER_MOVE_SPEED * delta);
+        // Hide kneeling warning when not kneeling
+        const kneelingWarning = document.getElementById('kneeling-warning');
+        if (kneelingWarning) {
+            kneelingWarning.style.display = 'none';
+        }
+        
+        // Determine if we can actually sprint
+        const isMoving = velocity.lengthSq() > 0;
+        const canSprint = isSprinting && !isExhausted && stamina > 0 && isMoving;
+        
+        // Update stamina
+        if (canSprint) {
+            stamina = Math.max(0, stamina - STAMINA_DRAIN_RATE * delta);
+            if (stamina <= 0) {
+                isExhausted = true;
+            }
+        } else if (isMoving) {
+            // Slower regen while walking
+            stamina = Math.min(STAMINA_MAX, stamina + STAMINA_REGEN_RATE * 0.5 * delta);
+            if (stamina >= STAMINA_DEPLETED_THRESHOLD) {
+                isExhausted = false;
+            }
+        } else {
+            // Full regen while standing still
+            stamina = Math.min(STAMINA_MAX, stamina + STAMINA_REGEN_RATE * delta);
+            if (stamina >= STAMINA_DEPLETED_THRESHOLD) {
+                isExhausted = false;
+            }
+        }
+        
+        // Use sprint speed only if we can actually sprint
+        const currentSpeed = canSprint ? PLAYER_SPRINT_SPEED : PLAYER_WALK_SPEED;
+        velocity.normalize().multiplyScalar(currentSpeed * delta);
+    }
+    
+    // Update stamina UI
+    updateStaminaUI();
+    
+    // Update noise level for deer detection
+    const isMoving = velocity.lengthSq() > 0;
+    const canSprint = isSprinting && !isExhausted && stamina > 0 && isMoving;
+    
+    if (canSprint) {
+        // Sprinting is always noisy
+        currentNoiseLevel = 2;
+        foliageNoiseTimer = 0; // Reset foliage timer
+    } else if (isMoving && isWalkingOnFoliage) {
+        // Walking on foliage builds up noise over time
+        foliageNoiseTimer += delta;
+        if (foliageNoiseTimer >= FOLIAGE_NOISE_THRESHOLD) {
+            currentNoiseLevel = 1;
+        } else {
+            currentNoiseLevel = 0;
+        }
+    } else {
+        // Not moving or walking on quiet surface
+        currentNoiseLevel = 0;
+        foliageNoiseTimer = Math.max(0, foliageNoiseTimer - delta * 2); // Decay faster than buildup
     }
 
     if (velocity.lengthSq() > 0) {
@@ -212,7 +361,11 @@ export function updatePlayer() {
             }
         }
         
-        gameContext.distanceTraveled += velocity.length();
+        const distanceMoved = velocity.length();
+        gameContext.distanceTraveled += distanceMoved;
+        
+        // Update distance traveled for report (includes tracking distance when following wounded deer)
+        updateDistanceTraveled(distanceMoved);
         
         // Calculate player velocity for spatial audio Doppler effects
         gameContext.player.velocity = gameContext.player.position.clone().sub(previousPosition).divideScalar(delta);
@@ -228,20 +381,33 @@ export function updatePlayer() {
     const targetEyeHeight = isKneeling ? PLAYER_KNEEL_HEIGHT : PLAYER_EYE_HEIGHT;
     gameContext.camera.position.y = THREE.MathUtils.lerp(gameContext.camera.position.y, targetEyeHeight, 0.1);
 
-    // Check if player is walking on water (only when moving)
-    const isOnWater = velocity.lengthSq() > 0 ? gameContext.isWaterAt(gameContext.player.position.x, gameContext.player.position.z) : isWalkingOnWater;
-    const isOnFoliage = velocity.lengthSq() > 0 ? gameContext.isFoliageAt(gameContext.player.position.x, gameContext.player.position.z) : isWalkingOnFoliage;
+    // Always check water status at current position (not just when moving)
+    // This ensures water sound stops immediately when leaving water
+    const isOnWater = gameContext.isWaterAt(gameContext.player.position.x, gameContext.player.position.z);
+    // Safety check for isFoliageAt to prevent crashes if initialization is delayed
+    let isOnFoliage = false;
+    if (typeof gameContext.isFoliageAt === 'function') {
+        isOnFoliage = gameContext.isFoliageAt(gameContext.player.position.x, gameContext.player.position.z);
+    }
     
-    // Handle water state transitions
+    // Handle water state transitions - immediately stop water sound when leaving water
     if (isOnWater !== isWalkingOnWater) {
-        console.log(`DEBUG: Water state changed from ${isWalkingOnWater} to ${isOnWater}`);
-        // Stop current sounds when transitioning
-        if (isWalking) {
-            if (isWalkingOnWater) {
-                stopWaterWalkSound();
-            } else {
-                stopWalkSound();
+        if (isWalkingOnWater && !isOnWater) {
+            // Left water - stop water sound immediately
+            stopWaterWalkSound();
+            if (velocity.lengthSq() > 0) {
+                // Start appropriate land sound if still moving
+                if (isOnFoliage) {
+                    startFoliageWalkSound();
+                } else {
+                    startWalkSound();
+                }
             }
+        } else if (!isWalkingOnWater && isOnWater && velocity.lengthSq() > 0) {
+            // Entered water while moving - switch to water sound
+            stopWalkSound();
+            stopFoliageWalkSound();
+            startWaterWalkSound();
         }
         isWalkingOnWater = isOnWater;
     }
@@ -249,15 +415,12 @@ export function updatePlayer() {
     // Handle foliage state transitions
     if (isOnFoliage !== isWalkingOnFoliage) {
         isWalkingOnFoliage = isOnFoliage;
-        
-        // If player is walking, switch to appropriate sound immediately
-        if (isWalking) {
+        // Immediately update sound state to prevent lingering sound
+        if (velocity.lengthSq() > 0) {
             if (isOnFoliage) {
-                // Entering foliage - start foliage sound, stop regular walk sound
                 startFoliageWalkSound();
                 stopWalkSound();
             } else {
-                // Leaving foliage - start regular walk sound, stop foliage sound
                 startWalkSound();
                 stopFoliageWalkSound();
             }
@@ -274,9 +437,14 @@ export function updatePlayer() {
 
     // Create human tracks if moving
     if (velocity.lengthSq() > 0) {
+        // Store movement direction for proper footprint orientation
+        if (velocity.lengthSq() > 0.01) {
+            lastMovementDirection.copy(velocity).normalize();
+        }
+        
         if (!lastTrackCreationPosition || 
             gameContext.player.position.distanceTo(lastTrackCreationPosition) >= HUMAN_TRACK_CONFIG.trackCreationDistanceThreshold) {
-            createHumanTrack();
+            createHumanTrack(lastMovementDirection);
             lastTrackCreationPosition = gameContext.player.position.clone();
         }
     }
@@ -386,9 +554,6 @@ export function updatePlayer() {
             stopFoliageWalkSound();
         }
     }
-
-    // Debug focus state on every update to catch focus loss issues
-    console.log('🎮 FOCUS DEBUG: Document has focus:', document.hasFocus());
 }
 
 // --- INTERNAL EVENT HANDLERS ---
@@ -398,37 +563,58 @@ export function updatePlayer() {
  * @param {MouseEvent} event - The mouse event.
  */
 function onMouseDown(event) {
-    console.log('🖱️ MOUSE DEBUG: Click detected, target:', event.target.tagName, 'id:', event.target.id);
-    
     // Handle UI button clicks normally (don't prevent them)
-    if (event.target.tagName === 'BUTTON' || event.target.closest('.modal')) {
-        console.log('🖱️ MOUSE DEBUG: UI element clicked, allowing normal event handling');
-        return; // Let the button's event handler work normally
+    if (event.target.tagName === 'BUTTON' || event.target.closest('.modal') || event.target.closest('.mode-button') || event.target.closest('#main-menu-container')) {
+        return;
     }
-
+    
+    // Don't request pointer lock if clicking on a modal backdrop - let it close first
+    if (event.target.classList.contains('modal-backdrop')) {
+        return;
+    }
+    
+    // Prevent default behavior for game area clicks
+    event.preventDefault();
+    event.stopPropagation();
+    
     // Don't request pointer lock if main menu is still visible (game not started)
     if (gameContext.mainMenu && gameContext.mainMenu.style.display !== 'none') {
-        console.log('🖱️ MOUSE DEBUG: Main menu visible, not requesting pointer lock');
         return; // Don't capture cursor on title screen
     }
-
-    // Only request pointer lock for game area clicks when game is running
-    if (document.pointerLockElement !== document.body) {
-        console.log('🖱️ MOUSE DEBUG: Requesting pointer lock');
-        document.body.requestPointerLock();
-    } else {
-        console.log('🖱️ MOUSE DEBUG: Pointer lock active, handling game input');
-        if (event.button === 0) { // Left click
-            // In simulator mode, only allow shooting when scoped
-            if (gameContext.gameMode === 'simulator' && !isScoped) {
-                console.log('🎯 Simulator Mode: Cannot shoot without scoping. Right-click to aim.');
-                showMessage('Cannot shoot from the hip. Right-click to aim.', 2000);
-                return;
+    
+    // Don't request pointer lock if any modal is open
+    const openModals = document.querySelectorAll('.modal-backdrop[style*="display: flex"]');
+    if (openModals.length > 0) {
+        return;
+    }
+    
+    // Don't auto-lock on first click after game starts - require explicit click on game area
+    if (!gameContext.gameStartedAndReady) {
+        return;
+    }
+    
+    // Request pointer lock if not already active
+    if (!document.pointerLockElement && !document.mozPointerLockElement && !document.webkitPointerLockElement) {
+        try {
+            const result = document.body.requestPointerLock();
+            if (result && result.catch) {
+                result.catch(() => {});
             }
-            gameContext.shoot();
-        } else if (event.button === 2) { // Right click
-            toggleScope(true);
+        } catch (err) {
+            // Ignore errors
         }
+        return;
+    }
+    
+    // Handle game actions if pointer lock is active
+    if (event.button === 0) { // Left click
+        if (gameContext.gameMode === 'simulator' && !isScoped) {
+            // In simulator mode, do nothing if not scoped
+            return;
+        }
+        fireWeapon();
+    } else if (event.button === 2) { // Right click
+        toggleScope(true);
     }
 }
 
@@ -437,7 +623,7 @@ function onMouseDown(event) {
  * @param {MouseEvent} event - The mouse event.
  */
 function onMouseUp(event) {
-    if (event.button === 2) { // Right click
+    if (event.button === 2) { // Right click release
         toggleScope(false);
     }
 }
@@ -447,60 +633,85 @@ function onMouseUp(event) {
  * @param {KeyboardEvent} event - The keyboard event.
  */
 function onKeyDown(event) {
-    // If a button has focus, block movement but allow specific interaction keys.
-    // This prevents the player from moving unintentionally after clicking a HUD button.
-    if (document.activeElement.tagName === 'BUTTON') {
-        const allowedKeys = ['KeyE', 'KeyM', 'KeyR', 'KeyC']; // E for Tag, M for Map, R for Scope, C for Kneel
-        if (!allowedKeys.includes(event.code)) {
-            console.log(`🎮 KEYDOWN DEBUG: Input blocked as button has focus. Key: ${event.code}`);
-            return; // Block keys like W, A, S, D if a button is focused
-        }
-    }
+    if (!isInputAllowed()) return;
+    
+    // Debug log
+    // console.log('Key Down:', event.code);
 
-    console.log('🎮 KEYDOWN DEBUG: Key pressed:', event.code, 'Key:', event.key);
-    console.log('🎮 KEYDOWN DEBUG: Target:', event.target?.tagName || 'unknown');
-    console.log('🎮 KEYDOWN DEBUG: Event details:', {
-        bubbles: event.bubbles,
-        cancelable: event.cancelable,
-        defaultPrevented: event.defaultPrevented,
-        isTrusted: event.isTrusted
-    });
+    const allowedKeys = ['KeyE', 'KeyM', 'KeyC']; // E for Tag, M for Map, C for Kneel
+    if (allowedKeys.includes(event.code)) {
+        event.preventDefault();
+    }
+    
+    // Shift key for sprinting
+    if (event.shiftKey) {
+        isSprinting = true;
+    }
     
     switch (event.code) {
-        case 'KeyW': moveForward = true; break;
-        case 'KeyS': moveBackward = true; break;
-        case 'KeyA': moveLeft = true; break;
-        case 'KeyD': moveRight = true; break;
-        case 'KeyC': 
+        case 'KeyW':
+        case 'ArrowUp':
+            moveForward = true;
+            break;
+        case 'KeyS':
+        case 'ArrowDown':
+            moveBackward = true;
+            break;
+        case 'KeyA':
+        case 'ArrowLeft':
+            moveLeft = true;
+            break;
+        case 'KeyD':
+        case 'ArrowRight':
+            moveRight = true;
+            break;
+        case 'KeyC':
             toggleKneel();
             break;
-        case 'KeyE': 
-            console.log('🔑 KEY DEBUG: E key pressed, canTag:', gameContext.canTag, ' - Timestamp:', Date.now());
-            if (gameContext.canTag) {
-                console.log('🔑 KEY DEBUG: Calling gameContext.tagDeer() - Timestamp:', Date.now());
-                gameContext.tagDeer();
-            } else {
-                console.log('🔑 KEY DEBUG: Cannot tag - canTag is false - Timestamp:', Date.now());
+        case 'KeyE':
+            if (canTagDeer()) {
+                tagDeer();
             }
             break;
-        case 'KeyR': 
-            toggleScope();
+        case 'KeyM':
+            showSmartphoneMap();
             break;
-        case 'KeyM': showSmartphoneMap(); break; // Open smartphone-style map
+        case 'ShiftLeft':
+        case 'ShiftRight':
+            isSprinting = true;
+            break;
     }
 }
 
-// ... (rest of the code remains the same)
 /**
  * Handles key up events to stop player movement.
  * @param {KeyboardEvent} event - The keyboard event.
  */
 function onKeyUp(event) {
     switch (event.code) {
-        case 'KeyW': moveForward = false; break;
-        case 'KeyS': moveBackward = false; break;
-        case 'KeyA': moveLeft = false; break;
-        case 'KeyD': moveRight = false; break;
+        case 'KeyW':
+        case 'ArrowUp':
+            moveForward = false;
+            break;
+        case 'KeyS':
+        case 'ArrowDown':
+            moveBackward = false;
+            break;
+        case 'KeyA':
+        case 'ArrowLeft':
+            moveLeft = false;
+            break;
+        case 'KeyD':
+        case 'ArrowRight':
+            moveRight = false;
+            break;
+        case 'ShiftLeft':
+        case 'ShiftRight':
+            isSprinting = false;
+            break;
+        case 'KeyM':
+            closeSmartphoneMap();
+            break;
     }
 }
 
@@ -517,7 +728,7 @@ function onMouseMove(event) {
             gameContext.camera.rotation.x -= event.movementY * mouseSensitivity;
             gameContext.camera.rotation.x = Math.max(-Math.PI / 2, Math.min(Math.PI / 2, gameContext.camera.rotation.x));
         } else {
-            console.warn('⚠️ MOUSE MOVE DEBUG: gameContext.player or gameContext.camera is null, skipping rotation update');
+            return;
         }
     }
 }
@@ -525,20 +736,22 @@ function onMouseMove(event) {
 /**
  * Toggles the rifle scope view.
  * Adjusts camera FOV, mouse sensitivity, and visibility of scope/crosshair UI elements.
- * @param {boolean} active - True to activate scope, false to deactivate.
+ * @param {boolean} active - True to activate scope, false to deactivate. If not provided, toggles current state.
  */
 function toggleScope(active) {
-    isScoped = active;
+    if (typeof active === 'boolean') {
+        isScoped = active;
+    } else {
+        isScoped = !isScoped;
+    }
     if (isScoped) {
         gameContext.camera.fov = CAMERA_FOV_SCOPED;
         mouseSensitivity = MOUSE_SENSITIVITY_SCOPED;
         gameContext.scopeOverlayElement.style.display = 'block';
-        gameContext.crosshairElement.style.display = 'none';
     } else {
         gameContext.camera.fov = CAMERA_FOV_NORMAL;
         mouseSensitivity = MOUSE_SENSITIVITY_NORMAL;
         gameContext.scopeOverlayElement.style.display = 'none';
-        gameContext.crosshairElement.style.display = 'block';
     }
     gameContext.camera.updateProjectionMatrix();
 }
@@ -547,69 +760,65 @@ function toggleKneel() {
     isKneeling = !isKneeling;
     const height = isKneeling ? PLAYER_KNEEL_HEIGHT : PLAYER_EYE_HEIGHT;
     gameContext.camera.position.set(0, height, 0);
-    console.log('🧎 PLAYER: ' + (isKneeling ? 'Kneeling' : 'Standing') + ', Camera height: ' + height);
-    console.log('🧎 PLAYER DEBUG: Attempting to update status indicator, isKneeling: ' + isKneeling);
     // Update status indicator
     if (gameContext.ui && typeof gameContext.ui.updateStatusIndicator === 'function') {
         gameContext.ui.updateStatusIndicator(isKneeling);
     } else {
-        console.error('🧎 PLAYER ERROR: UI module or updateStatusIndicator function not available');
         // Fallback direct update
         const indicator = document.getElementById('status-indicator');
         if (indicator) {
             indicator.textContent = 'Kneeling';
             indicator.style.display = isKneeling ? 'block' : 'none';
-            console.log('🧎 PLAYER FALLBACK: Directly updated status indicator');
         }
     }
 }
 
 /**
  * Creates a human track at the current player position.
+ * @param {THREE.Vector3} movementDirection - Direction of player movement
  */
-function createHumanTrack() {
-    // Initialize material and geometry for this track
-    const textureLoader = new THREE.TextureLoader();
-    
-    // Create material with fallback color
+function createHumanTrack(movementDirection) {
+    // Load texture if not cached
+    if (!humanTrackTexture) {
+        const textureLoader = new THREE.TextureLoader();
+        textureLoader.load(
+            'assets/textures/human_track.png',
+            (texture) => {
+                humanTrackTexture = texture;
+                // Retry creation now that texture is loaded
+                createHumanTrack(movementDirection);
+            }
+        );
+        return; // Exit and wait for load
+    }
+
     const trackMaterial = new THREE.MeshLambertMaterial({
         color: HUMAN_TRACK_CONFIG.trackColor,
+        map: humanTrackTexture,
         transparent: true,
-        opacity: HUMAN_TRACK_CONFIG.trackOpacityStart
+        opacity: HUMAN_TRACK_CONFIG.trackOpacityStart,
+        side: THREE.DoubleSide, // Ensure material is visible from both sides
+        depthTest: true, // Enable depth testing to prevent z-fighting
+        depthWrite: true
     });
     
-    // Try to load texture
-    textureLoader.load(
-        'assets/textures/human_track.png',
-        (texture) => {
-            // Success: update material with texture
-            trackMaterial.map = texture;
-            trackMaterial.needsUpdate = true;
-        },
-        undefined,
-        (error) => {
-            // Error: keep using color-based fallback
-        }
-    );
-
-    const trackGeometry = new THREE.PlaneGeometry(HUMAN_TRACK_CONFIG.trackShapeRadius * 2, HUMAN_TRACK_CONFIG.trackShapeRadius * 2);
+    const trackGeometry = new THREE.PlaneGeometry(HUMAN_TRACK_CONFIG.trackWidth, HUMAN_TRACK_CONFIG.trackLength);
     const track = new THREE.Mesh(trackGeometry, trackMaterial);
-
-    track.position.copy(gameContext.player.position);
-    
-    // Use optimized cached height detection for better performance
-    const finalY = gameContext.getCachedHeightAt(track.position.x, track.position.z) + 0.015;
-    
+    const terrainHeight = gameContext.getHeightAt(gameContext.player.position.x, gameContext.player.position.z);
+    // Further increase height offset to ensure visibility above terrain
+    track.position.set(gameContext.player.position.x, terrainHeight + 0.1, gameContext.player.position.z);
+    const finalY = gameContext.getCachedHeightAt(track.position.x, track.position.z) + 0.1;
     track.position.y = finalY;
+    // Align tracks with player's compass heading
+    // Use explicit YXZ order to ensure correct orientation
+    track.rotation.order = 'YXZ';
+    track.rotation.y = gameContext.player.rotation.y;
+    track.rotation.x = -Math.PI / 2;
+    track.rotation.z = 0; // Rotate 90 degrees CW (PI/2 -> 0) based on user feedback
     
-    track.rotation.x = -Math.PI / 2; // Lay flat on ground
-    
-    // Orient track to player's facing direction
-    track.rotation.z = gameContext.player.rotation.y;
-    
+    // Set a higher render order to ensure tracks are rendered on top of other elements
+    track.renderOrder = 1;
     humanTracks.push({ mesh: track, creationTime: gameContext.clock.getElapsedTime() });
-    
-    // Ensure scene exists before adding
     if (gameContext.scene) {
         gameContext.scene.add(track);
     }
@@ -642,8 +851,67 @@ function checkTreeBracing() {
 }
 
 /**
+ * Handles mouse wheel events for player movement (forward/backward).
+ * @param {WheelEvent} event - The mouse wheel event.
+ */
+function onWheel(event) {
+    if (!isInputAllowed()) return;
+    
+    // Removed pointer lock check to allow wheel to work immediately
+    
+    // Attempt to lock pointer on scroll interaction for better control
+    if (document.pointerLockElement !== document.body) {
+        document.body.requestPointerLock().catch(() => {
+            // Ignore errors if browser blocks the request (e.g. not a user gesture in some contexts)
+        });
+    }
+
+    // Clear existing timeout to keep moving while scrolling
+    if (wheelTimeout) {
+        clearTimeout(wheelTimeout);
+        wheelTimeout = null;
+    }
+
+    // Scroll up (negative deltaY) moves forward, scroll down moves backward
+    if (event.deltaY < 0) {
+        wheelMoveForward = true;
+        wheelMoveBackward = false;
+    } else if (event.deltaY > 0) {
+        wheelMoveBackward = true;
+        wheelMoveForward = false;
+    }
+
+    // Stop moving after a short delay when scrolling stops
+    wheelTimeout = setTimeout(() => {
+        wheelMoveForward = false;
+        wheelMoveBackward = false;
+        wheelTimeout = null;
+    }, 300); // 300ms timeout for smooth movement bursts
+}
+
+/**
  * Gets whether the player is currently braced against a tree
  */
 export function getIsTreeBraced() {
     return isTreeBraced;
+}
+
+/**
+ * Gets whether the player is currently kneeling
+ */
+export function getIsKneeling() {
+    return isKneeling;
+}
+
+/**
+ * Gets the player's current noise level and detection range
+ * @returns {{ level: number, range: number }} Noise level (0-2) and detection range in units
+ */
+export function getPlayerNoise() {
+    if (currentNoiseLevel === 2) {
+        return { level: 2, range: SPRINT_NOISE_RANGE };
+    } else if (currentNoiseLevel === 1) {
+        return { level: 1, range: FOLIAGE_NOISE_RANGE };
+    }
+    return { level: 0, range: 0 };
 }

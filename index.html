@@ -8,6 +8,7 @@
 </head>
 <body>
     <div id="crosshair" class="initially-hidden"></div>
+    <div id="kneeling-warning">Press C to stand</div>
     <div id="elegant-crosshair" class="initially-hidden">
         <div class="h-line"></div>
         <div class="v-line"></div>
@@ -25,6 +26,19 @@
         <div id="compass-container" class="initially-hidden">
         <span id="compass-value">N</span>
     </div>
+    
+    <div id="mouse-look-indicator" class="initially-hidden">
+        <div class="mouse-control-title">Mouse Control</div>
+        <div class="mouse-control-hint">ESC to exit</div>
+    </div>
+    
+    <div id="kneeling-indicator" class="initially-hidden">Kneeling</div>
+    
+    <div id="stamina-container" class="initially-hidden">
+        <div id="stamina-bar">
+            <div id="stamina-fill"></div>
+        </div>
+    </div>
 
     <div class="hud-container top-left initially-hidden">
         <div class="hud-column">
@@ -33,12 +47,23 @@
                 <span id="legal-hours-display">05:30 - 19:30</span><br>
                 <small>(Legal Hours)</small>
             </div>
+            <button id="next-day-button" class="hud hud-button">Jump to Next Day</button>
             <button id="score-report-button" class="hud">
-                Score: <span id="score-value">0</span><br><small>(Click for Report)</small>
+                Score: <span id="score-value">0</span><br><small>(ESC + Click = Report)</small>
             </button>
-            <button id="map-button" class="hud initially-hidden">View Map</button>
-            <div id="kneeling-indicator" class="hud initially-hidden">
-                Kneeling
+            <div id="shortcuts-panel" class="hud shortcuts-hud">
+                <div class="shortcuts-title">Controls</div>
+                <div class="shortcut-row"><kbd>WASD</kbd> / <kbd>Arrows</kbd> Move</div>
+                <div class="shortcut-row"><kbd>Shift</kbd> Fast Walk</div>
+                <div class="shortcut-row"><kbd>C</kbd> Kneel</div>
+                <div class="shortcut-row"><kbd>Mouse</kbd> Look Around</div>
+                <div class="shortcut-row"><kbd>Left Click</kbd> Shoot</div>
+                <div class="shortcut-row"><kbd>Right Click</kbd> Scope</div>
+                <div class="shortcut-row"><kbd>M</kbd> Map</div>
+                <div class="shortcut-row"><kbd>R</kbd> Report</div>
+                <div class="shortcut-row"><kbd>J</kbd> Journal</div>
+                <div class="shortcut-row"><kbd>E</kbd> Tag Deer</div>
+                <div class="shortcut-row"><kbd>ESC</kbd> Release Mouse</div>
             </div>
         </div>
     </div>
@@ -46,38 +71,12 @@
 
 
     <div class="hud-container top-right initially-hidden">
-        <div id="instructions-container" class="hud collapsible-container">
-            <div id="instructions-header" class="collapsible-header">
-                <span>Instructions</span>
-            </div>
-            <div id="instructions-body" class="collapsible-body collapsed">
-                <b>W, A, S, D:</b> Move<br>
-                <b>Mouse:</b> Look<br>
-                <b>Left Click:</b> Shoot<br>
-                <b>Right Click:</b> Aim Scope<br>
-                <b>C:</b> Kneel<br>
-                <b>E:</b> Tag Deer<br>
-                <b>M:</b> View Map<br>
-            </div>
-        </div>
-        <div id="scoring-guide-container" class="hud collapsible-container">
-            <div id="scoring-guide-header" class="collapsible-header">
-                <span>Scoring Guide</span>
-
-            </div>
-            <div id="scoring-guide-body" class="collapsible-body collapsed">
-                <b>Vitals Shot:</b> +100 Base<br>
-                <b>Head Shot:</b> +25 Base<br>
-                <b>Recovery Shot:</b> +20 Base<br>
-                <b>Close Shot Bonus:</b> +(100-Yards)<br>
-                <b>Successful Tag:</b> +25 Points<br>
-                <b>Moving Target Hit:</b> -50 Points<br>
-                <b>Wounding Shot:</b> -25 Points<br>
-                <b>Missed Shot:</b> -20 Points<br>
-                <b>Illegal Shot:</b> -100 Points<br>
-                <small>*Distance penalty on fatal shots.</small>
-            </div>
-        </div>
+        <button id="hud-instructions-button" class="hud hud-button">
+            ? Help
+        </button>
+        <button id="hud-restart-button" class="hud hud-button">
+            ↺ Restart
+        </button>
     </div>
     
     <div id="message" class="message"></div>
@@ -87,9 +86,16 @@
     <!-- Modals -->
     <div id="report-modal-backdrop" class="modal-backdrop">
         <div id="report-modal" class="modal">
-            <h2 id="report-title">Daily Report</h2>
+            <div class="report-header">
+                <div class="report-logo"></div>
+                <div class="report-branding">
+                    <div class="report-subtitle">Ethical Pursuit</div>
+                    <h2 id="report-title">Hunter's Report</h2>
+                </div>
+            </div>
             <div id="report-content">...</div>
             <div class="button-group">
+                <button id="screenshot-report-button">📷 Screenshot</button>
                 <button id="close-report-button">Close</button>
             </div>
         </div>
@@ -161,15 +167,205 @@
             <div class="mode-buttons">
                 <button id="practice-mode-button" class="mode-button">
                     <h3>Practice Mode</h3>
-                    <p>Learn the basics with forgiving mechanics and helpful guidance</p>
+                    <p>Shoot with or without a scope. Get feedback on shot placement and potential points. Deer have reduced awareness to help you learn.</p>
                 </button>
                 <button id="hunt-simulator-button" class="mode-button">
                     <h3>Hunt Simulator</h3>
-                    <p>Realistic hunting experience with authentic challenges</p>
+                    <p>Scoped shots only, no exceptions. You must track the animal to confirm a hit or miss. Deer behave with full awareness for the most authentic challenge.</p>
                 </button>
+            </div>
+            <div class="menu-footer">
+                <button id="instructions-button" class="secondary-button">How to Play</button>
+                <button id="restart-button" class="secondary-button" style="display: none;">Restart Game</button>
             </div>
         </div>
     </div>
+    
+    <!-- Instructions Modal -->
+    <div id="instructions-modal-backdrop" class="modal-backdrop" style="display: none;">
+        <div id="instructions-modal" class="modal large-modal">
+            <div class="report-header">
+                <div class="report-logo"></div>
+                <div class="report-branding">
+                    <h2>Boone and Crockett Club's</h2>
+                    <div class="report-subtitle">Ethical Pursuit</div>
+                </div>
+            </div>
+            
+            <div class="instructions-content">
+                <div class="browser-notice">
+                    <strong>⚠️ Recommended:</strong> Use Google Chrome for best performance. Refresh your browser (Ctrl+R / Cmd+R) before starting a new game session.
+                </div>
+                
+                <div class="instructions-section">
+                    <h3>🎯 Objective</h3>
+                    <p>Experience ethical deer hunting in a realistic 3D environment. Your goal is to harvest deer humanely while following fair chase principles. Score points for clean, ethical kills and lose points for poor shot placement or unethical behavior.</p>
+                </div>
+                
+                <div class="instructions-section">
+                    <h3>🎮 Controls</h3>
+                    <div class="controls-grid">
+                        <div><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> / <kbd>↑</kbd><kbd>←</kbd><kbd>↓</kbd><kbd>→</kbd> Move</div>
+                        <div><kbd>Shift</kbd> Fast walk (uses stamina)</div>
+                        <div><kbd>C</kbd> Kneel (steadier aim)</div>
+                        <div><kbd>Mouse</kbd> Look around</div>
+                        <div><kbd>Left Click</kbd> Shoot</div>
+                        <div><kbd>Right Click</kbd> Toggle scope</div>
+                        <div><kbd>M</kbd> Hold for map</div>
+                        <div><kbd>R</kbd> View report</div>
+                        <div><kbd>J</kbd> Open journal</div>
+                        <div><kbd>E</kbd> Tag deer</div>
+                        <div><kbd>ESC</kbd> Release mouse</div>
+                    </div>
+                </div>
+                
+                <div class="instructions-section">
+                    <h3>🦌 Deer Behavior</h3>
+                    <ul>
+                        <li><strong>Wandering:</strong> Deer move naturally, grazing and exploring</li>
+                        <li><strong>Alert:</strong> Deer heard or sensed something - they'll look around</li>
+                        <li><strong>Fleeing:</strong> Deer detected danger and is running away</li>
+                        <li><strong>Thirsty:</strong> Deer is heading to water to drink</li>
+                        <li><strong>Wounded:</strong> Deer was hit but not killed - track the blood trail</li>
+                    </ul>
+                </div>
+                
+                <div class="instructions-section">
+                    <h3>👁️ Detection & Stealth</h3>
+                    <p><strong>Visual Detection:</strong> Deer can see you if you're moving in the open. Kneeling reduces your visibility by half.</p>
+                    <p><strong>Sound Detection:</strong> Deer can hear you even behind cover:</p>
+                    <ul>
+                        <li><strong>Fast Walking:</strong> Heard within ~65 yards (immediate)</li>
+                        <li><strong>Walking on Foliage:</strong> Heard within ~45 yards (after 2 seconds)</li>
+                    </ul>
+                    <p><strong>Using Cover:</strong></p>
+                    <ul>
+                        <li><strong>Trees & Bushes:</strong> Block line of sight completely when between you and the deer</li>
+                        <li><strong>Backdrop Cover:</strong> Standing in front of a tree trunk (~3 yards), or having bushes/tall grass behind you (~5 yards), breaks up your silhouette and doubles the distance the deer needs to spot you</li>
+                    </ul>
+                    <p><em>Tip: Move slowly, use cover, and position yourself with a backdrop. Deer are most active at dawn and dusk.</em></p>
+                </div>
+                
+                <div class="instructions-section">
+                    <h3>📊 Scoring System</h3>
+                    <div class="scoring-columns">
+                        <div class="scoring-good">
+                            <h4>✓ Earn Points</h4>
+                            <ul>
+                                <li><strong>Vital Shot:</strong> +50 pts</li>
+                                <li><strong>Tagging Deer:</strong> +25 pts</li>
+                                <li><strong>Close Stalk (≤30yd):</strong> +25 pts</li>
+                                <li><strong>First Shot Kill:</strong> +20 pts</li>
+                                <li><strong>Quick Recovery:</strong> +15 pts</li>
+                                <li><strong>Legal Hours:</strong> +10 pts</li>
+                                <li><strong>Braced Shot:</strong> +10 pts</li>
+                                <li><strong>Kneeling Shot:</strong> +10 pts</li>
+                            </ul>
+                        </div>
+                        <div class="scoring-bad">
+                            <h4>✗ Lose Points</h4>
+                            <ul>
+                                <li><strong>Gut Shot:</strong> -15 pts</li>
+                                <li><strong>Running Target:</strong> -10 pts</li>
+                                <li><strong>Walking Target:</strong> -5 pts</li>
+                                <li><strong>Hindquarter Shot:</strong> -10 pts</li>
+                                <li><strong>Excessive Shots:</strong> -10 pts each</li>
+                                <li><strong>Head Shot:</strong> -5 pts (risky)</li>
+                                <li><strong>Neck Shot:</strong> -5 pts (risky)</li>
+                                <li><strong>Spine Shot:</strong> -5 pts (risky)</li>
+                                <li><strong>Shoulder Shot:</strong> -5 pts</li>
+                                <li><strong>Missed Shot:</strong> -5 pts</li>
+                                <li><strong>Map Usage:</strong> -5 pts each</li>
+                                <li><strong>Illegal Harvest:</strong> -100 pts</li>
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="instructions-section">
+                    <h3>⏰ Legal Hunting Hours</h3>
+                    <p>Hunt only during legal hours: <strong>05:30 - 19:30</strong>. Harvesting deer outside these hours results in severe penalties. The clock is displayed in the top-left corner. Time passes at 1 game hour per real minute, giving you about 14 minutes of legal hunting time each day.</p>
+                </div>
+                
+                <div class="instructions-section">
+                    <h3>🌅 Jump to Next Day</h3>
+                    <p>Click the <strong>Jump to Next Day</strong> button below the clock to advance to the next morning. You'll return to the starting position at 4:30 AM. Your score and stats carry over, and wounded deer remain in the field - continue tracking them!</p>
+                </div>
+                
+                <div class="instructions-section">
+                    <h3>🎯 Shot Placement & Wound System</h3>
+                    <p>This game features a realistic wound detection system. Where you hit the deer determines the wound type and how the deer behaves afterward.</p>
+                    
+                    <h4>Hitbox Zones Detected:</h4>
+                    <ul>
+                        <li><strong>Vitals (Heart/Lung):</strong> Center chest area - instant kill zone</li>
+                        <li><strong>Brain:</strong> Head shot - instant kill but risky</li>
+                        <li><strong>Spine:</strong> Along the back - instant kill but risky</li>
+                        <li><strong>Neck:</strong> 50% chance instant kill, otherwise wounds</li>
+                        <li><strong>Shoulders:</strong> Front leg/shoulder blade area - wounds deer</li>
+                        <li><strong>Gut:</strong> Belly/abdomen area - wounds deer, causes suffering</li>
+                        <li><strong>Rear:</strong> Hindquarters - wounds deer, poor placement</li>
+                    </ul>
+                    
+                    <h4>Wound Types & Deer Behavior:</h4>
+                    <ul>
+                        <li><strong>Heart Shot:</strong> Deer bolts at maximum speed in a wide arc, collapses within 60-100 yards. Heavy blood trail. <em>(Lower-forward vitals hit)</em></li>
+                        <li><strong>Double Lung:</strong> Fast straight run for 40-120 yards, begins to wobble, then crashes. Heavy frothy blood. <em>(Broadside shot through center chest)</em></li>
+                        <li><strong>Single Lung:</strong> Can run 300+ yards. Stop-start behavior - runs, stops, hunches, runs again. Sparse blood trail. <em>(Quartering or edge vitals hit)</em></li>
+                        <li><strong>Liver Shot:</strong> Deer hunches, walks/trots slowly. Seeks water or thick cover. Beds within 100-300 yards. <em>(Upper gut area)</em></li>
+                        <li><strong>Gut Shot:</strong> Very slow, hunched walk. Stops and looks back at hunter. Seeks water or isolated cover. Light blood trail. <em>(Lower gut area)</em></li>
+                        <li><strong>Muscle/Meat Hit:</strong> Initial adrenaline burst, then may return to normal movement. Minimal blood, often survives. <em>(Rear/hindquarter hit)</em></li>
+                        <li><strong>Shoulder Hit:</strong> Limping movement, circles and stops frequently. Beds quickly from shock. Sparse blood. <em>(Front leg/shoulder blade)</em></li>
+                    </ul>
+                    
+                    <h4>Shot Angle Matters:</h4>
+                    <ul>
+                        <li><strong>Broadside:</strong> Perpendicular to deer - best chance for double lung, passes through both lungs</li>
+                        <li><strong>Quartering Away:</strong> Angled shot - may only hit one lung, bullet travels through more tissue</li>
+                        <li><strong>Quartering Toward:</strong> Risky - shoulder bone may deflect bullet</li>
+                        <li><strong>Head-On/Rear:</strong> Poor angles - small vital target, high chance of wounding</li>
+                    </ul>
+                    
+                    <h4>Wounded Deer Behaviors:</h4>
+                    <ul>
+                        <li><strong>Bedding:</strong> Mortally wounded deer seek thick cover and bed down. If you approach too close, they'll "bump" and move 50-150 yards before bedding again.</li>
+                        <li><strong>Blood Trail:</strong> Blood drop frequency varies by wound - heart/lung shots leave heavy trails, muscle hits leave minimal blood.</li>
+                        <li><strong>Seeking Water:</strong> Gut and liver shot deer actively seek water sources.</li>
+                        <li><strong>Downhill Movement:</strong> Wounded deer prefer moving downhill when possible.</li>
+                        <li><strong>Collapse:</strong> Energy depletes over time based on wound severity. When energy runs out, the deer collapses.</li>
+                    </ul>
+                </div>
+                
+                <div class="instructions-section">
+                    <h3>💡 Tips for Ethical Hunting</h3>
+                    <ul>
+                        <li>Always aim for the vitals (heart/lung area) for a clean, humane kill</li>
+                        <li>Kneel and brace against trees for steadier aim</li>
+                        <li>Wait for the deer to stop moving before taking your shot</li>
+                        <li>If you wound a deer, follow the blood trail to recover it</li>
+                        <li>For gut shots, wait before tracking - pushing the deer causes more suffering</li>
+                        <li>Always tag your harvest - it's required and earns bonus points</li>
+                        <li>Use the map sparingly - each use costs battery and points</li>
+                    </ul>
+                </div>
+            </div>
+            
+            <div class="button-group">
+                <button id="close-instructions-button" class="primary-button">Got It!</button>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Loading Modal - shown during game asset loading -->
+    <div id="loading-modal-backdrop" class="modal-backdrop" style="display: none;">
+        <div id="loading-modal" class="modal loading-modal">
+            <h2>Loading Forest</h2>
+            <div id="loading-progress-container">
+                <div id="loading-progress-bar"></div>
+            </div>
+            <div id="loading-status">Initializing...</div>
+            <div id="loading-details"></div>
+        </div>
     </div>
 
     <div id="sleep-overlay">
@@ -186,6 +382,7 @@
         }
     </script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/tone/14.8.49/Tone.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
 
     <script type="module" src="js/main.js"></script>
 </body>

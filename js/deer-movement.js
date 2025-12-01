@@ -5,6 +5,7 @@
 
 import * as THREE from 'three';
 import { gameContext } from './context.js';
+import { isOnTrail } from './trails.js';
 
 export class DeerMovement {
     constructor(deer, config) {
@@ -12,122 +13,213 @@ export class DeerMovement {
         this.config = config;
         
         // Movement tracking properties
-        this.isMoving = false;
+        this.wanderTarget = new THREE.Vector3();
         this.lastPosition = new THREE.Vector3();
-        this.movementHistory = [0, 0, 0, 0, 0]; // Initialize with 5 zeros
+        this.movementHistory = [0, 0, 0, 0, 0]; // Track last 5 movements
         this.movementHistorySize = 5;
+        this.isMoving = false;
         this.movementSpeed = 0;
         this.currentSpeed = 0;
         
-        // Player movement detection
-        this.MOVEMENT_DETECTION_THRESHOLD = 1.0; // Reduced from 4.0 to 1.0 seconds
-        this.MOVEMENT_DISTANCE_THRESHOLD = 0.05; // Reduced from 0.3 to 0.05
-        this.movementSampleCount = 0;
-        this.REQUIRED_MOVEMENT_SAMPLES = 2; // Reduced from 5 to 2
-        
-        // Stuck detection and emergency escape
-        this.stuckThreshold = 0.2; // If deer hasn't moved more than 0.2 units in 1 second
+        // Stuck detection variables
+        this.stuckDetectionInterval = 0.5; // Check every 0.5 seconds
+        this.stuckDetectionTimer = 0;
+        this.stuckDetectionHistory = []; // Track positions for stuck detection
+        this.stuckDetectionHistorySize = 30; // Track 30 positions (0.5 seconds at 60fps)
+        this.stuckDistanceThreshold = 0.5; // Consider stuck if moved less than this
         this.consecutiveStuckChecks = 0;
         this.emergencyEscapeActive = false;
         
-        // Wander target
-        this.wanderTarget = new THREE.Vector3();
+        // Obstacle avoidance tracking
+        this.lastObstacleTime = null;
+        this.collisionCount = 0;
+        this.lastCollisionTime = 0;
+        this.forcedAvoidanceDirection = null;
+        this.forcedAvoidanceTimer = 0;
+        
+        // Player movement detection
+        this.MOVEMENT_DETECTION_THRESHOLD = 0.2; // Reduced from 0.3 to 0.2 seconds for even faster detection
+        this.MOVEMENT_DISTANCE_THRESHOLD = 0.005; // Reduced from 0.01 to 0.005 for much higher sensitivity
+        this.movementSampleCount = 0;
+        this.REQUIRED_MOVEMENT_SAMPLES = 1; // Keep at 1 to detect even slight movement
     }
 
     /**
-     * Generate a new random wander target within boundaries
+     * Generate a new random wander target within boundaries, avoiding water
+     * Optionally follows trails for more natural forest behavior (30% chance)
      */
     generateNewWanderTarget() {
-        const angle = Math.random() * Math.PI * 2;
-        const distance = this.config.wanderMinRadius + Math.random() * this.config.wanderMaxRadiusAddition;
-        
-        this.wanderTarget.set(
-            this.deer.model.position.x + Math.cos(angle) * distance,
-            this.deer.model.position.y,
-            this.deer.model.position.z + Math.sin(angle) * distance
-        );
-        
-        // Ensure wander target stays within world boundaries
         const worldSize = gameContext.terrain ? gameContext.terrain.geometry.parameters.width : 1000;
         const boundary = worldSize / 2 - this.config.worldBoundaryMargin;
         
-        this.wanderTarget.x = Math.max(-boundary, Math.min(boundary, this.wanderTarget.x));
-        this.wanderTarget.z = Math.max(-boundary, Math.min(boundary, this.wanderTarget.z));
-    }
-
-    /**
-     * Move with collision detection and avoidance
-     * @param {number} speed - Movement speed for this frame
-     */
-    moveWithCollisionDetection(speed) {
-        // Store original position before any movement
-        const originalPosition = this.deer.model.position.clone();
-        
-        // First, try to move forward normally
-        this.deer.model.translateZ(speed);
-        
-        // Check if the new position collides with any trees
-        const newPosition = this.deer.model.position.clone();
-        const collision = gameContext.checkTreeCollision(newPosition, 0.7);
-        
-        if (collision) {
-            // Collision detected - immediately back up to original position
-            this.deer.model.position.copy(originalPosition);
-            
-            // Try multiple escape strategies in order of preference
-            const escapeStrategies = [
-                { angle: Math.PI / 4, description: "45° left" },      // Try left first
-                { angle: -Math.PI / 4, description: "45° right" },    // Then right
-                { angle: Math.PI / 2, description: "90° left" },      // Sharp left
-                { angle: -Math.PI / 2, description: "90° right" },    // Sharp right
-                { angle: Math.PI, description: "180° turn" }          // Complete turnaround
-            ];
-            
-            let escaped = false;
-            
-            for (const strategy of escapeStrategies) {
-                // Test movement in this direction
-                const testDirection = new THREE.Vector3(0, 0, speed);
-                testDirection.applyQuaternion(this.deer.model.quaternion);
-                testDirection.applyAxisAngle(new THREE.Vector3(0, 1, 0), strategy.angle);
-                
-                const testPosition = originalPosition.clone().add(testDirection);
-                
-                if (!gameContext.checkTreeCollision(testPosition, 0.7)) {
-                    // This direction is clear - move there and rotate toward it
-                    const moveDirection = testDirection.clone().multiplyScalar(0.5); // Move half the distance
-                    this.deer.model.position.add(moveDirection);
-                    this.deer.model.position.y = gameContext.getHeightAt(this.deer.model.position.x, this.deer.model.position.z) + this.deer.heightOffset;
-                    
-                    // Generate a new wander target in a safe direction
-                    this.generateNewWanderTarget();
-                    
-                    escaped = true;
-                    break;
-                }
-            }
-            
-            // If all escape strategies failed, generate new wander target and force rotation
-            if (!escaped) {
-                this.generateNewWanderTarget();
-                
-                // Force immediate significant rotation to break free
-                const randomRotation = (Math.random() - 0.5) * Math.PI; // Random rotation up to ±90°
-                this.deer.model.rotateY(randomRotation);
-                
-                // Try to move in the new direction
-                const escapeDirection = new THREE.Vector3(0, 0, speed * 0.5); // Half speed for safety
-                escapeDirection.applyQuaternion(this.deer.model.quaternion);
-                const escapePosition = originalPosition.clone().add(escapeDirection);
-                
-                if (!gameContext.checkTreeCollision(escapePosition, 0.7)) {
-                    this.deer.model.position.copy(escapePosition);
-                } else {
-                    // Still stuck - stay at original position and keep rotating
-                    this.deer.model.position.copy(originalPosition);
+        // 30% chance to try to find a trail target for realistic forest behavior
+        if (Math.random() < 0.3 && gameContext.trails && gameContext.trails.children.length > 0) {
+            const trailTarget = this.findTrailTarget(boundary);
+            if (trailTarget) {
+                // Verify trail target is not in water
+                const inWater = gameContext.isWaterAt ? gameContext.isWaterAt(trailTarget.x, trailTarget.z) : false;
+                if (!inWater) {
+                    this.wanderTarget.copy(trailTarget);
+                    return;
                 }
             }
         }
+        
+        // Try up to 10 times to find a valid target not in water
+        for (let attempt = 0; attempt < 10; attempt++) {
+            const angle = Math.random() * Math.PI * 2;
+            const distance = this.config.wanderMinRadius + Math.random() * this.config.wanderMaxRadiusAddition;
+            
+            let targetX = this.deer.model.position.x + Math.cos(angle) * distance;
+            let targetZ = this.deer.model.position.z + Math.sin(angle) * distance;
+            
+            // Clamp to world boundaries
+            targetX = Math.max(-boundary, Math.min(boundary, targetX));
+            targetZ = Math.max(-boundary, Math.min(boundary, targetZ));
+            
+            // Check if target is in water
+            const inWater = gameContext.isWaterAt ? gameContext.isWaterAt(targetX, targetZ) : false;
+            
+            if (!inWater) {
+                this.wanderTarget.set(targetX, this.deer.model.position.y, targetZ);
+                return;
+            }
+        }
+        
+        // Fallback: just use current position if all attempts failed
+        this.wanderTarget.copy(this.deer.model.position);
+    }
+    
+    /**
+     * Find a point on a trail to use as wander target
+     * @param {number} boundary - World boundary limit
+     * @returns {THREE.Vector3|null} Trail point or null if none found
+     */
+    findTrailTarget(boundary) {
+        if (!gameContext.trails || gameContext.trails.children.length === 0) {
+            return null;
+        }
+        
+        // Pick a random trail
+        const trails = gameContext.trails.children;
+        const randomTrail = trails[Math.floor(Math.random() * trails.length)];
+        
+        if (!randomTrail || !randomTrail.geometry || !randomTrail.geometry.attributes.position) {
+            return null;
+        }
+        
+        const positions = randomTrail.geometry.attributes.position;
+        const vertexCount = positions.count;
+        
+        if (vertexCount < 4) return null;
+        
+        // Pick a random point along the trail
+        const randomIndex = Math.floor(Math.random() * (vertexCount / 2)) * 2;
+        
+        const x = positions.getX(randomIndex);
+        const z = positions.getZ(randomIndex);
+        
+        // Make sure it's within bounds and a reasonable distance away
+        if (Math.abs(x) < boundary && Math.abs(z) < boundary) {
+            const deerPos = this.deer.model.position;
+            const distance = Math.sqrt((x - deerPos.x) ** 2 + (z - deerPos.z) ** 2);
+            
+            if (distance > 15 && distance < 100) {
+                return new THREE.Vector3(x, 0, z);
+            }
+        }
+        
+        return null;
+    }
+
+    /**
+     * Move the deer with collision detection
+     * @param {number} speed - Speed to move (already multiplied by delta)
+     */
+    moveWithCollisionDetection(speed) {
+        // Track speed for animation system (speed is already delta-adjusted)
+        // Convert back to units per second for animation decisions
+        this.currentSpeed = speed * 60; // Approximate: assume 60fps, convert to per-second
+        this.deer.currentSpeed = this.currentSpeed;
+        
+        const now = performance.now() / 1000;
+        
+        // Decay forced avoidance timer
+        if (this.forcedAvoidanceTimer > 0) {
+            this.forcedAvoidanceTimer -= 1/60; // Assume ~60fps
+        }
+        
+        // Reset collision count if no collision for 2 seconds
+        if (now - this.lastCollisionTime > 2) {
+            this.collisionCount = 0;
+        }
+        
+        // If we have a forced avoidance direction, use it
+        if (this.forcedAvoidanceDirection && this.forcedAvoidanceTimer > 0) {
+            const targetAngle = Math.atan2(this.forcedAvoidanceDirection.x, this.forcedAvoidanceDirection.z);
+            this.deer.model.rotation.y = targetAngle;
+        }
+        
+        // Store original position before any movement
+        const originalPosition = this.deer.model.position.clone();
+        
+        // Move deer forward in its current direction
+        this.deer.model.translateZ(speed);
+        
+        // Get new position after movement
+        const newPosition = this.deer.model.position.clone();
+        
+        // Check for tree collision at new position
+        const treeCollision = gameContext.checkTreeCollision(newPosition, 0.7);
+        
+        // Check for water collision - deer should not walk into water
+        const inWater = gameContext.isWaterAt ? gameContext.isWaterAt(newPosition.x, newPosition.z) : false;
+        
+        // Check if position is within valid world boundaries
+        // Default world size if terrain geometry isn't available yet
+        let worldSize = 1000;
+        
+        // Safely access terrain geometry if available
+        if (gameContext && gameContext.terrain && gameContext.terrain.geometry && 
+            gameContext.terrain.geometry.parameters && gameContext.terrain.geometry.parameters.width) {
+            worldSize = gameContext.terrain.geometry.parameters.width;
+        }
+        
+        const boundary = worldSize / 2 - 20; // 20 units from edge
+        const outOfBounds = Math.abs(newPosition.x) > boundary || Math.abs(newPosition.z) > boundary;
+        
+        // Simple movement validation - if any constraint is violated, revert to original position
+        if (treeCollision || outOfBounds || inWater) {
+            // Revert to original position
+            this.deer.model.position.copy(originalPosition);
+            
+            // Reset speed since we didn't actually move
+            this.currentSpeed = 0;
+            this.deer.currentSpeed = 0;
+            
+            // Track collision for stuck detection
+            this.collisionCount++;
+            this.lastCollisionTime = now;
+            
+            // Smooth obstacle avoidance - find a clear direction
+            if (treeCollision || inWater) {
+                this.handleSmoothObstacleAvoidance(originalPosition, treeCollision, inWater);
+                
+                // If multiple collisions in quick succession, force a longer avoidance
+                if (this.collisionCount >= 3) {
+                    this.forcedAvoidanceTimer = 1.5; // Force this direction for 1.5 seconds
+                    this.collisionCount = 0; // Reset after forcing
+                }
+            }
+            
+            // Update height at original position
+            this.updateDeerHeight();
+            return;
+        }
+        
+        // All water collision handling and escape strategies have been removed to simplify logic
+        // Update deer height after movement
+        this.updateDeerHeight();
         
         // Final safety check - if somehow still in collision, force separation
         const finalPosition = this.deer.model.position.clone();
@@ -171,9 +263,98 @@ export class DeerMovement {
                     .multiplyScalar(1.5); // Push 1.5 units away
                 
                 this.deer.model.position.copy(nearestTree.position).add(awayFromTree);
-                
-                // Height will be automatically adjusted by Animal.update() using heightOffset
+                this.updateDeerHeight(); // Update height after position change
             }
+        }
+        
+        // Final height update to ensure deer is always at correct height
+        this.updateDeerHeight();
+    }
+
+    /**
+     * Update the deer's height to match the terrain height at its current position
+     * This ensures the deer is always walking on the terrain surface
+     */
+    updateDeerHeight() {
+        if (!this.deer || !this.deer.model) return;
+        
+        const position = this.deer.model.position;
+        const terrainHeight = gameContext.getHeightAt(position.x, position.z);
+        
+        // Simple height adjustment - just add a constant offset to terrain height
+        position.y = terrainHeight + this.deer.config.heightOffset;
+    }
+    
+    /**
+     * Handle smooth obstacle avoidance when deer hits a tree or water
+     * Instead of random rotation, find the best clear direction
+     */
+    handleSmoothObstacleAvoidance(currentPosition, hitTree, hitWater) {
+        const worldSize = gameContext.terrain ? gameContext.terrain.geometry.parameters.width : 1000;
+        const boundary = worldSize / 2 - this.config.worldBoundaryMargin;
+        
+        // Get current facing direction
+        const currentDir = new THREE.Vector3(0, 0, 1);
+        currentDir.applyQuaternion(this.deer.model.quaternion);
+        
+        // Test directions at 30-degree increments, preferring directions close to current heading
+        const testAngles = [
+            Math.PI / 6,   // 30° right
+            -Math.PI / 6,  // 30° left
+            Math.PI / 3,   // 60° right
+            -Math.PI / 3,  // 60° left
+            Math.PI / 2,   // 90° right
+            -Math.PI / 2,  // 90° left
+            2 * Math.PI / 3,  // 120° right
+            -2 * Math.PI / 3, // 120° left
+        ];
+        
+        const testDistance = 5.0; // How far ahead to check
+        
+        for (const angle of testAngles) {
+            const testDir = currentDir.clone();
+            testDir.applyAxisAngle(new THREE.Vector3(0, 1, 0), angle);
+            
+            const testPos = currentPosition.clone().add(testDir.multiplyScalar(testDistance));
+            
+            // Check if this direction is clear
+            const inBounds = Math.abs(testPos.x) < boundary && Math.abs(testPos.z) < boundary;
+            const noTree = !gameContext.checkTreeCollision(testPos, 0.7);
+            const noWater = !gameContext.isWaterAt || !gameContext.isWaterAt(testPos.x, testPos.z);
+            
+            if (inBounds && noTree && noWater) {
+                // Found a clear direction - generate new target in this direction
+                const newDir = currentDir.clone().applyAxisAngle(new THREE.Vector3(0, 1, 0), angle);
+                const newTarget = currentPosition.clone().add(newDir.clone().multiplyScalar(15));
+                newTarget.x = Math.max(-boundary, Math.min(boundary, newTarget.x));
+                newTarget.z = Math.max(-boundary, Math.min(boundary, newTarget.z));
+                this.wanderTarget.copy(newTarget);
+                
+                // Store forced avoidance direction
+                this.forcedAvoidanceDirection = newDir.clone().normalize();
+                
+                // Also update wound state flee direction if deer is wounded
+                if (this.deer.state === 'WOUNDED' && this.deer.woundState && this.deer.woundState.fleeDirection) {
+                    this.deer.woundState.fleeDirection.copy(newDir.normalize());
+                }
+                
+                // Immediately rotate deer toward clear direction for faster response
+                const targetAngle = Math.atan2(newDir.x, newDir.z);
+                this.deer.model.rotation.y = targetAngle;
+                
+                return;
+            }
+        }
+        
+        // No clear direction found - generate completely new random target
+        this.generateNewWanderTarget();
+        
+        // For wounded deer, also reset flee direction toward center if stuck
+        if (this.deer.state === 'WOUNDED' && this.deer.woundState && this.deer.woundState.fleeDirection) {
+            const toCenter = new THREE.Vector3(0, 0, 0).sub(currentPosition).normalize();
+            this.deer.woundState.fleeDirection.copy(toCenter);
+            this.forcedAvoidanceDirection = toCenter.clone();
+            this.forcedAvoidanceTimer = 2.0; // Force toward center for 2 seconds
         }
     }
 
@@ -301,22 +482,6 @@ export class DeerMovement {
     }
 
     /**
-     * Get current wander target
-     * @returns {THREE.Vector3} The wander target position
-     */
-    getWanderTarget() {
-        return this.wanderTarget;
-    }
-
-    /**
-     * Check if deer is currently moving
-     * @returns {boolean} True if deer is moving
-     */
-    getIsMoving() {
-        return this.isMoving;
-    }
-
-    /**
      * Clear movement history (used for stationary states)
      */
     clearMovementHistory() {
@@ -335,7 +500,8 @@ export class DeerMovement {
         }
 
         // Check if deer is moving based on movement history
-        const movementThreshold = 0.05;
+        // Very low threshold - at 60fps with wandering speed 0.67, distance per frame is ~0.011
+        const movementThreshold = 0.005; // Low enough to detect slow wandering
         this.isMoving = this.movementHistory.some(movement => movement > movementThreshold);
     }
 
@@ -379,9 +545,13 @@ export class DeerMovement {
         const targetQuaternion = new THREE.Quaternion();
         targetQuaternion.setFromAxisAngle(new THREE.Vector3(0, 1, 0), targetAngle);
         
-        // Smoothly interpolate towards target rotation
-        // Use a rotation speed that feels natural (adjust multiplier as needed)
-        const rotationSpeed = 3.0; // radians per second
+        // Use faster rotation speed so deer faces target before moving far
+        // Adjust based on current state - faster when wandering, slower when fleeing (more realistic)
+        let rotationSpeed = 5.0; // radians per second (increased from 3.0)
+        if (this.deer.state === 'FLEEING' || this.deer.state === 'WOUNDED') {
+            rotationSpeed = 4.0; // Slightly slower when running - more realistic
+        }
+        
         const maxRotationThisFrame = rotationSpeed * delta;
         
         // Calculate how much we need to rotate
@@ -394,5 +564,29 @@ export class DeerMovement {
         
         // Apply smooth rotation
         this.deer.model.quaternion.slerp(targetQuaternion, t);
+    }
+    
+    /**
+     * Get the current wander target
+     * @returns {THREE.Vector3} Current wander target
+     */
+    getWanderTarget() {
+        return this.wanderTarget;
+    }
+    
+    /**
+     * Set a specific wander target
+     * @param {THREE.Vector3} target - The target position to set
+     */
+    setWanderTarget(target) {
+        this.wanderTarget = target.clone();
+    }
+    
+    /**
+     * Check if deer is currently moving
+     * @returns {boolean} True if deer is moving
+     */
+    getIsMoving() {
+        return this.isMoving;
     }
 }
