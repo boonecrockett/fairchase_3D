@@ -217,7 +217,7 @@ export function generateCurrentReport() {
         statusText = '🦌 Hunting';
         statusClass = 'info';
     } else {
-        statusText = '🔍 Scouting';
+        statusText = '🌲 In the Field';
         statusClass = 'info';
     }
     reportHTML += `<div class="stat-row status"><span class="${statusClass}">${statusText}</span></div>`;

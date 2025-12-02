@@ -115,8 +115,21 @@ export async function initUI() {
     gameContext.weatherElement = document.getElementById('weather');
     gameContext.weatherValueElement = document.getElementById('weather-value');
 
-    // Show main menu container on page load (since it's hidden by default in CSS)
-    if (gameContext.mainMenu) {
+    // Handle splash screen and main menu display
+    const splashScreen = document.getElementById('splash-screen');
+    if (splashScreen && gameContext.mainMenu) {
+        // After 5 seconds, fade out splash and show main menu
+        setTimeout(() => {
+            splashScreen.classList.add('fade-out');
+            gameContext.mainMenu.style.display = 'flex';
+            
+            // Remove splash screen from DOM after fade animation
+            setTimeout(() => {
+                splashScreen.classList.add('hidden');
+            }, 800);
+        }, 5000);
+    } else if (gameContext.mainMenu) {
+        // Fallback if no splash screen
         gameContext.mainMenu.style.display = 'flex';
     }
     

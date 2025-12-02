@@ -223,11 +223,17 @@ async function startGame(selectedWorldId) {
             if (deer.respawn) deer.respawn();
         }
         
-        // Wait for deer model to load
+        // Wait for deer model to load with timeout to prevent infinite hang
+        const DEER_LOAD_TIMEOUT = 15000; // 15 second timeout
         const deerLoadPromise = new Promise((resolve) => {
+            const startTime = Date.now();
             const checkDeerLoaded = () => {
                 if (gameContext.deer && gameContext.deer.isModelLoaded) {
                     completeTask('deer');
+                    resolve();
+                } else if (Date.now() - startTime > DEER_LOAD_TIMEOUT) {
+                    console.warn('⚠️ Deer model load timeout - continuing without deer');
+                    completeTask('deer'); // Mark complete to prevent UI hang
                     resolve();
                 } else {
                     setTimeout(checkDeerLoaded, 100);
@@ -236,8 +242,25 @@ async function startGame(selectedWorldId) {
             checkDeerLoaded();
         });
         
-        // Wait for all async assets to load
-        await Promise.all([treesPromise, bushesPromise, grassPromise, deerLoadPromise]);
+        // Wait for all async assets to load with global timeout
+        const ASSET_LOAD_TIMEOUT = 30000; // 30 second global timeout
+        const timeoutPromise = new Promise((_, reject) => {
+            setTimeout(() => reject(new Error('Asset loading timeout')), ASSET_LOAD_TIMEOUT);
+        });
+        
+        try {
+            await Promise.race([
+                Promise.all([treesPromise, bushesPromise, grassPromise, deerLoadPromise]),
+                timeoutPromise
+            ]);
+        } catch (timeoutError) {
+            console.warn('⚠️ Asset loading timeout - continuing with available assets');
+            // Force complete any remaining tasks to hide loading modal
+            completeTask('trees');
+            completeTask('bushes');
+            completeTask('grass');
+            completeTask('deer');
+        }
         
         // Update UI
         if (gameContext.scoreValueElement) gameContext.scoreValueElement.textContent = 0;

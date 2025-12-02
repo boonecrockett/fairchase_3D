@@ -49,7 +49,7 @@
             </div>
             <button id="next-day-button" class="hud hud-button">Jump to Next Day</button>
             <button id="score-report-button" class="hud">
-                Score: <span id="score-value">0</span><br><small>(ESC + Click = Report)</small>
+                Score: <span id="score-value">0</span><br><small>(Click to open Report)</small>
             </button>
             <div id="shortcuts-panel" class="hud shortcuts-hud">
                 <div class="shortcuts-title">Controls</div>
@@ -61,7 +61,6 @@
                 <div class="shortcut-row"><kbd>Right Click</kbd> Scope</div>
                 <div class="shortcut-row"><kbd>M</kbd> Map</div>
                 <div class="shortcut-row"><kbd>R</kbd> Report</div>
-                <div class="shortcut-row"><kbd>J</kbd> Journal</div>
                 <div class="shortcut-row"><kbd>E</kbd> Tag Deer</div>
                 <div class="shortcut-row"><kbd>ESC</kbd> Release Mouse</div>
             </div>
@@ -85,7 +84,7 @@
 
     <!-- Modals -->
     <div id="report-modal-backdrop" class="modal-backdrop">
-        <div id="report-modal" class="modal">
+        <div id="report-modal" class="modal report-modal">
             <div class="report-header">
                 <div class="report-logo"></div>
                 <div class="report-branding">
@@ -94,8 +93,11 @@
                 </div>
             </div>
             <div id="report-content">...</div>
-            <div class="button-group">
-                <button id="screenshot-report-button">📷 Screenshot</button>
+            <div class="report-footer">
+                Play Fair Chase at <a href="https://fairchase.club" target="_blank">fairchase.club</a>
+            </div>
+            <div class="button-group" style="margin-top: 16px;">
+                <button id="screenshot-report-button" class="primary-button">📷 Share</button>
                 <button id="close-report-button">Close</button>
             </div>
         </div>
@@ -155,6 +157,15 @@
         </div>
     </div>
     
+    <!-- Splash Screen -->
+    <div id="splash-screen">
+        <div class="splash-content">
+            <div class="splash-logo"></div>
+            <div class="splash-title">Ethical Pursuit</div>
+            <div class="splash-tagline">A Fair Chase Experience</div>
+        </div>
+    </div>
+
     <!-- Main menu with loading bar and mode selection buttons -->
     <div id="main-menu-container">
         <div id="loading-container">
@@ -213,7 +224,6 @@
                         <div><kbd>Right Click</kbd> Toggle scope</div>
                         <div><kbd>M</kbd> Hold for map</div>
                         <div><kbd>R</kbd> View report</div>
-                        <div><kbd>J</kbd> Open journal</div>
                         <div><kbd>E</kbd> Tag deer</div>
                         <div><kbd>ESC</kbd> Release mouse</div>
                     </div>

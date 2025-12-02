@@ -602,12 +602,14 @@ export function createGrass(worldConfig) {
 
             if (!grassGeometry || !grassMaterial) {
                 console.warn('No mesh found in grass model');
+                resolve(); // Resolve anyway to prevent hang
                 return;
             }
 
             // Check terrain is ready
             if (!gameContext.terrain || !gameContext.terrain.geometry) {
                 console.warn('🌿 GRASS: Terrain not ready, skipping brush creation');
+                resolve(); // Resolve anyway to prevent hang
                 return;
             }
             
