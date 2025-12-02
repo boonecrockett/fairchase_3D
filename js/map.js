@@ -26,6 +26,8 @@ const MAP_TAGGED_COLOR = 0x9eb529;      // Leaf - brand color for tagged deer
 const MAP_PLAYER_DOT_STROKE_COLOR = '#beb5a3'; // Tan
 const MAP_PLAYER_DOT_RADIUS = 6;
 const MAP_PLAYER_DOT_LINE_WIDTH = 2;
+const MAP_MARKER_OUTLINE_COLOR = 0xffffff; // White outline for markers
+const MAP_MARKER_OUTLINE_WIDTH = 2; // Width of outline ring
 
 /**
  * Initializes the WebGLRenderer for the map canvas.
@@ -35,6 +37,46 @@ export function initMap() {
         gameContext.mapRenderer = new THREE.WebGLRenderer({ antialias: true, canvas: gameContext.mapCanvas });
         gameContext.mapRenderer.setSize(MAP_CANVAS_SIZE, MAP_CANVAS_SIZE);
     }
+}
+
+/**
+ * Creates a map marker dot with a white outline ring for better visibility
+ * @param {number} radius - Radius of the dot
+ * @param {number} color - Color of the dot fill
+ * @param {THREE.Vector3} position - World position for the marker
+ * @param {number} yOffset - Height offset above terrain
+ * @returns {THREE.Group} Group containing the dot and outline
+ */
+function createMarkerWithOutline(radius, color, position, yOffset = 20) {
+    const group = new THREE.Group();
+    
+    // Create white outline ring (slightly larger)
+    const outlineGeometry = new THREE.RingGeometry(radius, radius + MAP_MARKER_OUTLINE_WIDTH, 24);
+    const outlineMaterial = new THREE.MeshBasicMaterial({
+        color: MAP_MARKER_OUTLINE_COLOR,
+        side: THREE.DoubleSide,
+        depthTest: false
+    });
+    const outline = new THREE.Mesh(outlineGeometry, outlineMaterial);
+    outline.renderOrder = 998;
+    group.add(outline);
+    
+    // Create filled dot
+    const dotGeometry = new THREE.CircleGeometry(radius, 24);
+    const dotMaterial = new THREE.MeshBasicMaterial({
+        color: color,
+        depthTest: false
+    });
+    const dot = new THREE.Mesh(dotGeometry, dotMaterial);
+    dot.renderOrder = 999;
+    group.add(dot);
+    
+    // Position the group
+    group.position.copy(position);
+    group.position.y = gameContext.getHeightAt(position.x, position.z) + yOffset;
+    group.rotation.x = -Math.PI / 2;
+    
+    return group;
 }
 
 /**
@@ -265,21 +307,9 @@ export function showMap() {
         });
     }
 
-    // --- Hunter Dot (3D) - Hunter's Orange ---
-    const playerDotGeometry = new THREE.CircleGeometry(10, 16); // Radius in world units
-    const playerDotMaterial = new THREE.MeshBasicMaterial({
-        color: MAP_HUNTER_COLOR,
-        depthTest: false // Render on top of other map elements
-    });
-    const playerDot = new THREE.Mesh(playerDotGeometry, playerDotMaterial);
-    playerDot.renderOrder = 999; // Ensure it renders last
-
-    // Position the dot at the player's location but elevated to be visible
-    playerDot.position.copy(gameContext.player.position);
-    playerDot.position.y = gameContext.getHeightAt(playerDot.position.x, playerDot.position.z) + 20; // Elevate to be safe
-    playerDot.rotation.x = -Math.PI / 2;
-
-    tempScene.add(playerDot);
+    // --- Hunter Dot (3D) - Hunter's Orange with white outline ---
+    const playerMarker = createMarkerWithOutline(10, MAP_HUNTER_COLOR, gameContext.player.position, 20);
+    tempScene.add(playerMarker);
 
     // --- Deer Marker Logic ---
     // Show different markers based on deer state:
@@ -293,18 +323,9 @@ export function showMap() {
         const isTagged = gameContext.deer.tagged;
         
         if (isTagged) {
-            // Tagged deer - show green dot at actual location
-            const deerDotGeometry = new THREE.CircleGeometry(10, 16);
-            const deerDotMaterial = new THREE.MeshBasicMaterial({
-                color: MAP_TAGGED_COLOR,
-                depthTest: false
-            });
-            const deerDot = new THREE.Mesh(deerDotGeometry, deerDotMaterial);
-            deerDot.renderOrder = 1000;
-            deerDot.position.copy(gameContext.deer.model.position);
-            deerDot.position.y = gameContext.getHeightAt(deerDot.position.x, deerDot.position.z) + 21;
-            deerDot.rotation.x = -Math.PI / 2;
-            tempScene.add(deerDot);
+            // Tagged deer - show green dot with outline at actual location
+            const deerMarker = createMarkerWithOutline(10, MAP_TAGGED_COLOR, gameContext.deer.model.position, 21);
+            tempScene.add(deerMarker);
             
         } else if (isWounded || isDead) {
             // Wounded or dead untagged - show red X at hit location only
@@ -314,18 +335,9 @@ export function showMap() {
             }
             
         } else {
-            // Alive deer - show brown dot (GPS tracking)
-            const deerDotGeometry = new THREE.CircleGeometry(10, 16);
-            const deerDotMaterial = new THREE.MeshBasicMaterial({
-                color: MAP_DEER_COLOR,
-                depthTest: false
-            });
-            const deerDot = new THREE.Mesh(deerDotGeometry, deerDotMaterial);
-            deerDot.renderOrder = 1000;
-            deerDot.position.copy(gameContext.deer.model.position);
-            deerDot.position.y = gameContext.getHeightAt(deerDot.position.x, deerDot.position.z) + 21;
-            deerDot.rotation.x = -Math.PI / 2;
-            tempScene.add(deerDot);
+            // Alive deer - show brown dot with outline (GPS tracking)
+            const deerMarker = createMarkerWithOutline(10, MAP_DEER_COLOR, gameContext.deer.model.position, 21);
+            tempScene.add(deerMarker);
         }
     }
 
@@ -764,19 +776,9 @@ function renderSmartphoneMap() {
         });
     }
     
-    // Add hunter dot - Hunter's Orange
-    const playerDotGeometry = new THREE.CircleGeometry(10, 16);
-    const playerDotMaterial = new THREE.MeshBasicMaterial({
-        color: MAP_HUNTER_COLOR,
-        depthTest: false
-    });
-    const playerDot = new THREE.Mesh(playerDotGeometry, playerDotMaterial);
-    playerDot.renderOrder = 999;
-    
-    playerDot.position.copy(gameContext.player.position);
-    playerDot.position.y = gameContext.getHeightAt(playerDot.position.x, playerDot.position.z) + 20;
-    playerDot.rotation.x = -Math.PI / 2;
-    tempScene.add(playerDot);
+    // Add hunter dot - Hunter's Orange with white outline
+    const playerMarker = createMarkerWithOutline(10, MAP_HUNTER_COLOR, gameContext.player.position, 20);
+    tempScene.add(playerMarker);
     
     // --- Deer Marker Logic (same as showMap) ---
     if (gameContext.deer && gameContext.deer.isModelLoaded) {
@@ -785,18 +787,9 @@ function renderSmartphoneMap() {
         const isTagged = gameContext.deer.tagged;
         
         if (isTagged) {
-            // Tagged deer - show green dot at actual location
-            const deerDotGeometry = new THREE.CircleGeometry(10, 16);
-            const deerDotMaterial = new THREE.MeshBasicMaterial({
-                color: MAP_TAGGED_COLOR,
-                depthTest: false
-            });
-            const deerDot = new THREE.Mesh(deerDotGeometry, deerDotMaterial);
-            deerDot.renderOrder = 1000;
-            deerDot.position.copy(gameContext.deer.model.position);
-            deerDot.position.y = gameContext.getHeightAt(deerDot.position.x, deerDot.position.z) + 21;
-            deerDot.rotation.x = -Math.PI / 2;
-            tempScene.add(deerDot);
+            // Tagged deer - show green dot with outline at actual location
+            const deerMarker = createMarkerWithOutline(10, MAP_TAGGED_COLOR, gameContext.deer.model.position, 21);
+            tempScene.add(deerMarker);
             
         } else if (isWounded || isDead) {
             // Wounded or dead untagged - show red X at hit location only
@@ -806,18 +799,9 @@ function renderSmartphoneMap() {
             }
             
         } else {
-            // Alive deer - show brown dot (GPS tracking)
-            const deerDotGeometry = new THREE.CircleGeometry(10, 16);
-            const deerDotMaterial = new THREE.MeshBasicMaterial({
-                color: MAP_DEER_COLOR,
-                depthTest: false
-            });
-            const deerDot = new THREE.Mesh(deerDotGeometry, deerDotMaterial);
-            deerDot.renderOrder = 1000;
-            deerDot.position.copy(gameContext.deer.model.position);
-            deerDot.position.y = gameContext.getHeightAt(deerDot.position.x, deerDot.position.z) + 21;
-            deerDot.rotation.x = -Math.PI / 2;
-            tempScene.add(deerDot);
+            // Alive deer - show brown dot with outline (GPS tracking)
+            const deerMarker = createMarkerWithOutline(10, MAP_DEER_COLOR, gameContext.deer.model.position, 21);
+            tempScene.add(deerMarker);
         }
     }
     

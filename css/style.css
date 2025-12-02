@@ -1705,3 +1705,23 @@ canvas { display: block; }
 .event-sighting { color: var(--color-info); }
 .event-utility { color: var(--color-text-muted); font-style: italic; }
 .event-normal { color: var(--color-text-secondary); }
+.event-penalty { color: var(--color-danger); }
+
+/* Tag Reminder */
+.tag-reminder {
+    margin-top: 12px;
+    padding: 10px 14px;
+    background: linear-gradient(135deg, rgba(186, 82, 22, 0.2), rgba(186, 82, 22, 0.1));
+    border: 1px solid var(--color-warning);
+    border-radius: var(--radius-md);
+    color: var(--color-warning);
+    font-size: 13px;
+    font-weight: 500;
+    text-align: center;
+    animation: pulse-glow 2s ease-in-out infinite;
+}
+
+@keyframes pulse-glow {
+    0%, 100% { box-shadow: 0 0 5px rgba(186, 82, 22, 0.3); }
+    50% { box-shadow: 0 0 15px rgba(186, 82, 22, 0.5); }
+}

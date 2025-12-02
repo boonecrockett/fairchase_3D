@@ -173,7 +173,33 @@ export class DeerMovement {
         const treeCollision = gameContext.checkTreeCollision(newPosition, 0.7);
         
         // Check for water collision - deer should not walk into water
-        const inWater = gameContext.isWaterAt ? gameContext.isWaterAt(newPosition.x, newPosition.z) : false;
+        // Also check if deer would be walking on terrain below water level (prevents underwater appearance)
+        let inWater = gameContext.isWaterAt ? gameContext.isWaterAt(newPosition.x, newPosition.z) : false;
+        
+        // Additional check: prevent deer from walking on terrain that's below nearby water level
+        if (!inWater && gameContext.waterBodies && gameContext.waterBodies.length > 0) {
+            const terrainAtNewPos = gameContext.getHeightAt(newPosition.x, newPosition.z);
+            for (const waterBody of gameContext.waterBodies) {
+                const waterX = waterBody.position.x;
+                const waterZ = waterBody.position.z;
+                const waterY = waterBody.position.y;
+                const distance = Math.sqrt(
+                    (newPosition.x - waterX) * (newPosition.x - waterX) + 
+                    (newPosition.z - waterZ) * (newPosition.z - waterZ)
+                );
+                
+                let waterRadius = 10;
+                if (waterBody.userData && waterBody.userData.config) {
+                    waterRadius = waterBody.userData.config.size / 2;
+                }
+                
+                // If within water radius and terrain is below water level, treat as water
+                if (distance <= waterRadius && terrainAtNewPos < waterY - 0.5) {
+                    inWater = true;
+                    break;
+                }
+            }
+        }
         
         // Check if position is within valid world boundaries
         // Default world size if terrain geometry isn't available yet
@@ -274,6 +300,7 @@ export class DeerMovement {
     /**
      * Update the deer's height to match the terrain height at its current position
      * This ensures the deer is always walking on the terrain surface
+     * Also ensures deer never appears below water level
      */
     updateDeerHeight() {
         if (!this.deer || !this.deer.model) return;
@@ -281,8 +308,37 @@ export class DeerMovement {
         const position = this.deer.model.position;
         const terrainHeight = gameContext.getHeightAt(position.x, position.z);
         
-        // Simple height adjustment - just add a constant offset to terrain height
-        position.y = terrainHeight + this.deer.config.heightOffset;
+        // Start with terrain height plus offset
+        let targetHeight = terrainHeight + this.deer.config.heightOffset;
+        
+        // Check if near any water body and ensure deer is above water level
+        if (gameContext.waterBodies && gameContext.waterBodies.length > 0) {
+            for (const waterBody of gameContext.waterBodies) {
+                const waterX = waterBody.position.x;
+                const waterZ = waterBody.position.z;
+                const waterY = waterBody.position.y;
+                const distance = Math.sqrt(
+                    (position.x - waterX) * (position.x - waterX) + 
+                    (position.z - waterZ) * (position.z - waterZ)
+                );
+                
+                // Get water body radius
+                let waterRadius = 10;
+                if (waterBody.userData && waterBody.userData.config) {
+                    waterRadius = waterBody.userData.config.size / 2;
+                }
+                
+                // If deer is near water (within 1.5x radius), ensure it's above water level
+                if (distance <= waterRadius * 1.5) {
+                    const minHeight = waterY + this.deer.config.heightOffset + 0.5; // Stay 0.5 units above water
+                    if (targetHeight < minHeight) {
+                        targetHeight = minHeight;
+                    }
+                }
+            }
+        }
+        
+        position.y = targetHeight;
     }
     
     /**

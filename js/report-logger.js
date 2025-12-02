@@ -138,30 +138,68 @@ export function generateCurrentReport() {
     let totalBonuses = 0;
     let totalPenalties = 0;
     
-    // Bonuses
-    if (gameContext.killInfo) {
-        const killScore = gameContext.killInfo.score || 0;
+    // Bonuses - check both current killInfo and stored dailyKillInfo (after tagging)
+    const killData = gameContext.killInfo || gameContext.dailyKillInfo;
+    if (killData) {
+        const killScore = killData.score || 0;
         if (killScore > 0) {
-            bonusItems.push({ name: 'Kill Shot', value: killScore });
-            totalBonuses += killScore;
+            // Check if we have a detailed bonus breakdown
+            if (killData.bonusBreakdown && killData.bonusBreakdown.length > 0) {
+                // Parse bonus breakdown strings like "Kneeling Shot +10" into name/value pairs
+                killData.bonusBreakdown.forEach(bonusStr => {
+                    const match = bonusStr.match(/(.+?)\s*([+-]?\d+)$/);
+                    if (match) {
+                        const name = match[1].trim();
+                        const value = parseInt(match[2]);
+                        if (value > 0) {
+                            bonusItems.push({ name: name, value: value });
+                        }
+                    }
+                });
+                // Add base kill score (vital shot = 50, etc)
+                const baseKillScore = killData.hitZone === 'vitals' ? 50 : 
+                                      killData.hitZone === 'brain' ? -5 :
+                                      killData.hitZone === 'spine' ? -5 : 20;
+                if (baseKillScore > 0) {
+                    bonusItems.push({ name: 'Clean Kill', value: baseKillScore });
+                }
+                totalBonuses += killScore;
+            } else {
+                // Fallback to single Kill Shot entry
+                bonusItems.push({ name: 'Kill Shot', value: killScore });
+                totalBonuses += killScore;
+            }
+        } else if (killScore < 0) {
+            // Negative kill scores are penalties (risky shots, illegal hours)
+            penaltyItems.push({ name: 'Risky Shot', value: Math.abs(killScore) });
+            totalPenalties += Math.abs(killScore);
         }
     }
-    // Scouting no longer awards points
+    
+    // Tracking bonus (awarded during tracking)
     if (gameContext.trackingBonusAwarded) {
         bonusItems.push({ name: 'Tracking', value: 2 });
         totalBonuses += 2;
     }
+    
+    // Tag bonus and quick recovery - check tagBonusInfo for breakdown
     if (stats.deerTagged) {
-        bonusItems.push({ name: 'Tagged Deer', value: 25 });
-        totalBonuses += 25;
+        if (gameContext.tagBonusInfo) {
+            // Use stored tag bonus breakdown
+            gameContext.tagBonusInfo.forEach(bonus => {
+                bonusItems.push({ name: bonus.name, value: bonus.value });
+                totalBonuses += bonus.value;
+            });
+        } else {
+            // Fallback to just tag bonus
+            bonusItems.push({ name: 'Tagged Deer', value: 25 });
+            totalBonuses += 25;
+        }
     }
     
     // Penalties
     // GPS map usage no longer penalized
-    if (gameContext.spookingPenaltyApplied) {
-        penaltyItems.push({ name: 'Spooked', value: 5 });
-        totalPenalties += 5;
-    }
+    // Spooking deer is no longer a penalty - it's a natural part of hunting
     const missedShots = stats.shotsTaken - stats.hits;
     if (missedShots > 0) {
         const penalty = missedShots * 5;
@@ -290,6 +328,12 @@ export function generateCurrentReport() {
     reportHTML += `<div class="calc-row"><span>Deductions</span><span>-${totalPenalties}</span></div>`;
     reportHTML += `<div class="calc-total ${scoreClass}"><span>Final</span><span>${finalScore >= 0 ? '+' : ''}${finalScore}</span></div>`;
     reportHTML += `</div>`;
+    
+    // Show tagging reminder if deer is killed but not tagged
+    if (stats.deerKilled && !stats.deerTagged) {
+        reportHTML += `<div class="tag-reminder">🏷️ Tag the deer to collect your points</div>`;
+    }
+    
     reportHTML += `</div>`;
     
     reportHTML += `</div>`; // End score breakdown row

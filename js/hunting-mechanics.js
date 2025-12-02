@@ -79,20 +79,7 @@ function calculateBonuses(distance, wasMoving, hitZone, isFirstShot = false, isB
         bonusDetails.push('Kneeling Shot +10');
     }
     
-    // Ethical hunting time bonus: +10 for hunting during legal hours
-    if (isLegalHuntingTime()) {
-        bonus += 10;
-        bonusDetails.push('Legal Hours +10');
-    }
-    
-    // Conservation hours bonus: Dawn (5:30-7:00) and Dusk (18:00-19:30) prime hunting times
-    const currentTime = gameContext.gameTime;
-    const isDawn = currentTime >= 5.5 && currentTime <= 7.0;
-    const isDusk = currentTime >= 18.0 && currentTime <= 19.5;
-    if (isDawn || isDusk) {
-        bonus += 5;
-        bonusDetails.push('Prime Hours +5');
-    }
+    // Time of day does not affect bonus - removed Legal Hours and Prime Hours bonuses
     
     return { bonus, bonusDetails };
 }
@@ -133,6 +120,12 @@ function processKill(baseScore, baseMessage, wasMoving, shotCount, distance, hit
     // Record kill time for quick recovery bonus calculation
     gameContext.killTime = Date.now();
     
+    // Get bonus details for report breakdown
+    const isFirstShot = shotCount === 1 && gameContext.huntLog && gameContext.huntLog.totalShotsTaken <= 1;
+    const isBracedForInfo = getIsTreeBraced();
+    const isKneelingForInfo = getIsKneeling();
+    const { bonusDetails: bonusBreakdown } = calculateBonuses(distance, wasMoving, hitZone, isFirstShot, isBracedForInfo, isKneelingForInfo, wasRunning, wasWalking);
+    
     gameContext.killInfo = { 
         score: finalScore, 
         message: baseMessage, // Store base message without bonuses for tag display
@@ -140,7 +133,8 @@ function processKill(baseScore, baseMessage, wasMoving, shotCount, distance, hit
         shotCount: shotCount,
         distance: distance,
         ethical: ethical,
-        hitZone: hitZone
+        hitZone: hitZone,
+        bonusBreakdown: bonusBreakdown // Store individual bonus details for report
     };
     
     const scoreText = finalScore >= 0 ? ` +${finalScore}` : ` ${finalScore}`;
@@ -423,6 +417,8 @@ export function resetScoringFlags() {
     gameContext.badShotPenalties = [];
     gameContext.lastHitPosition = null;
     gameContext.bloodDrops = [];
+    gameContext.tagBonusInfo = null;
+    gameContext.dailyKillInfo = null;
 }
 
 /**
@@ -440,6 +436,7 @@ export function tagDeer() {
         
         let tagBonus = 25;
         let bonusMessages = ['Tag +25'];
+        let tagBonusBreakdown = [{ name: 'Tagged Deer', value: 25 }];
         
         // Quick recovery bonus: +15 if deer was recovered within 2 minutes of being killed
         const killTime = gameContext.killTime || Date.now();
@@ -447,6 +444,7 @@ export function tagDeer() {
         if (recoveryTime < 120) { // 2 minutes
             tagBonus += 15;
             bonusMessages.push('Quick Recovery +15');
+            tagBonusBreakdown.push({ name: 'Quick Recovery', value: 15 });
         }
         
         // Tracking bonus: Award points for distance tracked to recover wounded deer
@@ -455,8 +453,12 @@ export function tagDeer() {
             if (trackingBonus > 0) {
                 tagBonus += trackingBonus;
                 bonusMessages.push(`Tracking +${trackingBonus}`);
+                tagBonusBreakdown.push({ name: 'Tracking', value: trackingBonus });
             }
         }
+        
+        // Store tag bonus breakdown for report
+        gameContext.tagBonusInfo = tagBonusBreakdown;
         
         gameContext.score += tagBonus;
         gameContext.scoreValueElement.textContent = gameContext.score;
