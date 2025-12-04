@@ -1725,3 +1725,28 @@ canvas { display: block; }
     0%, 100% { box-shadow: 0 0 5px rgba(186, 82, 22, 0.3); }
     50% { box-shadow: 0 0 15px rgba(186, 82, 22, 0.5); }
 }
+
+/* Game Mode Badge */
+.game-mode-badge {
+    display: inline-block;
+    padding: 6px 14px;
+    margin-bottom: 12px;
+    border-radius: var(--radius-md);
+    font-size: 12px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    text-align: center;
+}
+
+.game-mode-badge.practice-mode {
+    background: linear-gradient(135deg, rgba(42, 100, 150, 0.3), rgba(42, 100, 150, 0.15));
+    border: 1px solid var(--color-frost);
+    color: var(--color-frost);
+}
+
+.game-mode-badge.simulator-mode {
+    background: linear-gradient(135deg, rgba(158, 181, 42, 0.3), rgba(158, 181, 42, 0.15));
+    border: 1px solid var(--color-leaf);
+    color: var(--color-leaf);
+}

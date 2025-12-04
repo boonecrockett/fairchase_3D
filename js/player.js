@@ -905,13 +905,13 @@ export function getIsKneeling() {
 
 /**
  * Gets the player's current noise level and detection range
- * @returns {{ level: number, range: number }} Noise level (0-2) and detection range in units
+ * @returns {{ level: number, range: number, source: string }} Noise level (0-2), detection range in units, and source description
  */
 export function getPlayerNoise() {
     if (currentNoiseLevel === 2) {
-        return { level: 2, range: SPRINT_NOISE_RANGE };
+        return { level: 2, range: SPRINT_NOISE_RANGE, source: 'Sprinting' };
     } else if (currentNoiseLevel === 1) {
-        return { level: 1, range: FOLIAGE_NOISE_RANGE };
+        return { level: 1, range: FOLIAGE_NOISE_RANGE, source: 'Walking through brush' };
     }
-    return { level: 0, range: 0 };
+    return { level: 0, range: 0, source: 'Silent' };
 }

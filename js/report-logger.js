@@ -227,6 +227,12 @@ export function generateCurrentReport() {
     // Build compact report
     let reportHTML = `<div class="report-compact">`;
     
+    // Game Mode Badge
+    const gameMode = gameContext.gameMode || 'simulator';
+    const modeName = gameMode === 'practice' ? 'Practice Mode' : 'True Hunt Simulator';
+    const modeClass = gameMode === 'practice' ? 'practice-mode' : 'simulator-mode';
+    reportHTML += `<div class="game-mode-badge ${modeClass}">${modeName}</div>`;
+    
     // Top row: Hunt Stats, Shot Info, and Score Summary
     reportHTML += `<div class="report-top-row">`;
     

@@ -12,6 +12,64 @@ import { Animal } from './animal.js';
 import { applySpookingPenalty, awardScoutingBonus } from './hunting-mechanics.js';
 import { getPlayerNoise } from './player.js';
 import { WoundState, getWoundTypeFromHitbox } from './wound-system.js';
+import { DEBUG_MODE } from './constants.js';
+
+// Debug detection modal tracking
+let lastDetectionModalTime = 0;
+const DETECTION_MODAL_COOLDOWN = 5000; // 5 seconds between modals
+
+/**
+ * Shows a debug modal explaining how the deer detected the hunter
+ */
+function showDetectionDebugModal(detectionType, details) {
+    if (!DEBUG_MODE) return;
+    
+    const now = Date.now();
+    if (now - lastDetectionModalTime < DETECTION_MODAL_COOLDOWN) return;
+    lastDetectionModalTime = now;
+    
+    // Create or get the debug modal
+    let modal = document.getElementById('detection-debug-modal');
+    if (!modal) {
+        modal = document.createElement('div');
+        modal.id = 'detection-debug-modal';
+        modal.style.cssText = `
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(42, 43, 47, 0.95);
+            border: 2px solid #ba5216;
+            border-radius: 8px;
+            padding: 20px 30px;
+            z-index: 10000;
+            color: #beb5a3;
+            font-family: 'Inter', sans-serif;
+            max-width: 400px;
+            text-align: center;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.5);
+        `;
+        document.body.appendChild(modal);
+    }
+    
+    const icon = detectionType === 'visual' ? '👁️' : detectionType === 'sound' ? '👂' : '⚠️';
+    const title = detectionType === 'visual' ? 'Visual Detection!' : 
+                  detectionType === 'sound' ? 'Sound Detection!' : 'Deer Alert!';
+    
+    modal.innerHTML = `
+        <div style="font-size: 32px; margin-bottom: 10px;">${icon}</div>
+        <div style="font-size: 18px; font-weight: 600; color: #ba5216; margin-bottom: 15px;">${title}</div>
+        <div style="font-size: 14px; line-height: 1.6;">${details}</div>
+        <div style="margin-top: 15px; font-size: 11px; color: #6b675f;">(Debug Mode - Auto-closes in 3s)</div>
+    `;
+    
+    modal.style.display = 'block';
+    
+    // Auto-close after 3 seconds
+    setTimeout(() => {
+        if (modal) modal.style.display = 'none';
+    }, 3000);
+}
 
 export class Deer extends Animal {
     constructor() {
@@ -399,17 +457,17 @@ export class Deer extends Animal {
                     }
                 }
             } else {
-                this.movementSampleCount = Math.max(0, this.movementSampleCount - 1);
-                if (this.movementSampleCount === 0 && this.isTrackingPlayerMovement) {
+                // Player stopped moving - reset detection faster (was decrementing by 1, now by 2)
+                this.movementSampleCount = Math.max(0, this.movementSampleCount - 2);
+                if (this.movementSampleCount === 0) {
                     this.isTrackingPlayerMovement = false;
                     this.hasDetectedMovingPlayer = false;
                 }
             }
         } else {
-            if (this.isTrackingPlayerMovement) {
-                this.isTrackingPlayerMovement = false;
-                this.hasDetectedMovingPlayer = false;
-            }
+            // Player not visible - immediately reset all tracking
+            this.isTrackingPlayerMovement = false;
+            this.hasDetectedMovingPlayer = false;
             this.movementSampleCount = 0;
         }
 
@@ -430,10 +488,43 @@ export class Deer extends Animal {
             // Check no-flee debug mode at runtime (not constructor) since deer is created before UI settings
             const noFleeDebug = gameContext.deerBehaviorMode === 'no-flee';
             if ((visualDetection || canHearPlayer) && distanceToPlayer < this.config.fleeDistanceThreshold && this.fleeingEnabled && !noFleeDebug && !inAlertDelay) {
+                // Show debug modal explaining detection
+                if (visualDetection && canHearPlayer) {
+                    showDetectionDebugModal('both', `The deer detected you through <b>sight AND sound</b>!<br><br>
+                        <b>Visual:</b> You were moving in the deer's line of sight.<br>
+                        <b>Sound:</b> ${playerNoise.source} (range: ${playerNoise.range.toFixed(0)} yds)<br><br>
+                        Distance: ${(distanceToPlayer * 1.09).toFixed(0)} yards`);
+                } else if (visualDetection) {
+                    showDetectionDebugModal('visual', `The deer <b>saw you moving</b>!<br><br>
+                        You were within the deer's field of view and your movement was detected.<br><br>
+                        Distance: ${(distanceToPlayer * 1.09).toFixed(0)} yards<br>
+                        <b>Tip:</b> Stay still or use cover to avoid visual detection.`);
+                } else if (canHearPlayer) {
+                    showDetectionDebugModal('sound', `The deer <b>heard you</b>!<br><br>
+                        <b>Sound source:</b> ${playerNoise.source}<br>
+                        <b>Noise range:</b> ${playerNoise.range.toFixed(0)} yards<br><br>
+                        Distance: ${(distanceToPlayer * 1.09).toFixed(0)} yards<br>
+                        <b>Tip:</b> Move slowly and avoid running or walking through brush.`);
+                }
                 this.setState('FLEEING');
                 applySpookingPenalty();
             } else if ((visualDetection || canHearPlayer) && distanceToPlayer < this.config.alertDistanceThreshold) {
                 if (this.state !== 'ALERT') {
+                    // Show debug modal for alert state
+                    if (visualDetection && canHearPlayer) {
+                        showDetectionDebugModal('both', `The deer is <b>alert</b> - it sensed you through sight AND sound!<br><br>
+                            Distance: ${(distanceToPlayer * 1.09).toFixed(0)} yards<br>
+                            <b>Warning:</b> Get closer and it will flee!`);
+                    } else if (visualDetection) {
+                        showDetectionDebugModal('visual', `The deer is <b>alert</b> - it saw movement!<br><br>
+                            Distance: ${(distanceToPlayer * 1.09).toFixed(0)} yards<br>
+                            <b>Tip:</b> Stay still and it may calm down.`);
+                    } else if (canHearPlayer) {
+                        showDetectionDebugModal('sound', `The deer is <b>alert</b> - it heard something!<br><br>
+                            <b>Sound:</b> ${playerNoise.source}<br>
+                            Distance: ${(distanceToPlayer * 1.09).toFixed(0)} yards<br>
+                            <b>Tip:</b> Stop making noise and it may calm down.`);
+                    }
                     this.setState('ALERT');
                 }
             } else if (this.state === 'ALERT' && !playerVisible && !canHearPlayer) {
@@ -471,22 +562,29 @@ export class Deer extends Animal {
             return false;
         }
         
-        let checkInterval = 1.0;
+        // Visibility check intervals - shorter = more responsive but more CPU
+        // Reduced intervals to prevent stale visibility data causing false detections
+        let checkInterval = 0.5;
         switch (this.state) {
-            case 'ALERT': checkInterval = 0.2; break;
+            case 'ALERT': checkInterval = 0.15; break;
             case 'FLEEING':
-            case 'WOUNDED': checkInterval = 0.5; break;
+            case 'WOUNDED': checkInterval = 0.3; break;
             case 'GRAZING':
-            case 'DRINKING': checkInterval = 2.0; break;
+            case 'DRINKING': checkInterval = 0.75; break; // Reduced from 2.0 - was causing stale visibility
             case 'IDLE':
             case 'WANDERING':
-            default: checkInterval = 1.0; break;
+            default: checkInterval = 0.5; break; // Reduced from 1.0
         }
         
         if (this.lastVisibilityCheck && currentTime - this.lastVisibilityCheck < checkInterval) {
-            return this.cachedVisibility !== undefined ? this.cachedVisibility : true;
+            // Only use cache if it's defined - never default to visible
+            if (this.cachedVisibility !== undefined) {
+                return this.cachedVisibility;
+            }
+            // If no cached value, fall through to do a fresh check
         }
         
+        // Very close range - always visible (can't hide when deer is right next to you)
         if (distanceToPlayer < 8) {
             this.cachedVisibility = true;
             this.lastVisibilityCheck = currentTime;
@@ -494,9 +592,10 @@ export class Deer extends Animal {
         }
         
         const currentPlayerPosition = gameContext.player.position.clone();
-        if (this.lastPlayerPositionForVisibility) {
+        // Only use position-based cache if player hasn't moved much AND we have a valid cached value
+        if (this.lastPlayerPositionForVisibility && this.cachedVisibility !== undefined) {
             const playerMovedDistance = this.lastPlayerPositionForVisibility.distanceTo(currentPlayerPosition);
-            if (playerMovedDistance < 2.0 && this.cachedVisibility !== undefined) {
+            if (playerMovedDistance < 2.0) {
                 this.lastVisibilityCheck = currentTime;
                 return this.cachedVisibility;
             }
