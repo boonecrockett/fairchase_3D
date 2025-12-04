@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { gameContext } from './context.js';
 import { playRifleSound } from './audio.js';
-import { showMessage } from './ui.js';
+import { showMessage, showSeasonCompleteModal } from './ui.js';
 import { logEvent } from './report-logger.js';
 import { collisionSystem } from './collision.js';
 import { LEGAL_HUNTING_START_HOUR, LEGAL_HUNTING_END_HOUR } from './constants.js';
@@ -482,20 +482,13 @@ export function tagDeer() {
         gameContext.deer.tagged = true; 
         if(gameContext.interactionPromptElement) gameContext.interactionPromptElement.style.display = 'none';
         
-        // Wait 10 seconds before spawning a new deer
+        // Season complete - deer has been tagged
+        logEvent("Season Complete", "Successfully harvested and tagged deer. Season ended.");
+        
+        // Show season complete modal after a brief delay
         setTimeout(() => {
-            try {
-                gameContext.deer.respawn();
-                // CRITICAL FIX: Reset canTag flag after respawn to ensure it's re-evaluated for the new deer
-                gameContext.canTag = false;
-                // CRITICAL FIX: Ensure killInfo is null for a new deer to prevent stale state from blocking tagging
-                gameContext.killInfo = null;
-                // Reset scoring flags for new deer encounter
-                resetScoringFlags();
-            } catch (respawnError) {
-                console.error('🏷️ ERROR: Exception during deer respawn:', respawnError);
-            }
-        }, 10000); // 10 seconds delay
+            showSeasonCompleteModal();
+        }, 2000);
     } catch (error) {
         console.error('🏷️ ERROR: Exception in tagDeer function:', error);
     }

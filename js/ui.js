@@ -5,6 +5,7 @@ import { worldPresets } from './world-presets.js';
 import { deer } from './deer.js';
 import { stopTitleMusic } from './audio.js';
 import { generateCurrentReport, updateReportModal } from './report-logger.js';
+import { DEBUG_MODE } from './constants.js';
 
 // --- UI MODULE CONSTANTS ---
 
@@ -114,6 +115,12 @@ export async function initUI() {
     gameContext.timeValueElement = document.getElementById('time-value');
     gameContext.weatherElement = document.getElementById('weather');
     gameContext.weatherValueElement = document.getElementById('weather-value');
+
+    // Hide debug/testing panel if DEBUG_MODE is disabled
+    const testingOptionsPanel = document.getElementById('testing-options-panel');
+    if (testingOptionsPanel && !DEBUG_MODE) {
+        testingOptionsPanel.style.display = 'none';
+    }
 
     // Handle splash screen and main menu display
     const splashScreen = document.getElementById('splash-screen');
@@ -696,4 +703,64 @@ export function updateCompass() {
     angle = (angle % 360 + 360) % 360; // Normalize angle to 0-359
     const index = Math.round(angle / 45) % COMPASS_DIRECTIONS.length;
     gameContext.compassElement.textContent = COMPASS_DIRECTIONS[index];
+}
+
+/**
+ * Shows the season complete modal with options to view report or start new season.
+ */
+export function showSeasonCompleteModal() {
+    const modalBackdrop = document.getElementById('season-complete-modal-backdrop');
+    const viewReportButton = document.getElementById('view-report-button');
+    const startNewSeasonButton = document.getElementById('start-new-season-button');
+    
+    if (!modalBackdrop) {
+        console.error('Season complete modal not found');
+        return;
+    }
+    
+    // Show the modal
+    modalBackdrop.style.display = 'flex';
+    
+    // Exit pointer lock so user can interact with buttons
+    if (document.pointerLockElement) {
+        document.exitPointerLock();
+    }
+    
+    // View Report button - shows the hunter's report
+    if (viewReportButton) {
+        viewReportButton.onclick = () => {
+            // Hide season complete modal
+            modalBackdrop.style.display = 'none';
+            // Show the report modal
+            gameContext.reportModalBackdrop.style.display = 'flex';
+            gameContext.reportTitle.textContent = "Season Report";
+            
+            // Generate and display the report
+            const currentReportHTML = generateCurrentReport();
+            let fullReportHTML = currentReportHTML;
+            
+            if (gameContext.reportEntries.length > 0) {
+                fullReportHTML += `<hr><h3>Previous Days</h3>`;
+                fullReportHTML += gameContext.reportEntries.map(entry => `<h4>${entry.title}</h4><p>${entry.content}</p>`).join('<hr>');
+            }
+            
+            gameContext.reportContent.innerHTML = fullReportHTML;
+            
+            // Modify close button to show season complete modal again
+            const closeButton = document.getElementById('close-report-button');
+            if (closeButton) {
+                closeButton.onclick = () => {
+                    gameContext.reportModalBackdrop.style.display = 'none';
+                    modalBackdrop.style.display = 'flex';
+                };
+            }
+        };
+    }
+    
+    // Start New Season button - reloads the page
+    if (startNewSeasonButton) {
+        startNewSeasonButton.onclick = () => {
+            location.reload();
+        };
+    }
 }

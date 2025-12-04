@@ -4,6 +4,14 @@
  * Grouped by category for better organization.
  */
 
+// --- DEBUG/ENVIRONMENT CONSTANTS ---
+/**
+ * Enable or disable the debug menu (testing options panel).
+ * Set to true to show debug options, false to hide them.
+ * @type {boolean}
+ */
+export const DEBUG_MODE = true;
+
 // --- PLAYER CONSTANTS ---
 /**
  * Mouse sensitivity for player camera controls.
