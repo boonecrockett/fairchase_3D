@@ -79,7 +79,12 @@ function calculateBonuses(distance, wasMoving, hitZone, isFirstShot = false, isB
         bonusDetails.push('Kneeling Shot +10');
     }
     
-    // Time of day does not affect bonus - removed Legal Hours and Prime Hours bonuses
+    // Diligent Hunt bonus: Rewards patient stalking over 500+ yards with a vital shot
+    // Only awarded for clean kills (vital shots)
+    if (hitZone === 'vitals' && gameContext.distanceTraveled >= 500) {
+        bonus += 15;
+        bonusDetails.push('Diligent Hunt +15');
+    }
     
     return { bonus, bonusDetails };
 }
@@ -252,7 +257,7 @@ export function shoot() {
             } else {
                 // Score based on hit location - penalize unethical shots
                 const woundScores = {
-                    'neck': 5,      // Neck can be ethical, small bonus
+                    'neck': -5,     // Neck shot is risky - penalized
                     'gut': -15,     // Gut shot is unethical - causes suffering
                     'rear': -10,    // Hindquarter shot is poor placement
                     'shoulderLeft': -5,  // Shoulder shot - bone may stop bullet

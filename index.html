@@ -170,6 +170,12 @@
                     <label for="behavior-no-flee">Debug (no flee)</label>
                 </div>
             </div>
+            <div style="margin-top: 12px;">
+                <div>
+                    <input type="checkbox" id="show-hitboxes" name="show-hitboxes">
+                    <label for="show-hitboxes">Show Hitboxes</label>
+                </div>
+            </div>
             <div style="display: none;">
                 <select id="world-select">
                     <!-- Options will be populated by JavaScript -->
@@ -287,10 +293,13 @@
                                 <li><strong>Tagging Deer:</strong> +25 pts</li>
                                 <li><strong>Close Stalk (≤30yd):</strong> +25 pts</li>
                                 <li><strong>First Shot Kill:</strong> +20 pts</li>
+                                <li><strong>Good Stalk (≤50yd):</strong> +15 pts</li>
                                 <li><strong>Quick Recovery:</strong> +15 pts</li>
-                                <li><strong>Legal Hours:</strong> +10 pts</li>
+                                <li><strong>Diligent Hunt:</strong> +15 pts (500+ yds traveled + vital shot)</li>
+                                <li><strong>Patient Shot:</strong> +10 pts (stationary target)</li>
                                 <li><strong>Braced Shot:</strong> +10 pts</li>
                                 <li><strong>Kneeling Shot:</strong> +10 pts</li>
+                                <li><strong>Decent Range (≤75yd):</strong> +5 pts</li>
                             </ul>
                         </div>
                         <div class="scoring-bad">

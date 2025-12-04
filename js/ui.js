@@ -350,6 +350,18 @@ export async function initUI() {
         });
     }
     
+    // Hitbox visibility toggle (debug mode)
+    const showHitboxesCheckbox = document.getElementById('show-hitboxes');
+    if (showHitboxesCheckbox) {
+        showHitboxesCheckbox.addEventListener('change', (e) => {
+            if (gameContext.collisionSystem) {
+                // Set debugMode directly based on checkbox state
+                gameContext.collisionSystem.debugMode = e.target.checked;
+                gameContext.collisionSystem.updateHitboxVisibility();
+            }
+        });
+    }
+    
     initMap();
     // startTitleMusic();
 }

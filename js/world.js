@@ -210,12 +210,22 @@ export function createWater(worldConfig) {
         const waterMesh = new THREE.Mesh(waterGeometry, waterMaterial);
         
         // Position the water body
-        waterMesh.position.set(
-            bodyConfig.position.x || 0,
-            bodyConfig.position.y || 0,
-            bodyConfig.position.z || 0
-        );
-        waterMesh.position.y -= 0.1; // Slightly lower water level
+        const waterX = bodyConfig.position.x || 0;
+        const waterZ = bodyConfig.position.z || 0;
+        
+        // Calculate water Y position based on terrain height at the water body's center
+        // This ensures water sits properly on the terrain instead of floating in the air
+        let waterY;
+        if (gameContext.getHeightAt) {
+            const terrainHeight = gameContext.getHeightAt(waterX, waterZ);
+            // Position water slightly below terrain level to create a depression effect
+            waterY = terrainHeight - 1.5;
+        } else {
+            // Fallback to config value if getHeightAt not available
+            waterY = bodyConfig.position.y || 0;
+        }
+        
+        waterMesh.position.set(waterX, waterY, waterZ);
         
         // Store original config for easy removal/modification
         waterMesh.userData.config = bodyConfig;
