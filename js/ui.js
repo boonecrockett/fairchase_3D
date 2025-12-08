@@ -6,6 +6,7 @@ import { deer } from './deer.js';
 import { stopTitleMusic } from './audio.js';
 import { generateCurrentReport, updateReportModal } from './report-logger.js';
 import { DEBUG_MODE } from './constants.js';
+import { startPreloading } from './preloader.js';
 
 // --- UI MODULE CONSTANTS ---
 
@@ -30,8 +31,12 @@ const INTERACTION_PROMPT_TAG_DEER = 'Press [E] to Tag Deer';
  */
 /**
  * Animates the loading bar from 0% to 100%
+ * This is purely cosmetic
  */
 function animateLoadingBar() {
+    // Preloading disabled - was causing stutters
+    // startPreloading();
+    
     return new Promise(resolve => {
         const progressRingFill = document.getElementById('progress-ring-fill');
         if (!progressRingFill) {
@@ -49,6 +54,8 @@ function animateLoadingBar() {
 
         function updateLoadingBar(currentTime) {
             const elapsedTime = currentTime - startTime;
+            
+            // Pure time-based progress - don't wait for preload
             const progress = Math.min(elapsedTime / LOADING_DURATION_MS, 1);
             
             const offset = circumference - progress * circumference;
@@ -168,6 +175,28 @@ export async function initUI() {
         });
     }
 
+    // HUD Toggle functionality
+    const hudToggleButton = document.getElementById('hud-toggle-button');
+    const hudPanel = document.getElementById('hud-panel');
+    const hudContainer = document.querySelector('.hud-container.top-left');
+    
+    if (hudToggleButton && hudPanel && hudContainer) {
+        hudToggleButton.addEventListener('click', () => {
+            toggleHUD();
+        });
+    }
+    
+    // H key to toggle HUD
+    document.addEventListener('keydown', (e) => {
+        if (e.code === 'KeyH' && gameContext.gameStartedAndReady) {
+            // Don't toggle if typing in an input
+            if (document.activeElement.tagName === 'INPUT' || document.activeElement.tagName === 'TEXTAREA') {
+                return;
+            }
+            toggleHUD();
+        }
+    });
+
     if (gameContext.reportModalBackdrop && gameContext.closeReportButton) {
         gameContext.closeReportButton.addEventListener('click', () => { gameContext.reportModalBackdrop.style.display = 'none'; });
         
@@ -196,8 +225,9 @@ export async function initUI() {
                 
                 const canvas = await window.html2canvas(reportModal, {
                     backgroundColor: '#1a1c18',
-                    scale: 2,
-                    useCORS: true
+                    scale: 3, // Higher scale for better logo quality
+                    useCORS: true,
+                    allowTaint: true
                 });
                 
                 // Restore button group
@@ -707,14 +737,23 @@ function populateWorldSelector() {
     }
 }
 
+// Cache last compass direction to avoid unnecessary DOM updates
+let _lastCompassIndex = -1;
+
 /**
  * Updates the compass display based on the player's current rotation.
+ * Only updates DOM when direction actually changes.
  */
 export function updateCompass() {
     let angle = -gameContext.player.rotation.y * (180 / Math.PI) + 180; // Convert radians to degrees, invert, and offset
     angle = (angle % 360 + 360) % 360; // Normalize angle to 0-359
     const index = Math.round(angle / 45) % COMPASS_DIRECTIONS.length;
-    gameContext.compassElement.textContent = COMPASS_DIRECTIONS[index];
+    
+    // Only update DOM if direction changed
+    if (index !== _lastCompassIndex) {
+        _lastCompassIndex = index;
+        gameContext.compassElement.textContent = COMPASS_DIRECTIONS[index];
+    }
 }
 
 /**
@@ -775,4 +814,20 @@ export function showSeasonCompleteModal() {
             location.reload();
         };
     }
+}
+
+/**
+ * Toggles the HUD panel visibility
+ */
+export function toggleHUD() {
+    const hudContainer = document.querySelector('.hud-container.top-left');
+    const hudToggleButton = document.getElementById('hud-toggle-button');
+    
+    if (!hudContainer || !hudToggleButton) return;
+    
+    const isCollapsed = hudContainer.classList.toggle('hud-collapsed');
+    
+    // Update toggle button icon
+    hudToggleButton.textContent = isCollapsed ? '▶' : '◀';
+    hudToggleButton.title = isCollapsed ? 'Show HUD (H)' : 'Hide HUD (H)';
 }

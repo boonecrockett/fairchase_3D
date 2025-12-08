@@ -11,8 +11,8 @@ export function createGrassShaderMaterial() {
             time: { value: 0 },
             windStrength: { value: 0.3 },
             windFrequency: { value: 1.5 },
-            grassColor: { value: new THREE.Color(0x7cba3d) },
-            grassColorTip: { value: new THREE.Color(0xb8d977) },
+            grassColor: { value: new THREE.Color(0x4a7c23) }, // Darker, truer grass green
+            grassColorTip: { value: new THREE.Color(0x6b9b3a) }, // Slightly lighter tip
         },
         vertexShader: `
             uniform float time;

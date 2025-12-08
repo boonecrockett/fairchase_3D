@@ -1,7 +1,7 @@
 export const worldPresets = {
     "Hardwood Forest": {
         terrain: {
-            color: 0x556B2F, // DarkOliveGreen
+            color: 0x3d5c28, // Darker forest floor green
             size: 1000,
             generationMethod: 'sineCosine',
             sineCosineParams: { freq1: 77.8, amp1: 8, freq2: 40.0, amp2: 4 }, // Frequencies scaled for 1000 world size
@@ -39,7 +39,8 @@ export const worldPresets = {
         },
         vegetation: {
             treeCount: 400,
-            treeScale: { min: 0.8, max: 1.2 },
+            treeScale: { min: 0.45, max: 0.72 }, // Reduced 10% from 0.5-0.8
+            bushCount: 220, // Increased 10% from 200
             canopyColor: 0x228B22, // Forest Green
             trunkColor: 0x8B4513,  // Saddle Brown
         },

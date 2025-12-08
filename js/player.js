@@ -104,6 +104,13 @@ let currentNoiseLevel = 0; // 0 = silent, 1 = foliage noise, 2 = sprint noise
 let lastMovementDirection = new THREE.Vector3(); // Store last movement direction for footprint orientation
 let humanTrackTexture = null; // Cached texture
 
+// Reusable vectors to avoid garbage collection in updatePlayer
+const _velocity = new THREE.Vector3();
+const _previousPosition = new THREE.Vector3();
+const _newPosition = new THREE.Vector3();
+const _xVelocity = new THREE.Vector3();
+const _zVelocity = new THREE.Vector3();
+
 // --- EXPORTED FUNCTIONS ---
 
 /**
@@ -244,15 +251,15 @@ function updateStaminaUI() {
  */
 export function updatePlayer() {
     const delta = gameContext.deltaTime;
-    const velocity = new THREE.Vector3();
+    _velocity.set(0, 0, 0);
 
-    if (moveForward || wheelMoveForward) velocity.z -= 1;
-    if (moveBackward || wheelMoveBackward) velocity.z += 1;
-    if (moveLeft) velocity.x -= 1;
-    if (moveRight) velocity.x += 1;
+    if (moveForward || wheelMoveForward) _velocity.z -= 1;
+    if (moveBackward || wheelMoveBackward) _velocity.z += 1;
+    if (moveLeft) _velocity.x -= 1;
+    if (moveRight) _velocity.x += 1;
 
     // Apply rotation to velocity vector
-    velocity.applyQuaternion(gameContext.player.quaternion);
+    _velocity.applyQuaternion(gameContext.player.quaternion);
 
     // Prevent movement when kneeling, otherwise calculate velocity
     if (isKneeling) {
@@ -262,7 +269,7 @@ export function updatePlayer() {
         if (kneelingWarning) {
             kneelingWarning.style.display = tryingToMove ? 'block' : 'none';
         }
-        velocity.set(0, 0, 0);
+        _velocity.set(0, 0, 0);
         
         // Regenerate stamina faster while kneeling
         stamina = Math.min(STAMINA_MAX, stamina + STAMINA_REGEN_RATE_KNEELING * delta);
@@ -277,7 +284,7 @@ export function updatePlayer() {
         }
         
         // Determine if we can actually sprint
-        const isMoving = velocity.lengthSq() > 0;
+        const isMoving = _velocity.lengthSq() > 0;
         const canSprint = isSprinting && !isExhausted && stamina > 0 && isMoving;
         
         // Update stamina
@@ -302,14 +309,14 @@ export function updatePlayer() {
         
         // Use sprint speed only if we can actually sprint
         const currentSpeed = canSprint ? PLAYER_SPRINT_SPEED : PLAYER_WALK_SPEED;
-        velocity.normalize().multiplyScalar(currentSpeed * delta);
+        _velocity.normalize().multiplyScalar(currentSpeed * delta);
     }
     
     // Update stamina UI
     updateStaminaUI();
     
     // Update noise level for deer detection
-    const isMoving = velocity.lengthSq() > 0;
+    const isMoving = _velocity.lengthSq() > 0;
     const canSprint = isSprinting && !isExhausted && stamina > 0 && isMoving;
     
     if (canSprint) {
@@ -330,45 +337,46 @@ export function updatePlayer() {
         foliageNoiseTimer = Math.max(0, foliageNoiseTimer - delta * 2); // Decay faster than buildup
     }
 
-    if (velocity.lengthSq() > 0) {
-        // Store previous position for velocity calculation
-        const previousPosition = gameContext.player.position.clone();
+    if (_velocity.lengthSq() > 0) {
+        // Store previous position for velocity calculation (use reusable vector)
+        _previousPosition.copy(gameContext.player.position);
         
-        // Check for tree collision before moving
-        const newPosition = gameContext.player.position.clone().add(velocity);
-        const collision = gameContext.checkTreeCollision(newPosition, 0.8); // Player collision radius
+        // Check for tree collision before moving (use reusable vector)
+        _newPosition.copy(gameContext.player.position).add(_velocity);
+        const collision = gameContext.checkTreeCollision(_newPosition, 0.8); // Player collision radius
         
         if (!collision) {
             // No collision - safe to move
-            gameContext.player.position.add(velocity);
+            gameContext.player.position.add(_velocity);
         } else {
-            // Tree collision detected - try sliding along obstacles
-            const xVelocity = new THREE.Vector3(velocity.x, 0, 0);
-            const zVelocity = new THREE.Vector3(0, 0, velocity.z);
+            // Tree collision detected - try sliding along obstacles (use reusable vectors)
+            _xVelocity.set(_velocity.x, 0, 0);
+            _zVelocity.set(0, 0, _velocity.z);
             
             // Try moving only in X direction
-            const xPosition = gameContext.player.position.clone().add(xVelocity);
-            if (!gameContext.checkTreeCollision(xPosition, 0.8)) {
-                gameContext.player.position.add(xVelocity);
+            _newPosition.copy(gameContext.player.position).add(_xVelocity);
+            if (!gameContext.checkTreeCollision(_newPosition, 0.8)) {
+                gameContext.player.position.add(_xVelocity);
             }
             // Try moving only in Z direction
             else {
-                const zPosition = gameContext.player.position.clone().add(zVelocity);
-                if (!gameContext.checkTreeCollision(zPosition, 0.8)) {
-                    gameContext.player.position.add(zVelocity);
+                _newPosition.copy(gameContext.player.position).add(_zVelocity);
+                if (!gameContext.checkTreeCollision(_newPosition, 0.8)) {
+                    gameContext.player.position.add(_zVelocity);
                 }
                 // If both directions blocked, don't move
             }
         }
         
-        const distanceMoved = velocity.length();
+        const distanceMoved = _velocity.length();
         gameContext.distanceTraveled += distanceMoved;
         
         // Update distance traveled for report (includes tracking distance when following wounded deer)
         updateDistanceTraveled(distanceMoved);
         
-        // Calculate player velocity for spatial audio Doppler effects
-        gameContext.player.velocity = gameContext.player.position.clone().sub(previousPosition).divideScalar(delta);
+        // Calculate player velocity for spatial audio Doppler effects (reuse _newPosition as temp)
+        if (!gameContext.player.velocity) gameContext.player.velocity = new THREE.Vector3();
+        gameContext.player.velocity.copy(gameContext.player.position).sub(_previousPosition).divideScalar(delta);
         
         updateSpatialAudioListener(gameContext.player.position, gameContext.player.velocity);
     }
@@ -395,7 +403,7 @@ export function updatePlayer() {
         if (isWalkingOnWater && !isOnWater) {
             // Left water - stop water sound immediately
             stopWaterWalkSound();
-            if (velocity.lengthSq() > 0) {
+            if (_velocity.lengthSq() > 0) {
                 // Start appropriate land sound if still moving
                 if (isOnFoliage) {
                     startFoliageWalkSound();
@@ -403,7 +411,7 @@ export function updatePlayer() {
                     startWalkSound();
                 }
             }
-        } else if (!isWalkingOnWater && isOnWater && velocity.lengthSq() > 0) {
+        } else if (!isWalkingOnWater && isOnWater && _velocity.lengthSq() > 0) {
             // Entered water while moving - switch to water sound
             stopWalkSound();
             stopFoliageWalkSound();
@@ -416,7 +424,7 @@ export function updatePlayer() {
     if (isOnFoliage !== isWalkingOnFoliage) {
         isWalkingOnFoliage = isOnFoliage;
         // Immediately update sound state to prevent lingering sound
-        if (velocity.lengthSq() > 0) {
+        if (_velocity.lengthSq() > 0) {
             if (isOnFoliage) {
                 startFoliageWalkSound();
                 stopWalkSound();
@@ -436,10 +444,10 @@ export function updatePlayer() {
     updateHumanTracks();
 
     // Create human tracks if moving
-    if (velocity.lengthSq() > 0) {
+    if (_velocity.lengthSq() > 0) {
         // Store movement direction for proper footprint orientation
-        if (velocity.lengthSq() > 0.01) {
-            lastMovementDirection.copy(velocity).normalize();
+        if (_velocity.lengthSq() > 0.01) {
+            lastMovementDirection.copy(_velocity).normalize();
         }
         
         if (!lastTrackCreationPosition || 
@@ -521,7 +529,7 @@ export function updatePlayer() {
     }
 
     // Update walking sound based on movement and water state
-    if (velocity.lengthSq() > 0 && !isWalking) {
+    if (_velocity.lengthSq() > 0 && !isWalking) {
         // Start appropriate sound based on water state
         if (isWalkingOnWater) {
             startWaterWalkSound();
@@ -531,13 +539,13 @@ export function updatePlayer() {
             startWalkSound();
         }
         isWalking = true;
-    } else if (velocity.lengthSq() === 0 && isWalking) {
+    } else if (_velocity.lengthSq() === 0 && isWalking) {
         // Stop all walking sounds when not moving
         stopWalkSound();
         stopWaterWalkSound();
         stopFoliageWalkSound();
         isWalking = false;
-    } else if (velocity.lengthSq() > 0 && isWalking) {
+    } else if (_velocity.lengthSq() > 0 && isWalking) {
         // Player is moving and already walking - check if we need to switch sounds
         // This handles the case where player transitions between water/land while moving
         if (isWalkingOnWater) {
@@ -586,6 +594,17 @@ function onMouseDown(event) {
     const openModals = document.querySelectorAll('.modal-backdrop[style*="display: flex"]');
     if (openModals.length > 0) {
         return;
+    }
+    
+    // Don't request pointer lock if clicking on calibrator panel or any UI overlay
+    const calibrator = document.getElementById('animation-calibrator');
+    if (calibrator && calibrator.style.display !== 'none') {
+        // Check if click is inside the calibrator
+        const rect = calibrator.getBoundingClientRect();
+        if (event.clientX >= rect.left && event.clientX <= rect.right &&
+            event.clientY >= rect.top && event.clientY <= rect.bottom) {
+            return;
+        }
     }
     
     // Don't auto-lock on first click after game starts - require explicit click on game area

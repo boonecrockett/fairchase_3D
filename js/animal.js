@@ -220,7 +220,7 @@ export class Animal {
         }
     }
 
-    playAnimation(name, loop = true) {
+    playAnimation(name, loop = true, timeScale = 1.0) {
         if (!name || !this.mixer || !this.animations[name]) {
             return;
         }
@@ -233,9 +233,20 @@ export class Animal {
         newAction.reset();
         newAction.setLoop(loop ? THREE.LoopRepeat : THREE.LoopOnce, Infinity);
         newAction.clampWhenFinished = !loop;
+        newAction.timeScale = timeScale;
         newAction.enabled = true;
         newAction.fadeIn(0.5).play();
 
         this.activeAction = newAction;
+    }
+    
+    /**
+     * Update the animation playback speed to match movement speed
+     * @param {number} timeScale - Animation speed multiplier (1.0 = normal)
+     */
+    setAnimationSpeed(timeScale) {
+        if (this.activeAction) {
+            this.activeAction.timeScale = timeScale;
+        }
     }
 }

@@ -99,19 +99,21 @@ export class DeerEffects {
 
     updateTracks() {
         const currentTime = gameContext.clock.getElapsedTime();
-        const initialCount = this.tracks.length;
-        this.tracks = this.tracks.filter(track => {
+        // Use in-place removal to avoid creating new array every frame
+        let writeIndex = 0;
+        for (let i = 0; i < this.tracks.length; i++) {
+            const track = this.tracks[i];
             const age = currentTime - track.creationTime;
             if (age > this.config.tracking.trackFadeDurationS) {
                 gameContext.scene.remove(track.mesh);
                 track.mesh.material.dispose();
-                // No need to dispose geometry as it's shared
-                return false; // Remove from array
+            } else {
+                // Update opacity and keep in array
+                track.mesh.material.opacity = 1.0 - (age / this.config.tracking.trackFadeDurationS);
+                this.tracks[writeIndex++] = track;
             }
-            // Update opacity
-            track.mesh.material.opacity = 1.0 - (age / this.config.tracking.trackFadeDurationS);
-            return true; // Keep in array
-        });
+        }
+        this.tracks.length = writeIndex; // Truncate array in place
     }
 
     createBloodDrop() {
@@ -222,22 +224,24 @@ export class DeerEffects {
 
     updateBloodDrops() {
         const currentTime = gameContext.clock.getElapsedTime();
-        const initialCount = this.bloodDrops.length;
-        this.bloodDrops = this.bloodDrops.filter(drop => {
+        // Use in-place removal to avoid creating new array every frame
+        let writeIndex = 0;
+        for (let i = 0; i < this.bloodDrops.length; i++) {
+            const drop = this.bloodDrops[i];
             const age = currentTime - drop.creationTime;
             const opacity = this.config.tracking.bloodOpacityStart - (age / this.config.tracking.bloodFadeDurationS);
 
             if (opacity <= 0) {
                 // Remove from scene and dispose material
                 gameContext.scene.remove(drop.mesh);
-                drop.mesh.material.dispose(); // Dispose cloned material
-                return false; // Remove from array
+                drop.mesh.material.dispose();
+            } else {
+                // Update opacity and keep in array
+                drop.mesh.material.opacity = opacity;
+                this.bloodDrops[writeIndex++] = drop;
             }
-            
-            // Update opacity
-            drop.mesh.material.opacity = opacity;
-            return true; // Keep in array
-        });
+        }
+        this.bloodDrops.length = writeIndex; // Truncate array in place
     }
 
     // Update all visual effects

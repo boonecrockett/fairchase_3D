@@ -18,6 +18,7 @@ const MAP_DIRECTIONAL_LIGHT_COLOR = 0xffffff;
 const MAP_DIRECTIONAL_LIGHT_INTENSITY = 0.5;
 const MAP_DIRECTIONAL_LIGHT_POSITION = { x: 100, y: 300, z: 200 };
 const MAP_TREE_COLOR = 0x14501e;
+const MAP_BUSH_COLOR = 0x2d5a27;        // Slightly lighter green for bushes
 const MAP_TRAIL_COLOR = 0xbeb5a3;       // Tan - brand color
 const MAP_HUNTER_COLOR = 0xba5216;      // Autumn - brand color for player
 const MAP_DEER_COLOR = 0x5f4d4d;        // Hide - brand color for deer
@@ -82,29 +83,52 @@ function createMarkerWithOutline(radius, color, position, yOffset = 20) {
 /**
  * Creates an X marker for the map at a given position
  */
-function createHitMarker(position, size = 8) {
+function createHitMarker(position, size = 10) {
     const group = new THREE.Group();
     
-    // Create two crossed lines for the X
-    const material = new THREE.LineBasicMaterial({ color: MAP_HIT_MARKER_COLOR, linewidth: 3 });
+    // Use box meshes instead of lines for thick, visible X
+    // WebGL linewidth is capped at 1 on most systems
+    const thickness = 3; // Thickness of the X bars
+    const material = new THREE.MeshBasicMaterial({ 
+        color: MAP_HIT_MARKER_COLOR,
+        depthTest: false
+    });
     
-    // Line 1: top-left to bottom-right
-    const points1 = [
-        new THREE.Vector3(-size, 0, -size),
-        new THREE.Vector3(size, 0, size)
-    ];
-    const geometry1 = new THREE.BufferGeometry().setFromPoints(points1);
-    const line1 = new THREE.Line(geometry1, material);
-    group.add(line1);
+    // Create rotated boxes for the X shape
+    // Bar 1: top-left to bottom-right (rotated 45 degrees)
+    const barLength = size * 2 * 1.414; // Diagonal length
+    const geometry1 = new THREE.BoxGeometry(barLength, 1, thickness);
+    const bar1 = new THREE.Mesh(geometry1, material);
+    bar1.rotation.y = Math.PI / 4; // 45 degrees
+    bar1.renderOrder = 997;
+    group.add(bar1);
     
-    // Line 2: top-right to bottom-left
-    const points2 = [
-        new THREE.Vector3(size, 0, -size),
-        new THREE.Vector3(-size, 0, size)
-    ];
-    const geometry2 = new THREE.BufferGeometry().setFromPoints(points2);
-    const line2 = new THREE.Line(geometry2, material);
-    group.add(line2);
+    // Bar 2: top-right to bottom-left (rotated -45 degrees)
+    const geometry2 = new THREE.BoxGeometry(barLength, 1, thickness);
+    const bar2 = new THREE.Mesh(geometry2, material);
+    bar2.rotation.y = -Math.PI / 4; // -45 degrees
+    bar2.renderOrder = 997;
+    group.add(bar2);
+    
+    // Add white outline for better visibility
+    const outlineMaterial = new THREE.MeshBasicMaterial({ 
+        color: 0xffffff,
+        depthTest: false
+    });
+    const outlineThickness = thickness + 2;
+    const outlineGeometry1 = new THREE.BoxGeometry(barLength + 2, 0.5, outlineThickness);
+    const outline1 = new THREE.Mesh(outlineGeometry1, outlineMaterial);
+    outline1.rotation.y = Math.PI / 4;
+    outline1.position.y = -0.5;
+    outline1.renderOrder = 996;
+    group.add(outline1);
+    
+    const outlineGeometry2 = new THREE.BoxGeometry(barLength + 2, 0.5, outlineThickness);
+    const outline2 = new THREE.Mesh(outlineGeometry2, outlineMaterial);
+    outline2.rotation.y = -Math.PI / 4;
+    outline2.position.y = -0.5;
+    outline2.renderOrder = 996;
+    group.add(outline2);
     
     group.position.copy(position);
     group.position.y = 25; // Elevate above terrain
@@ -177,6 +201,15 @@ export function showMap() {
     
     gameContext.mapModalBackdrop.style.display = 'flex';
     
+    // Update map clock display
+    const mapClockElement = document.getElementById('map-clock');
+    if (mapClockElement && gameContext.gameTime !== undefined) {
+        const hours = Math.floor(gameContext.gameTime);
+        const minutes = Math.floor((gameContext.gameTime - hours) * 60);
+        const timeString = `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}`;
+        mapClockElement.textContent = timeString;
+    }
+    
     // Use battery
     gameContext.batteryLevel = Math.max(0, gameContext.batteryLevel - 10);
     gameContext.mapUsageCount++;
@@ -227,6 +260,19 @@ export function showMap() {
                 }
             });
             tempScene.add(mapTree);
+        });
+    }
+    
+    // --- Bushes (rendered for map visibility) ---
+    if (gameContext.bushes) {
+        gameContext.bushes.children.forEach(bush => {
+            const mapBush = bush.clone();
+            mapBush.traverse(child => {
+                if (child.isMesh) {
+                    child.material = new THREE.MeshBasicMaterial({ color: MAP_BUSH_COLOR });
+                }
+            });
+            tempScene.add(mapBush);
         });
     }
     

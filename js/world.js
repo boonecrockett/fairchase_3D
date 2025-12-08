@@ -459,8 +459,8 @@ export async function createBushes(worldConfig) {
 
         const worldSize = worldConfig.terrain.size || DEFAULT_WORLD_SIZE;
         
-        // Create fewer bush thickets than trees - about 1/4 the density
-        const thicketCount = Math.floor((worldConfig.vegetation.treeCount || 50) / 4);
+        // Use bushCount from config, or default to 1/4 of tree count
+        const thicketCount = vegetationConfig.bushCount || Math.floor((worldConfig.vegetation.treeCount || 50) / 4);
 
         for (let i = 0; i < thicketCount; i++) {
             // Create a thicket center point
@@ -675,13 +675,15 @@ export function createGrass(worldConfig) {
                 
                 if (clusterCenterHeight === null) continue;
                 
-                // Skip if in water
+                // Skip if in water or too close to water edge (prevents floating grass on slopes)
                 let isSubmerged = false;
                 if (gameContext.waterBodies) {
                     for (const water of gameContext.waterBodies) {
                         const dist = new THREE.Vector2(clusterCenterX - water.position.x, clusterCenterZ - water.position.z).length();
                         const waterRadius = water.userData.config ? (water.userData.config.size / 2) : 50;
-                        if (dist < waterRadius && clusterCenterHeight < water.position.y + 0.5) {
+                        // Skip if within water radius OR within 10 units of water edge (buffer zone for sloping banks)
+                        const bufferZone = 10;
+                        if (dist < waterRadius + bufferZone && clusterCenterHeight < water.position.y + 2.0) {
                             isSubmerged = true;
                             break;
                         }
@@ -696,8 +698,8 @@ export function createGrass(worldConfig) {
                 const clusterRadius = 1.5 + Math.random() * 2;
                 
                 // Store cluster position for sound/collision detection
-                // Use slightly larger radius for detection since grass visually spreads a bit
-                const detectionRadius = clusterRadius * 1.2;
+                // Use exact cluster radius - no inflation to prevent false positives
+                const detectionRadius = clusterRadius;
                 grassClusterPositions.push({ x: clusterCenterX, z: clusterCenterZ, radius: detectionRadius });
                 
                 for (let j = 0; j < plantsInCluster; j++) {
@@ -711,13 +713,14 @@ export function createGrass(worldConfig) {
                     const grassHeight = gameContext.getHeightAt(grassX, grassZ);
                     if (grassHeight === null || grassHeight === undefined) continue;
                     
-                    // Skip if in water
+                    // Skip if in water or on sloping bank near water
                     let grassSubmerged = false;
                     if (gameContext.waterBodies) {
                         for (const water of gameContext.waterBodies) {
                             const dist = new THREE.Vector2(grassX - water.position.x, grassZ - water.position.z).length();
                             const waterRadius = water.userData.config ? (water.userData.config.size / 2) : 50;
-                            if (dist < waterRadius && grassHeight < water.position.y + 0.2) {
+                            // Skip grass within 10 units of water edge
+                            if (dist < waterRadius + 10) {
                                 grassSubmerged = true;
                                 break;
                             }

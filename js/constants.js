@@ -10,7 +10,7 @@
  * Set to true to show debug options, false to hide them.
  * @type {boolean}
  */
-export const DEBUG_MODE = true;
+export const DEBUG_MODE = false;
 
 // --- PLAYER CONSTANTS ---
 /**

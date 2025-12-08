@@ -12,6 +12,11 @@ export class DeerAI {
     update(delta) {
         const deer = this.deer;
         let speed = 0;
+        
+        // Decrement flee recovery timer - deer stays cautious after being spooked
+        if (deer.fleeRecoveryTime > 0) {
+            deer.fleeRecoveryTime -= delta;
+        }
 
         switch (deer.state) {
             case 'IDLE':
@@ -42,7 +47,8 @@ export class DeerAI {
                     if (deer.timeSinceLastDrink > thirstThreshold) {
                         deer.setState('THIRSTY');
                     } else {
-                        deer.setState(Math.random() < 0.4 ? 'GRAZING' : 'WANDERING');
+                        // 30% graze, 70% wander - deer should move frequently
+                        deer.setState(Math.random() < 0.3 ? 'GRAZING' : 'WANDERING');
                     }
                 }
                 break;
@@ -159,6 +165,14 @@ export class DeerAI {
             case 'FLEEING':
                 speed = this.config.speeds.fleeing * delta;
                 
+                // Check for calibrator override
+                if (window.animationCalibrator) {
+                    const calibratorMult = window.animationCalibrator.getMovementSpeedMultiplier();
+                    if (calibratorMult !== null) {
+                        speed = this.config.speeds.fleeing * calibratorMult * delta;
+                    }
+                }
+                
                 // Calculate flee direction, but check if it leads to water
                 let fleeDirFromPlayer = new THREE.Vector3().subVectors(deer.model.position, gameContext.player.position).normalize();
                 
@@ -196,8 +210,26 @@ export class DeerAI {
                 deer.movement.moveWithCollisionDetection(speed);
                 
                 if (deer.stateTimer > this.config.stateTimers.fleeing) {
-                    // Generate new wander target away from current position, then pause
-                    deer.movement.generateNewWanderTarget();
+                    // Generate new wander target AWAY from player, not random
+                    // This prevents deer from immediately walking back toward the hunter
+                    const awayFromPlayer = new THREE.Vector3()
+                        .subVectors(deer.model.position, gameContext.player.position)
+                        .normalize();
+                    
+                    // Set wander target 50-100 units further away from player
+                    const fleeDistance = 50 + Math.random() * 50;
+                    const newTarget = deer.model.position.clone()
+                        .add(awayFromPlayer.multiplyScalar(fleeDistance));
+                    
+                    // Clamp to world bounds
+                    const worldSize = gameContext.terrain ? 
+                        gameContext.terrain.geometry.parameters.width / 2 : 500;
+                    const margin = 50;
+                    newTarget.x = Math.max(-worldSize + margin, Math.min(worldSize - margin, newTarget.x));
+                    newTarget.z = Math.max(-worldSize + margin, Math.min(worldSize - margin, newTarget.z));
+                    
+                    deer.movement.wanderTarget = newTarget;
+                    deer.fleeRecoveryTime = 30; // Stay cautious for 30 seconds
                     deer.setState('IDLE');
                 }
                 break;
@@ -230,6 +262,30 @@ export class DeerAI {
                         break;
                     }
                     
+                    if (woundResult === 'ESCAPED') {
+                        // Deer "escaped" but will die from wounds - may seek thick cover
+                        console.log(`🦌 Wounded deer escaped initial area (${woundState.woundType.displayName})`);
+                        
+                        // Extend the travel distance - deer runs further before dying
+                        woundState.maxTravelDistance += 100 + Math.random() * 200; // Add 100-300 more yards
+                        woundState.hasEscaped = false; // Reset so it doesn't trigger again
+                        woundState.energy = Math.max(15, woundState.energy); // Give it energy to travel
+                        
+                        // 70% chance deer seeks thick cover to die in (more challenging to find)
+                        // 30% chance deer dies in the open (easier to find)
+                        if (Math.random() < 0.7) {
+                            console.log(`🦌 Wounded deer seeking thick cover to die`);
+                            woundState.woundType.seekCover = true;
+                            woundState.reachedTarget = false;
+                            woundState.targetBedLocation = null;
+                            woundState.findThickCover();
+                        } else {
+                            console.log(`🦌 Wounded deer will die in the open`);
+                        }
+                        
+                        // Continue wounded movement - don't break, let it keep going
+                    }
+                    
                     // Check if bedded (stopped)
                     if (woundState.isBedded) {
                         speed = 0;
@@ -243,13 +299,45 @@ export class DeerAI {
                             woundState.distanceTraveled = 0; // Reset for new short run
                             woundState.beddingDistance = 30 + Math.random() * 70; // Short distance: 30-100 units
                             woundState.findBeddingLocation();
+                            
+                            // Penalty for pushing a wounded deer - causes more suffering
+                            // Per B&C: gut-shot deer should be given time before tracking
+                            const woundName = woundState.woundType?.name || '';
+                            const isGutOrLiver = woundName === 'gut' || woundName === 'liver';
+                            const pushPenalty = isGutOrLiver ? 15 : 10;
+                            const penaltyDesc = isGutOrLiver ? 
+                                'Pushed Gut-Shot Deer' : 'Pushed Wounded Deer';
+                            
+                            gameContext.score -= pushPenalty;
+                            if (typeof updateScoreDisplay === 'function') updateScoreDisplay();
+                            
+                            if (!gameContext.badShotPenalties) gameContext.badShotPenalties = [];
+                            gameContext.badShotPenalties.push({ 
+                                hitZone: 'pushed-wounded', 
+                                penalty: pushPenalty,
+                                description: penaltyDesc
+                            });
+                            
+                            // Import and show message
+                            import('./ui.js').then(ui => {
+                                ui.showMessage(`${penaltyDesc}! -${pushPenalty} pts. Give wounded deer time to bed.`);
+                            });
                         }
                         break;
                     }
                     
                     // Calculate speed based on wound type
                     const baseSpeed = this.config.speeds.wounded;
-                    const speedMult = woundState.getSpeedMultiplier();
+                    let speedMult = woundState.getSpeedMultiplier();
+                    
+                    // Check for calibrator override
+                    if (window.animationCalibrator) {
+                        const calibratorMult = window.animationCalibrator.getMovementSpeedMultiplier();
+                        if (calibratorMult !== null) {
+                            speedMult = calibratorMult;
+                        }
+                    }
+                    
                     speed = baseSpeed * speedMult * delta;
                     
                     // Get movement direction from wound system
@@ -358,7 +446,18 @@ export class DeerAI {
                         // Normal wounded movement
                         const targetPos = new THREE.Vector3().addVectors(deer.model.position, finalDir);
                         deer.movement.smoothRotateTowards(targetPos, delta);
-                        deer.movement.moveWithCollisionDetection(speed);
+                        
+                        // Check if deer is facing roughly the right direction before moving
+                        // This prevents "moonwalking" where deer moves backward
+                        const deerForward = new THREE.Vector3(0, 0, 1).applyQuaternion(deer.model.quaternion);
+                        const dotProduct = deerForward.dot(finalDir);
+                        
+                        // Scale speed based on facing direction:
+                        // - Facing target (dot=1): full speed
+                        // - Perpendicular (dot=0): 30% speed (still moving while turning)
+                        // - Facing away (dot=-1): 10% speed (minimal, mostly turning)
+                        const facingFactor = 0.1 + Math.max(0, dotProduct) * 0.9;
+                        deer.movement.moveWithCollisionDetection(speed * facingFactor);
                     }
                     
                     // Blood drops based on wound bleed rate

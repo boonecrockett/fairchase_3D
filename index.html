@@ -41,7 +41,8 @@
     </div>
 
     <div class="hud-container top-left initially-hidden">
-        <div class="hud-column">
+        <button id="hud-toggle-button" class="hud-toggle" title="Toggle HUD (H)">◀</button>
+        <div id="hud-panel" class="hud-column">
             <div id="clock-container" class="hud">
                 Time: <span id="clock-value">04:30</span><br>
                 <span id="legal-hours-display">05:30 - 19:30</span><br>
@@ -62,6 +63,8 @@
                 <div class="shortcut-row"><kbd>M</kbd> Map</div>
                 <div class="shortcut-row"><kbd>R</kbd> Report</div>
                 <div class="shortcut-row"><kbd>E</kbd> Tag Deer</div>
+                <div class="shortcut-row"><kbd>P</kbd> Photo</div>
+                <div class="shortcut-row"><kbd>H</kbd> Toggle HUD</div>
                 <div class="shortcut-row"><kbd>ESC</kbd> Release Mouse</div>
             </div>
         </div>
@@ -86,7 +89,7 @@
     <div id="report-modal-backdrop" class="modal-backdrop">
         <div id="report-modal" class="modal report-modal">
             <div class="report-header">
-                <div class="report-logo"></div>
+                <div class="report-logo"><img src="assets/BCC_Logo_blk.png" alt="Boone and Crockett Club" /></div>
                 <div class="report-branding">
                     <div class="report-subtitle">Ethical Pursuit</div>
                     <h2 id="report-title">Hunter's Report</h2>
@@ -107,7 +110,7 @@
     <div id="season-complete-modal-backdrop" class="modal-backdrop" style="display: none;">
         <div id="season-complete-modal" class="modal">
             <div class="report-header">
-                <div class="report-logo"></div>
+                <div class="report-logo"><img src="assets/BCC_Logo_blk.png" alt="Boone and Crockett Club" /></div>
                 <div class="report-branding">
                     <div class="report-subtitle">Ethical Pursuit</div>
                     <h2>🎯 Season Complete!</h2>
@@ -137,7 +140,10 @@
     
     <div id="map-modal-backdrop" class="modal-backdrop">
         <div id="map-modal" class="modal">
-            <h2>Area Map</h2>
+            <div class="map-header">
+                <h2>Area Map</h2>
+                <span id="map-clock"></span>
+            </div>
             <div id="map-container">
                  <canvas id="map-canvas"></canvas>
             </div>
@@ -187,7 +193,7 @@
     <!-- Splash Screen -->
     <div id="splash-screen">
         <div class="splash-content">
-            <div class="splash-logo"></div>
+            <div class="splash-logo"><img src="assets/BCC_Logo_blk.png" alt="Boone and Crockett Club" /></div>
             <div class="splash-title">Ethical Pursuit</div>
             <div class="splash-tagline">A Fair Chase Experience</div>
         </div>
@@ -223,7 +229,7 @@
     <div id="instructions-modal-backdrop" class="modal-backdrop" style="display: none;">
         <div id="instructions-modal" class="modal large-modal">
             <div class="report-header">
-                <div class="report-logo"></div>
+                <div class="report-logo"><img src="assets/BCC_Logo_blk.png" alt="Boone and Crockett Club" /></div>
                 <div class="report-branding">
                     <h2>Boone and Crockett Club's</h2>
                     <div class="report-subtitle">Ethical Pursuit</div>
@@ -252,6 +258,7 @@
                         <div><kbd>M</kbd> Hold for map</div>
                         <div><kbd>R</kbd> View report</div>
                         <div><kbd>E</kbd> Tag deer</div>
+                        <div><kbd>P</kbd> Take photo</div>
                         <div><kbd>ESC</kbd> Release mouse</div>
                     </div>
                 </div>
@@ -291,31 +298,35 @@
                             <ul>
                                 <li><strong>Vital Shot:</strong> +50 pts</li>
                                 <li><strong>Tagging Deer:</strong> +25 pts</li>
-                                <li><strong>Close Stalk (≤30yd):</strong> +25 pts</li>
-                                <li><strong>First Shot Kill:</strong> +20 pts</li>
+                                <li><strong>Close Stalk (≤25yd):</strong> +25 pts</li>
                                 <li><strong>Good Stalk (≤50yd):</strong> +15 pts</li>
                                 <li><strong>Quick Recovery:</strong> +15 pts</li>
                                 <li><strong>Diligent Hunt:</strong> +15 pts (500+ yds traveled + vital shot)</li>
                                 <li><strong>Patient Shot:</strong> +10 pts (stationary target)</li>
                                 <li><strong>Braced Shot:</strong> +10 pts</li>
                                 <li><strong>Kneeling Shot:</strong> +10 pts</li>
-                                <li><strong>Decent Range (≤75yd):</strong> +5 pts</li>
+                                <li><strong>Decent Range (≤75yd):</strong> +10 pts</li>
+                                <li><strong>Effective Range (≤100yd):</strong> +5 pts</li>
                             </ul>
                         </div>
                         <div class="scoring-bad">
                             <h4>✗ Lose Points</h4>
                             <ul>
+                                <li><strong>Rear Shot Angle:</strong> -30 pts</li>
+                                <li><strong>Frontal Shot Angle:</strong> -25 pts</li>
+                                <li><strong>Quartering-Toward:</strong> -15 pts</li>
                                 <li><strong>Gut Shot:</strong> -15 pts</li>
                                 <li><strong>Running Target:</strong> -10 pts</li>
-                                <li><strong>Walking Target:</strong> -5 pts</li>
                                 <li><strong>Hindquarter Shot:</strong> -10 pts</li>
                                 <li><strong>Excessive Shots:</strong> -10 pts each</li>
-                                <li><strong>Head Shot:</strong> -5 pts (risky)</li>
-                                <li><strong>Neck Shot:</strong> -5 pts (risky)</li>
-                                <li><strong>Spine Shot:</strong> -5 pts (risky)</li>
+                                <li><strong>Walking Target:</strong> -5 pts</li>
+                                <li><strong>Head/Neck/Spine:</strong> -5 pts (risky)</li>
                                 <li><strong>Shoulder Shot:</strong> -5 pts</li>
                                 <li><strong>Missed Shot:</strong> -5 pts</li>
-                                <li><strong>Map Usage:</strong> -5 pts each</li>
+                                <li><strong>Exceeded Effective Range:</strong> -10 pts</li>
+                                <li><strong>Pushed Gut-Shot Deer:</strong> -15 pts</li>
+                                <li><strong>Pushed Wounded Deer:</strong> -10 pts</li>
+                                <li><strong>Shot After Hours:</strong> -25 pts</li>
                                 <li><strong>Illegal Harvest:</strong> -100 pts</li>
                             </ul>
                         </div>
@@ -359,12 +370,15 @@
                     </ul>
                     
                     <h4>Shot Angle Matters:</h4>
+                    <p>Per ethical hunting guidelines (onX Hunt, Outdoor Life), shot angle significantly affects kill probability and scoring:</p>
                     <ul>
-                        <li><strong>Broadside:</strong> Perpendicular to deer - best chance for double lung, passes through both lungs</li>
-                        <li><strong>Quartering Away:</strong> Angled shot - may only hit one lung, bullet travels through more tissue</li>
-                        <li><strong>Quartering Toward:</strong> Risky - shoulder bone may deflect bullet</li>
-                        <li><strong>Head-On/Rear:</strong> Poor angles - small vital target, high chance of wounding</li>
+                        <li><strong>Broadside:</strong> "As good as it gets" - unobstructed path to heart and both lungs. <em>100% kill chance, no penalty</em></li>
+                        <li><strong>Quartering Away:</strong> "Second-best shot" - excellent vital access. <em>100% kill chance, no penalty</em></li>
+                        <li><strong>Quartering Toward:</strong> "Greater risk" - must shoot through scapula/humerus. <em>85% kill chance, -15 pts</em></li>
+                        <li><strong>Frontal:</strong> "Ill-advised" - very small target (~3" heart), high bone obstruction. <em>50% kill chance, -25 pts</em></li>
+                        <li><strong>Rear ("Texas Heart Shot"):</strong> Very risky - high gut shot risk. <em>30% kill chance, -30 pts</em></li>
                     </ul>
+                    <p><em>When a vital hit fails due to poor angle, the bullet deflects into a wound (single lung, liver, or gut) requiring tracking.</em></p>
                     
                     <h4>Wounded Deer Behaviors:</h4>
                     <ul>
@@ -377,15 +391,45 @@
                 </div>
                 
                 <div class="instructions-section">
+                    <h3>📷 Photo Mode</h3>
+                    <p>Press <kbd>P</kbd> at any time to capture a screenshot of your hunt. Photos are saved automatically and work while:</p>
+                    <ul>
+                        <li>Hunting and stalking deer</li>
+                        <li>Looking through the rifle scope</li>
+                        <li>Viewing the GPS map</li>
+                        <li>Any other gameplay moment</li>
+                    </ul>
+                    <p><em>Photos are downloaded as PNG files with timestamps.</em></p>
+                </div>
+                
+                <div class="instructions-section">
+                    <h3>📏 Shot Distance & Fair Chase</h3>
+                    <p>Per the <strong>Boone and Crockett Club's Position on Long-Range Shooting:</strong></p>
+                    <blockquote style="border-left: 3px solid var(--color-leaf); padding-left: 12px; margin: 12px 0; font-style: italic;">
+                        "If in doubt, stretch the stalk, not the shot."
+                    </blockquote>
+                    <p>The Club believes hunting involves a tenuous relationship between predator and prey that cannot be compromised. Long-range shooting takes unfair advantage of game animals and eliminates their natural capacity to detect danger.</p>
+                    <ul>
+                        <li><strong>Close Stalk (≤25 yards):</strong> +25 pts bonus - exemplary fair chase</li>
+                        <li><strong>Good Stalk (≤50 yards):</strong> +15 pts bonus</li>
+                        <li><strong>Decent Range (≤75 yards):</strong> +10 pts bonus</li>
+                        <li><strong>Effective Range (≤100 yards):</strong> +5 pts bonus</li>
+                        <li><strong>Exceeded Effective Range:</strong> -10 pts penalty - poor shot beyond 100 yards that doesn't hit vitals indicates you should have gotten closer</li>
+                    </ul>
+                    <p><em>A clean vital shot at any distance is not penalized. The penalty applies only when a non-vital hit occurs beyond 100 yards - evidence that the shot exceeded your effective range.</em></p>
+                </div>
+                
+                <div class="instructions-section">
                     <h3>💡 Tips for Ethical Hunting</h3>
                     <ul>
                         <li>Always aim for the vitals (heart/lung area) for a clean, humane kill</li>
                         <li>Kneel and brace against trees for steadier aim</li>
                         <li>Wait for the deer to stop moving before taking your shot</li>
+                        <li>Get closer when possible - stalking is part of fair chase hunting</li>
                         <li>If you wound a deer, follow the blood trail to recover it</li>
                         <li>For gut shots, wait before tracking - pushing the deer causes more suffering</li>
                         <li>Always tag your harvest - it's required and earns bonus points</li>
-                        <li>Use the map sparingly - each use costs battery and points</li>
+                        <li>Use the map sparingly - each use costs battery</li>
                     </ul>
                 </div>
             </div>

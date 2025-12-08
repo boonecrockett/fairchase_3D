@@ -84,22 +84,22 @@ export const deerConfig = {
     wanderMaxRadiusAddition: 40, // Reduced from 50 - less wandering range
     wanderTargetReachThreshold: 5.0,
     stateTimers: {
-        grazing: 6,              // Increased from 4 - more time spent grazing for 40% total time
-        drinking: 8,             // Reduced from 10 - less time spent drinking
-        fleeing: 6,              // Updated from 4 to 6 - deer runs away for 6 seconds after alert
+        grazing: 4,              // Reduced from 6 - less time stationary
+        drinking: 6,             // Reduced from 8 - less time spent drinking
+        fleeing: 12,             // Deer runs away for 12 seconds after alert
     },
     speeds: {
-        wandering: 0.85,         // Increased from 0.67 to better match walk animation
-        thirsty: 1.6,            // Increased from 1.25 to better match trot animation
-        fleeing: 11.5,           // Increased from 9.2 to better match run animation
-        wounded: 5.75,           // Increased from 4.6 to better match run animation
+        wandering: 0.98,         // +10% from 0.89
+        thirsty: 1.76,           // +10% from 1.6
+        fleeing: 16.2,           // Reduced 10% from 18
+        wounded: 7.0,            // Calibrated: 10.0 * 0.7 = 7.0 for matched animation
     },
     rotationSpeed: 0.85, // Radians per second, scaled for new model size
-        legAnimationSpeeds: {
-        wandering: 6,
-        thirsty: 6,
-        fleeing: 17.5,
-        wounded: 10,
+    legAnimationSpeeds: {
+        wandering: 6.6,      // +10% from 6
+        thirsty: 6.6,        // +10% from 6
+        fleeing: 25.2,       // Reduced 10% from 28 to match slower flee speed
+        wounded: 16,         // Increased to match faster wounded speed
     },
     legRotationAmplitude: 0.5,
     neckLerpFactor: 0.1,

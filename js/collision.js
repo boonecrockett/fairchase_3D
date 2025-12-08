@@ -44,6 +44,10 @@ class CollisionSystem {
             if (zoneName === 'brain') {
                 // All brain scaling requests combined: 1.1 * 0.95 * 0.80 * 0.90 * 0.90
                 scale = 0.67716;
+            } else if (zoneName === 'vitals') {
+                // Vitals reduced by 25% for more challenging shots
+                // Base 1.21 * 0.75 = 0.9075
+                scale = 0.9075;
             } else {
                 // All other boxes scaling requests combined: 1.1 * 1.1
                 scale = 1.21;
@@ -365,8 +369,8 @@ class CollisionSystem {
                 position.z - bush.position.z
             ).length();
             
-            // Estimate bush collision radius
-            const bushRadius = (bush.scale.x || 1.0) * 1.2;
+            // Estimate bush collision radius - bushes spread out wider than their center
+            const bushRadius = (bush.scale.x || 1.0) * 1.5;
             
             // Check if collision occurs
             if (distance < bushRadius + radius) {

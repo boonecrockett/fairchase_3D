@@ -12,17 +12,23 @@ import { Animal } from './animal.js';
 import { applySpookingPenalty, awardScoutingBonus } from './hunting-mechanics.js';
 import { getPlayerNoise } from './player.js';
 import { WoundState, getWoundTypeFromHitbox } from './wound-system.js';
-import { DEBUG_MODE } from './constants.js';
 
-// Debug detection modal tracking
+// Detection modal tracking
 let lastDetectionModalTime = 0;
 const DETECTION_MODAL_COOLDOWN = 5000; // 5 seconds between modals
 
+// Reusable vectors to avoid garbage collection in visibility checks
+const _deerPos = new THREE.Vector3();
+const _playerPos = new THREE.Vector3();
+const _direction = new THREE.Vector3();
+
 /**
- * Shows a debug modal explaining how the deer detected the hunter
+ * Shows a modal explaining how the deer detected the hunter
+ * Only shows in Practice Mode (not Hunt Simulator)
  */
 function showDetectionDebugModal(detectionType, details) {
-    if (!DEBUG_MODE) return;
+    // Only show in practice mode, not hunt simulator
+    if (gameContext.gameMode !== 'practice') return;
     
     const now = Date.now();
     if (now - lastDetectionModalTime < DETECTION_MODAL_COOLDOWN) return;
@@ -60,7 +66,7 @@ function showDetectionDebugModal(detectionType, details) {
         <div style="font-size: 32px; margin-bottom: 10px;">${icon}</div>
         <div style="font-size: 18px; font-weight: 600; color: #ba5216; margin-bottom: 15px;">${title}</div>
         <div style="font-size: 14px; line-height: 1.6;">${details}</div>
-        <div style="margin-top: 15px; font-size: 11px; color: #6b675f;">(Debug Mode - Auto-closes in 3s)</div>
+        <div style="margin-top: 15px; font-size: 11px; color: #6b675f;">(Practice Mode - Auto-closes in 3s)</div>
     `;
     
     modal.style.display = 'block';
@@ -591,27 +597,32 @@ export class Deer extends Animal {
             return true;
         }
         
-        const currentPlayerPosition = gameContext.player.position.clone();
+        // Use reusable vector to avoid allocation
+        _playerPos.copy(gameContext.player.position);
+        
         // Only use position-based cache if player hasn't moved much AND we have a valid cached value
         if (this.lastPlayerPositionForVisibility && this.cachedVisibility !== undefined) {
-            const playerMovedDistance = this.lastPlayerPositionForVisibility.distanceTo(currentPlayerPosition);
+            const playerMovedDistance = this.lastPlayerPositionForVisibility.distanceTo(_playerPos);
             if (playerMovedDistance < 2.0) {
                 this.lastVisibilityCheck = currentTime;
                 return this.cachedVisibility;
             }
         }
         
-        this.lastPlayerPositionForVisibility = currentPlayerPosition.clone();
+        // Store last position (need to clone here since we're storing it)
+        if (!this.lastPlayerPositionForVisibility) {
+            this.lastPlayerPositionForVisibility = new THREE.Vector3();
+        }
+        this.lastPlayerPositionForVisibility.copy(_playerPos);
         
-        const deerPosition = this.model.position.clone();
-        const playerPosition = currentPlayerPosition.clone();
+        // Use reusable vectors for raycast setup
+        _deerPos.copy(this.model.position);
+        _deerPos.y += 1.5;
+        _playerPos.y += isKneeling ? 0.9 : 1.7;
         
-        deerPosition.y += 1.5;
-        playerPosition.y += isKneeling ? 0.9 : 1.7;
+        _direction.subVectors(_playerPos, _deerPos).normalize();
         
-        const direction = new THREE.Vector3().subVectors(playerPosition, deerPosition).normalize();
-        
-        gameContext.raycaster.set(deerPosition, direction);
+        gameContext.raycaster.set(_deerPos, _direction);
         gameContext.raycaster.far = distanceToPlayer;
         
         const nearbyObjects = [];
@@ -620,7 +631,7 @@ export class Deer extends Animal {
         // Check trees
         if (gameContext.trees && gameContext.trees.children) {
             for (const tree of gameContext.trees.children) {
-                const treeDistance = deerPosition.distanceTo(tree.position);
+                const treeDistance = _deerPos.distanceTo(tree.position);
                 if (treeDistance < distanceToPlayer + 3) {
                     nearbyObjects.push(tree);
                     if (nearbyObjects.length >= MAX_OBJECTS_TO_CHECK) break;
@@ -631,7 +642,7 @@ export class Deer extends Animal {
         // Check bushes (only if we haven't hit the limit)
         if (nearbyObjects.length < MAX_OBJECTS_TO_CHECK && gameContext.bushes && gameContext.bushes.children) {
             for (const bush of gameContext.bushes.children) {
-                const bushDistance = deerPosition.distanceTo(bush.position);
+                const bushDistance = _deerPos.distanceTo(bush.position);
                 if (bushDistance < distanceToPlayer + 3) {
                     nearbyObjects.push(bush);
                     if (nearbyObjects.length >= MAX_OBJECTS_TO_CHECK) break;
@@ -647,7 +658,7 @@ export class Deer extends Animal {
             const rayLength = distanceToPlayer;
             const stepSize = rayLength / 5;
             for (let i = 1; i < 5; i++) {
-                const checkPoint = new THREE.Vector3().copy(deerPosition).add(direction.clone().multiplyScalar(i * stepSize));
+                const checkPoint = new THREE.Vector3().copy(_deerPos).add(_direction.clone().multiplyScalar(i * stepSize));
                 const terrainHeight = gameContext.getHeightAt(checkPoint.x, checkPoint.z);
                 if (terrainHeight > checkPoint.y) {
                     terrainBlocked = true;
@@ -665,7 +676,7 @@ export class Deer extends Animal {
         
         // Check for backdrop cover (bushes/grass behind the player from deer's view)
         // This makes the player's silhouette harder to see
-        const hasBackdropCover = this.checkBackdropCover(playerPosition, direction, distanceToPlayer);
+        const hasBackdropCover = this.checkBackdropCover(_playerPos, _direction, distanceToPlayer);
         
         if (hasBackdropCover) {
             // With backdrop cover, effective distance is doubled (harder to see)

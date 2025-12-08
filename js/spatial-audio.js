@@ -8,6 +8,13 @@ const MAX_AUDIO_DISTANCE = 300; // Maximum distance for audio to be heard (match
 const ROLLOFF_FACTOR = 2; // How quickly sound fades with distance
 const DOPPLER_FACTOR = 0.3; // Doppler effect strength
 
+// Reusable vectors to avoid allocations
+const _relativePos = new THREE.Vector3();
+const _cameraRight = new THREE.Vector3();
+const _upVector = new THREE.Vector3(0, 1, 0);
+const _relativeVelocity = new THREE.Vector3();
+const _zeroVelocity = new THREE.Vector3(0, 0, 0);
+
 // Sound file paths
 const SOUND_PATHS = {
     deerBlow: 'assets/sounds/deer_blow.mp3' // Alarm sound when deer spots hunter
@@ -136,28 +143,24 @@ export function playPositionalSound(soundType, position, velocity = null) {
         // Mark as in use
         soundInstance.inUse = true;
         
-        // Calculate relative position to player
+        // Calculate relative position to player (use reusable vector)
         const playerPos = gameContext.player.position;
-        const relativePos = position.clone().sub(playerPos);
-        const distance = relativePos.length();
-        
-        // console.log(`Sound distance: ${distance}, max distance: ${MAX_AUDIO_DISTANCE}`); // Logging disabled
+        _relativePos.copy(position).sub(playerPos);
+        const distance = _relativePos.length();
         
         // Only play if within hearing range
         if (distance > MAX_AUDIO_DISTANCE) {
-            // console.log(`Sound too far away (${distance} > ${MAX_AUDIO_DISTANCE}), not playing`); // Logging disabled
             soundInstance.inUse = false;
             return;
         }
         
         // Calculate stereo panning based on relative X position
-        // Get camera's right vector for proper left/right calculation
-        const cameraRight = new THREE.Vector3();
-        gameContext.camera.getWorldDirection(cameraRight);
-        cameraRight.cross(new THREE.Vector3(0, 1, 0)).normalize();
+        // Get camera's right vector for proper left/right calculation (use reusable vectors)
+        gameContext.camera.getWorldDirection(_cameraRight);
+        _cameraRight.cross(_upVector).normalize();
         
         // Project relative position onto camera's right vector
-        const panValue = relativePos.dot(cameraRight) / MAX_AUDIO_DISTANCE;
+        const panValue = _relativePos.dot(_cameraRight) / MAX_AUDIO_DISTANCE;
         soundInstance.panner.pan.value = Math.max(-1, Math.min(1, panValue));
         
         // Calculate distance-based volume attenuation
@@ -165,13 +168,11 @@ export function playPositionalSound(soundType, position, velocity = null) {
         const attenuatedVolume = getSoundVolume(soundType) + (20 * Math.log10(volumeAttenuation + 0.1));
         soundInstance.volume.volume.value = attenuatedVolume;
         
-        // console.log(`Playing ${soundType}: pan=${soundInstance.panner.pan.value.toFixed(2)}, volume=${attenuatedVolume.toFixed(2)}`); // Logging disabled
-        
-        // Apply Doppler effect if velocity is provided
+        // Apply Doppler effect if velocity is provided (use reusable vectors)
         if (velocity && DOPPLER_FACTOR > 0) {
-            const playerVelocity = gameContext.player.velocity || new THREE.Vector3(0, 0, 0);
-            const relativeVelocity = velocity.clone().sub(playerVelocity);
-            const dopplerShift = 1 + (relativeVelocity.length() * DOPPLER_FACTOR * 0.01);
+            const playerVelocity = gameContext.player.velocity || _zeroVelocity;
+            _relativeVelocity.copy(velocity).sub(playerVelocity);
+            const dopplerShift = 1 + (_relativeVelocity.length() * DOPPLER_FACTOR * 0.01);
             soundInstance.player.playbackRate = Math.max(0.5, Math.min(2.0, dopplerShift));
         }
         
@@ -226,13 +227,11 @@ export function updateDeerAudio(deer, delta) {
         return;
     }
     
-    // Calculate deer velocity for Doppler effect
-    const deerVelocity = deer.lastPosition ? 
-        deerPosition.clone().sub(deer.lastPosition).divideScalar(delta) : 
-        new THREE.Vector3(0, 0, 0);
-    
-    // Store current position for next frame
-    deer.lastPosition = deerPosition.clone();
+    // Store current position for next frame (use copy instead of clone)
+    if (!deer.lastPosition) {
+        deer.lastPosition = new THREE.Vector3();
+    }
+    deer.lastPosition.copy(deerPosition);
 }
 
 /**

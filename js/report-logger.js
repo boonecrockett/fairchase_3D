@@ -24,7 +24,7 @@ export function initializeDayReport() {
     gameContext.currentDayStats = {
         distanceTraveled: 0,
         trackingDistance: 0,
-        timeStarted: new Date().toLocaleTimeString(),
+        timeStarted: formatGameTime(gameContext.gameTime || 4.5), // Use game time (default 04:30)
         deerSightings: 0,
         shotsTaken: 0,
         hits: 0,
@@ -170,9 +170,9 @@ export function generateCurrentReport() {
                 totalBonuses += killScore;
             }
         } else if (killScore < 0) {
-            // Negative kill scores are penalties (risky shots, illegal hours)
-            penaltyItems.push({ name: 'Risky Shot', value: Math.abs(killScore) });
-            totalPenalties += Math.abs(killScore);
+            // Negative kill scores are already tracked in badShotPenalties
+            // Don't double-count them here - just note the kill happened
+            // The penalty will be added from badShotPenalties below
         }
     }
     
@@ -212,11 +212,25 @@ export function generateCurrentReport() {
         penaltyItems.push({ name: `Excess Shots (${excessiveShots}x)`, value: penalty });
         totalPenalties += penalty;
     }
-    // Bad shot penalties (gut, rear, shoulder)
+    // Bad shot penalties (gut, rear, shoulder, shot angles, risky kills)
     if (gameContext.badShotPenalties && gameContext.badShotPenalties.length > 0) {
-        const shotNames = { 'gut': 'Gut Shot', 'rear': 'Rear Shot', 'shoulderLeft': 'Shoulder', 'shoulderRight': 'Shoulder' };
+        const shotNames = { 
+            'gut': 'Gut Shot', 
+            'rear': 'Rear Shot', 
+            'neck': 'Neck Shot',
+            'brain': 'Head Shot',
+            'spine': 'Spine Shot',
+            'shoulderLeft': 'Shoulder', 
+            'shoulderRight': 'Shoulder',
+            'frontal-angle': 'Frontal Shot Angle',
+            'rear-angle': 'Rear Shot Angle',
+            'quartering-toward-angle': 'Quartering-Toward Angle',
+            'long-range-poor-shot': 'Exceeded Effective Range',
+            'pushed-wounded': 'Pushed Wounded Deer',
+            'after-hours-shot': 'Shot After Hours'
+        };
         gameContext.badShotPenalties.forEach(shot => {
-            const name = shotNames[shot.hitZone] || shot.hitZone;
+            const name = shot.description || shotNames[shot.hitZone] || shot.hitZone;
             penaltyItems.push({ name: name, value: shot.penalty });
             totalPenalties += shot.penalty;
         });
@@ -277,7 +291,8 @@ export function generateCurrentReport() {
             reportHTML += `<div class="wound-type">${woundType.displayName || woundType.name}</div>`;
             if (gameContext.killInfo) {
                 const shotDist = gameContext.killInfo.distance || 0;
-                reportHTML += `<div class="shot-detail">${shotDist.toFixed(0)} yds</div>`;
+                const stance = gameContext.killInfo.shootingStance || 'Offhand';
+                reportHTML += `<div class="shot-detail">${shotDist.toFixed(0)} yds • ${stance}</div>`;
             }
         }
         if (stats.deerKilled) {
@@ -292,7 +307,7 @@ export function generateCurrentReport() {
     const scoreClass = finalScore >= 0 ? 'positive' : 'negative';
     reportHTML += `<div class="score-summary">`;
     reportHTML += `<div class="final-score ${scoreClass}">${finalScore >= 0 ? '+' : ''}${finalScore}</div>`;
-    reportHTML += `<div class="score-label">Ethics Score</div>`;
+    reportHTML += `<div class="score-label">Fair Chase Score</div>`;
     reportHTML += `</div>`;
     
     reportHTML += `</div>`; // End top row

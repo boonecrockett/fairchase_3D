@@ -22,6 +22,11 @@ import { updateSpatialAudioListener } from './spatial-audio.js';
 import { shoot, tagDeer } from './hunting-mechanics.js';
 import { updateTimeDisplay, updateDynamicLighting, isNight } from './environment-manager.js';
 import { showLoadingModal, hideLoadingModal, registerTask, completeTask, updateLoadingStatus, initLoadingManager } from './loading-manager.js';
+import { initScreenshotListener } from './screenshot.js';
+import { animationCalibrator } from './animation-calibrator.js';
+
+// Make calibrator available globally immediately
+window.animationCalibrator = animationCalibrator;
 
 // Initialize game
 function init() {
@@ -37,8 +42,9 @@ function init() {
     const FOLIAGE_CHECK_INTERVAL = 0.05; // Check every 50ms for responsive sound
     const FOLIAGE_CHECK_DISTANCE = 0.3; // Recheck if moved more than 0.3 units (more precise)
     
-    // Implement isFoliageAt helper using bush, tree, AND grass collision for foliage sounds
-    let lastFoliageLogTime = 0;
+    // Reusable vector for foliage check
+    const _foliageCheckPos = new THREE.Vector3();
+    
     gameContext.isFoliageAt = (x, z) => {
         const now = performance.now() / 1000;
         const dx = x - lastFoliageCheck.x;
@@ -51,14 +57,15 @@ function init() {
             return lastFoliageCheck.result;
         }
         
-        const position = new THREE.Vector3(x, 0, z);
-        // Check bushes and small trees - use larger radius for sound detection
+        _foliageCheckPos.set(x, 0, z);
+        
+        // Check bushes - increased radius for better detection
         let inBush = false;
         if (gameContext.checkBushCollision) {
-            inBush = !!gameContext.checkBushCollision(position, 4.5);
+            inBush = !!gameContext.checkBushCollision(_foliageCheckPos, 3.25);
         }
         
-        // Check grass clusters (most common foliage)
+        // Check grass clusters
         let inGrass = false;
         if (gameContext.grassClusterPositions && gameContext.grassClusterPositions.length > 0) {
             const clusters = gameContext.grassClusterPositions;
@@ -67,8 +74,8 @@ function init() {
                 const cdx = x - cluster.x;
                 const cdz = z - cluster.z;
                 const distSq = cdx * cdx + cdz * cdz;
-                // Use stored detection radius directly
-                const checkRadius = cluster.radius;
+                // Use stored detection radius with increase for better feel
+                const checkRadius = cluster.radius * 1.7;
                 if (distSq < checkRadius * checkRadius) {
                     inGrass = true;
                     break;
@@ -78,13 +85,11 @@ function init() {
         
         const result = inBush || inGrass;
         
-        // Debug log when foliage state changes (always log for debugging)
-        if (result !== lastFoliageCheck.result) {
-            console.log(`🌿 Foliage: ${result ? 'ENTERED' : 'LEFT'} (bush: ${inBush}, grass: ${inGrass}, bushes: ${gameContext.bushes?.children?.length || 0}, grassClusters: ${gameContext.grassClusterPositions?.length || 0})`);
-            lastFoliageLogTime = now;
-        }
-        
-        lastFoliageCheck = { x, z, result, time: now };
+        // Update cache (avoid creating new object - reuse properties)
+        lastFoliageCheck.x = x;
+        lastFoliageCheck.z = z;
+        lastFoliageCheck.result = result;
+        lastFoliageCheck.time = now;
         return result;
     };
     
@@ -200,6 +205,9 @@ async function startGame(selectedWorldId) {
         createPlayer(gameContext.camera, gameContext.scene);
         addPlayerEventListeners();
         
+        // 5b. Initialize Screenshot System
+        initScreenshotListener();
+        
         // 6. Initialize Audio
         initAudio();
         
@@ -265,11 +273,38 @@ async function startGame(selectedWorldId) {
         // Update UI
         if (gameContext.scoreValueElement) gameContext.scoreValueElement.textContent = 0;
         
+        // Pre-compile all shaders to avoid first-frame stutter
+        // This forces WebGL to compile shaders before gameplay starts
+        updateLoadingStatus('Compiling shaders...');
+        if (gameContext.renderer && gameContext.scene && gameContext.camera) {
+            gameContext.renderer.compile(gameContext.scene, gameContext.camera);
+            
+            // Warm-up renders from multiple angles to compile all visible shaders
+            // This prevents the first look-around stutter
+            const originalRotationY = gameContext.player.rotation.y;
+            const originalRotationX = gameContext.camera.rotation.x;
+            
+            // Render from 8 different horizontal angles + up/down
+            for (let i = 0; i < 8; i++) {
+                gameContext.player.rotation.y = (i / 8) * Math.PI * 2;
+                gameContext.renderer.render(gameContext.scene, gameContext.camera);
+            }
+            // Look up and down
+            gameContext.player.rotation.y = originalRotationY;
+            gameContext.camera.rotation.x = -0.5;
+            gameContext.renderer.render(gameContext.scene, gameContext.camera);
+            gameContext.camera.rotation.x = 0.5;
+            gameContext.renderer.render(gameContext.scene, gameContext.camera);
+            
+            // Restore original orientation
+            gameContext.camera.rotation.x = originalRotationX;
+        }
+        
         // Initial log
         initializeDayReport();
         const worldName = worldConfig && worldConfig.name ? worldConfig.name : "Wilderness";
         logEvent("Hunt Started", `Started hunt in ${worldName}`);
-        console.log('✅ START GAME: All assets loaded, game ready');
+        console.log('✅ START GAME: All assets loaded, shaders compiled, game ready');
         
     } catch (error) {
         console.error('🛑 FATAL ERROR in startGame:', error);

@@ -24,7 +24,9 @@ export class DeerAnimation {
         const isMoving = this.deer.movement.getIsMoving();
         
         const speed = this.deer.currentSpeed;
-        const runThreshold = 1.0; // Speed threshold for running vs walking
+        // Run animation should only be used for actual running (fleeing speed ~18)
+        // Walk animation for everything slower including fast wounded movement (~6)
+        const runThreshold = 10.0; // Speed threshold for running vs walking
         
         // Simplified animation selection - use isMoving flag and speed directly
         // If deer is moving (based on movement history), play walk or run based on speed
@@ -65,15 +67,9 @@ export class DeerAnimation {
                     // Initial wounded reaction - use Attack animation as impact reaction
                     return 'Attack';
                 } else {
-                    // Use Walk for most wounded deer, Run only for very fast wounds
-                    // Run animation only looks good at 70%+ speed (heart shot burst)
-                    // Heart: 8.05, Double Lung: 6.9, others are slower
-                    const speed = this.deer.currentSpeed || 0;
-                    if (speed < 7.0) {
-                        return 'Walk'; // Most wounded movement - fast walk/trot
-                    } else {
-                        return 'Run'; // Only heart shot uses Run
-                    }
+                    // Use Run for all wounded deer - they're fleeing in panic
+                    // Animation speed will be scaled to match actual movement speed
+                    return 'Run';
                 }
                 
             case 'KILLED':
@@ -231,34 +227,37 @@ export class DeerAnimation {
         const speed = this.deer.currentSpeed;
         let targetTimeScale = 1.0;
         
-        if (currentAnim === 'Walk') {
-            // Walk animation should match wandering speed (~0.85 units/s)
-            // For wounded deer, allow faster walk animation (up to 2.5x for trotting effect)
-            const baseWalkSpeed = this.config.speeds.wandering;
-            const maxWalkScale = this.deer.state === 'WOUNDED' ? 2.5 : 1.2;
-            targetTimeScale = Math.max(0.3, Math.min(maxWalkScale, speed / baseWalkSpeed));
-        } else if (currentAnim === 'Run') {
-            // Run animation should scale based on actual speed
-            const baseRunSpeed = this.config.speeds.fleeing; // 11.5
-            
-            // For wounded deer, scale animation to match actual movement speed
-            // Very slow wounded deer (gut/liver) should have very slow animation
-            if (this.deer.state === 'WOUNDED') {
-                // Scale directly based on speed ratio to base run speed
-                // At speed 1.0, animation should be ~0.1 of full speed
-                // At speed 8.0 (heart shot), animation should be ~0.7 of full speed
-                targetTimeScale = Math.max(0.15, Math.min(1.0, speed / baseRunSpeed));
-            } else {
-                // Normal fleeing - scale from 0.4 to 1.0
-                const minRunSpeed = this.config.speeds.thirsty;
-                const speedRatio = (speed - minRunSpeed) / (baseRunSpeed - minRunSpeed);
-                targetTimeScale = 0.4 + Math.max(0, Math.min(1, speedRatio)) * 0.6;
+        // Check for calibrator override first
+        if (window.animationCalibrator) {
+            const override = window.animationCalibrator.getOverrideTimeScale(currentAnim, this.deer.state);
+            if (override !== null) {
+                targetTimeScale = override;
+                this.deer.activeAction.timeScale = targetTimeScale;
+                return; // Skip normal calculation when override is active
             }
         }
         
-        // Smoothly interpolate timeScale to prevent jitter (lerp factor 0.1)
+        if (currentAnim === 'Walk') {
+            // Walk animation - calibrated to 1.2x base scale
+            const baseWalkSpeed = this.config.speeds.wandering; // ~0.98
+            targetTimeScale = Math.max(0.4, Math.min(1.8, (speed / baseWalkSpeed) * 1.2));
+        } else if (currentAnim === 'Run') {
+            // Run animation speed scaling
+            if (this.deer.state === 'WOUNDED') {
+                // Wounded deer: calibrated to 0.7x animation speed with 0.7x movement
+                // This creates a matched trot/run appearance
+                const baseWoundedSpeed = this.config.speeds.wounded; // 10.0
+                targetTimeScale = Math.max(0.35, Math.min(1.1, speed / baseWoundedSpeed * 1.0));
+            } else {
+                // Normal fleeing - 1.0x scale
+                const baseRunSpeed = this.config.speeds.fleeing; // 16.2
+                targetTimeScale = Math.max(0.6, Math.min(1.2, speed / baseRunSpeed * 1.0));
+            }
+        }
+        
+        // Smoothly interpolate timeScale to prevent jitter (lerp factor 0.15 for faster response)
         const currentTimeScale = this.deer.activeAction.timeScale;
-        const smoothedTimeScale = currentTimeScale + (targetTimeScale - currentTimeScale) * 0.1;
+        const smoothedTimeScale = currentTimeScale + (targetTimeScale - currentTimeScale) * 0.15;
         this.deer.activeAction.timeScale = smoothedTimeScale;
     }
 

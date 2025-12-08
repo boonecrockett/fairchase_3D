@@ -10,10 +10,10 @@ export const WOUND_TYPES = {
     HEART: {
         name: 'heart',
         displayName: 'Heart Shot',
-        speedMultiplier: 1.4,        // Fastest possible burst
-        maxDistance: 80,             // 60-100 yards before collapse
-        minDistance: 50,
-        energyDrainRate: 50,         // Very fast drain
+        speedMultiplier: 1.8,        // Fast burst - runs hard
+        maxDistance: 150,            // 80-150 yards before collapse (realistic)
+        minDistance: 80,
+        energyDrainRate: 40,         // Fast drain
         bleedRate: 3.0,              // Heavy blood trail
         movementPattern: 'arc',      // Wide arc movement
         seekWater: false,
@@ -26,10 +26,10 @@ export const WOUND_TYPES = {
     DOUBLE_LUNG: {
         name: 'doubleLung',
         displayName: 'Double Lung Shot',
-        speedMultiplier: 1.2,        // Fast straight run
-        maxDistance: 120,            // 40-120 yards
-        minDistance: 40,
-        energyDrainRate: 35,         // Fast drain
+        speedMultiplier: 1.5,        // Fast straight run
+        maxDistance: 200,            // 50-200 yards
+        minDistance: 50,
+        energyDrainRate: 30,         // Fast drain
         bleedRate: 2.5,              // Heavy blood (frothy)
         movementPattern: 'straight', // Straight line
         seekWater: false,
@@ -42,10 +42,10 @@ export const WOUND_TYPES = {
     SINGLE_LUNG: {
         name: 'singleLung',
         displayName: 'Single Lung Shot',
-        speedMultiplier: 0.6,        // Moderate speed - about 3.5 units/sec between bursts
-        maxDistance: 400,            // Can go 300+ yards
-        minDistance: 150,
-        energyDrainRate: 5,          // Very slow drain
+        speedMultiplier: 0.9,        // Moderate speed - can still run
+        maxDistance: 500,            // Can go 300+ yards
+        minDistance: 200,
+        energyDrainRate: 4,          // Slow drain
         bleedRate: 0.8,              // Sparse blood
         movementPattern: 'erratic',  // Stop-start behavior
         seekWater: false,
@@ -58,15 +58,15 @@ export const WOUND_TYPES = {
     LIVER: {
         name: 'liver',
         displayName: 'Liver Shot',
-        speedMultiplier: 0.25,       // Walks/trots slowly - about 1.4 units/sec
-        maxDistance: 300,
-        minDistance: 100,
-        energyDrainRate: 8,          // Slow but steady
+        speedMultiplier: 0.5,        // Trotting - noticeably slower
+        maxDistance: 400,
+        minDistance: 150,
+        energyDrainRate: 6,          // Slow but steady
         bleedRate: 1.5,              // Medium blood
         movementPattern: 'deliberate',
         seekWater: true,             // Seeks water
         seekCover: true,             // Seeks thick cover
-        canBed: true,                // Will bed within 100-300 yards
+        canBed: true,                // Will bed within 150-400 yards
         survivalChance: 0.05,
         wobbleAmount: 0.01,
         stopStartBehavior: false,
@@ -75,10 +75,10 @@ export const WOUND_TYPES = {
     GUT: {
         name: 'gut',
         displayName: 'Gut Shot',
-        speedMultiplier: 0.15,       // Very slow hunched walk - about 0.86 units/sec
-        maxDistance: 500,            // Can travel far if pushed
-        minDistance: 80,
-        energyDrainRate: 3,          // Very slow drain (12-24 hr survival)
+        speedMultiplier: 0.4,        // Slow hunched walk/trot
+        maxDistance: 600,            // Can travel far if pushed
+        minDistance: 150,
+        energyDrainRate: 2,          // Very slow drain (12-24 hr survival)
         bleedRate: 0.5,              // Light blood, dark color
         movementPattern: 'deliberate',
         seekWater: true,             // Strong water seeking
@@ -93,16 +93,16 @@ export const WOUND_TYPES = {
     MUSCLE: {
         name: 'muscle',
         displayName: 'Muscle Hit',
-        speedMultiplier: 1.1,        // Initial adrenaline burst
-        maxDistance: 400,            // Reduced - blood loss catches up
-        minDistance: 150,
-        energyDrainRate: 4,          // Increased - bleeding out
-        bleedRate: 0.6,              // More blood than before
+        speedMultiplier: 1.3,        // Adrenaline burst
+        maxDistance: 500,            // Can go far
+        minDistance: 200,
+        energyDrainRate: 3,          // Bleeding out slowly
+        bleedRate: 0.6,              // Moderate blood
         movementPattern: 'straight',
         seekWater: false,
         seekCover: true,
         canBed: true,
-        survivalChance: 0.3,         // Reduced - most muscle hits are fatal
+        survivalChance: 0.3,         // Some survive
         wobbleAmount: 0,
         stopStartBehavior: false,
         recovers: false              // No longer recovers - wound is serious
@@ -110,16 +110,16 @@ export const WOUND_TYPES = {
     SHOULDER: {
         name: 'shoulder',
         displayName: 'Shoulder Shot',
-        speedMultiplier: 0.35,       // Limping - about 2 units/sec, noticeably impaired
-        maxDistance: 150,            // Reduced - shock and blood loss
-        minDistance: 40,
-        energyDrainRate: 12,         // Increased - shock is severe
-        bleedRate: 0.8,              // More blood - major wound
+        speedMultiplier: 0.6,        // Limping but can still move
+        maxDistance: 250,            // Can go further than before
+        minDistance: 80,
+        energyDrainRate: 10,         // Shock is severe
+        bleedRate: 0.8,              // Moderate blood
         movementPattern: 'erratic',  // Circles, stops frequently
         seekWater: false,
         seekCover: true,
-        canBed: true,                // Beds quickly from shock
-        survivalChance: 0.15,        // Reduced - broken shoulder usually fatal
+        canBed: true,                // Beds from shock
+        survivalChance: 0.15,        // Most are fatal
         wobbleAmount: 0.03,          // Limping wobble
         stopStartBehavior: true,
         isLimping: true
@@ -364,6 +364,88 @@ export class WoundState {
         return nearestWater;
     }
     
+    /**
+     * Find the thickest cover nearby - prioritizes areas with multiple bushes/trees
+     * Used when deer is dying and wants to hide
+     */
+    findThickCover() {
+        const deerPos = this.deer.model.position;
+        const searchRadius = 150; // Search within 150 units
+        let bestLocation = null;
+        let bestDensity = 0;
+        
+        // Sample grid points and score by nearby bush/tree density
+        const gridSize = 20;
+        const samples = [];
+        
+        for (let x = -searchRadius; x <= searchRadius; x += gridSize) {
+            for (let z = -searchRadius; z <= searchRadius; z += gridSize) {
+                const testX = deerPos.x + x;
+                const testZ = deerPos.z + z;
+                
+                // Skip if too close or in water
+                const dist = Math.sqrt(x * x + z * z);
+                if (dist < 30) continue; // Must be at least 30 units away
+                if (dist > searchRadius) continue;
+                if (gameContext.isWaterAt && gameContext.isWaterAt(testX, testZ)) continue;
+                
+                // Count nearby bushes and trees (density score)
+                let density = 0;
+                const densityRadius = 25;
+                
+                if (gameContext.bushes && gameContext.bushes.children) {
+                    for (const bush of gameContext.bushes.children) {
+                        const bushDist = Math.sqrt(
+                            (bush.position.x - testX) ** 2 + 
+                            (bush.position.z - testZ) ** 2
+                        );
+                        if (bushDist < densityRadius) {
+                            density += 2; // Bushes provide good cover
+                        }
+                    }
+                }
+                
+                if (gameContext.trees && gameContext.trees.children) {
+                    for (const tree of gameContext.trees.children) {
+                        const treeDist = Math.sqrt(
+                            (tree.position.x - testX) ** 2 + 
+                            (tree.position.z - testZ) ** 2
+                        );
+                        if (treeDist < densityRadius && treeDist > 3) { // Not too close to trunk
+                            density += 1; // Trees provide some cover
+                        }
+                    }
+                }
+                
+                // Prefer locations in the flee direction
+                const toLocation = new THREE.Vector3(x, 0, z).normalize();
+                const alignment = this.fleeDirection ? this.fleeDirection.dot(toLocation) : 0;
+                const alignmentBonus = Math.max(0, alignment) * 2;
+                
+                // Prefer locations further from player
+                const playerDist = gameContext.player ? 
+                    Math.sqrt((testX - gameContext.player.position.x) ** 2 + 
+                              (testZ - gameContext.player.position.z) ** 2) : 100;
+                const playerBonus = Math.min(playerDist / 50, 3); // Up to 3 bonus for being far from player
+                
+                const totalScore = density + alignmentBonus + playerBonus;
+                
+                if (totalScore > bestDensity && density >= 2) { // Require at least some cover
+                    bestDensity = totalScore;
+                    bestLocation = new THREE.Vector3(testX, deerPos.y, testZ);
+                }
+            }
+        }
+        
+        if (bestLocation) {
+            this.targetBedLocation = bestLocation;
+            console.log(`🦌 Wounded deer targeting thick cover (density: ${bestDensity.toFixed(1)}) at ${deerPos.distanceTo(bestLocation).toFixed(0)} units`);
+        } else {
+            // Fallback to regular cover search
+            this.findTargetLocation();
+        }
+    }
+    
     update(delta) {
         if (!this.woundType) return;
         
@@ -407,21 +489,20 @@ export class WoundState {
         }
         
         // Check for collapse conditions
-        if (this.shouldCollapse()) {
+        const collapseResult = this.shouldCollapse();
+        if (collapseResult === true) {
             return 'KILLED';
+        }
+        
+        // Check if deer escaped (survived wound and reached max distance)
+        if (this.hasEscaped) {
+            return 'ESCAPED';
         }
         
         // Check for bedding conditions
         if (this.shouldBed()) {
             this.isBedded = true;
             return 'BEDDED';
-        }
-        
-        // Check for survival (muscle hits that recover)
-        if (this.woundType.survivalChance > 0 && this.adrenalineTimer <= 0 && this.woundType.recovers) {
-            if (Math.random() < this.woundType.survivalChance * delta * 0.01) {
-                return 'RECOVERED';
-            }
         }
         
         return null;
@@ -456,8 +537,18 @@ export class WoundState {
                 Math.random() * (this.woundType.maxDistance - this.woundType.minDistance);
         }
         
-        // Collapse if traveled max distance (for fatal wounds)
-        if (this.distanceTraveled >= this.maxTravelDistance && this.woundType.survivalChance < 0.5) {
+        // Check if deer has traveled max distance
+        if (this.distanceTraveled >= this.maxTravelDistance) {
+            // For wounds with survival chance, roll to see if deer survives
+            if (this.woundType.survivalChance > 0) {
+                // Roll survival chance - if successful, deer escapes (doesn't collapse)
+                if (Math.random() < this.woundType.survivalChance) {
+                    console.log(`🦌 Deer survived ${this.woundType.displayName} - escaped!`);
+                    this.hasEscaped = true;
+                    return false; // Deer survives and escapes
+                }
+            }
+            // Failed survival roll or no survival chance - deer collapses
             return true;
         }
         

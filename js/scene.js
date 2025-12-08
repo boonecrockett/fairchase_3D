@@ -92,6 +92,9 @@ export function setupScene() {
     }
 }
 
+// Pre-computed shadow offset to avoid creating new Vector3 every frame
+const _shadowOffset = new THREE.Vector3(100, 100, 50).normalize().multiplyScalar(150);
+
 /**
  * Updates the shadow camera to follow the player and maintain consistent shadow coverage
  */
@@ -101,8 +104,7 @@ export function updateShadowCamera() {
         const playerPosition = gameContext.camera.position;
         
         // Position shadow camera to follow player with offset based on sun direction
-        const shadowOffset = new THREE.Vector3(100, 100, 50).normalize().multiplyScalar(150);
-        light.position.copy(playerPosition).add(shadowOffset);
+        light.position.copy(playerPosition).add(_shadowOffset);
         
         // Update shadow camera target to center on player
         light.target.position.copy(playerPosition);

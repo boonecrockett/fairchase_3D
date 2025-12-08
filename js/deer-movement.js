@@ -52,8 +52,14 @@ export class DeerMovement {
         const worldSize = gameContext.terrain ? gameContext.terrain.geometry.parameters.width : 1000;
         const boundary = worldSize / 2 - this.config.worldBoundaryMargin;
         
+        // If deer is in flee recovery, only generate targets away from player
+        const inFleeRecovery = this.deer.fleeRecoveryTime > 0;
+        const playerPos = gameContext.player ? gameContext.player.position : null;
+        
         // 30% chance to try to find a trail target for realistic forest behavior
-        if (Math.random() < 0.3 && gameContext.trails && gameContext.trails.children.length > 0) {
+        // Deer naturally use trails even if they lead toward the hunter (realistic behavior)
+        // Skip trail following only during flee recovery
+        if (!inFleeRecovery && Math.random() < 0.3 && gameContext.trails && gameContext.trails.children.length > 0) {
             const trailTarget = this.findTrailTarget(boundary);
             if (trailTarget) {
                 // Verify trail target is not in water
@@ -65,10 +71,51 @@ export class DeerMovement {
             }
         }
         
+        // Check if deer is near water - if so, bias direction away from water
+        let nearbyWaterCenter = null;
+        let nearbyWaterRadius = 0;
+        if (gameContext.waterBodies && gameContext.waterBodies.length > 0) {
+            for (const waterBody of gameContext.waterBodies) {
+                const waterX = waterBody.position.x;
+                const waterZ = waterBody.position.z;
+                const waterRadius = (waterBody.userData?.config?.size || 92) / 2;
+                const distToWater = Math.sqrt(
+                    (this.deer.model.position.x - waterX) ** 2 + 
+                    (this.deer.model.position.z - waterZ) ** 2
+                );
+                // If deer is within 1.5x water radius, remember this water body
+                if (distToWater < waterRadius * 1.5) {
+                    nearbyWaterCenter = new THREE.Vector3(waterX, 0, waterZ);
+                    nearbyWaterRadius = waterRadius;
+                    break;
+                }
+            }
+        }
+        
         // Try up to 10 times to find a valid target not in water
         for (let attempt = 0; attempt < 10; attempt++) {
-            const angle = Math.random() * Math.PI * 2;
+            let angle = Math.random() * Math.PI * 2;
             const distance = this.config.wanderMinRadius + Math.random() * this.config.wanderMaxRadiusAddition;
+            
+            // If near water, bias angle away from water center
+            if (nearbyWaterCenter) {
+                const awayFromWater = Math.atan2(
+                    this.deer.model.position.z - nearbyWaterCenter.z,
+                    this.deer.model.position.x - nearbyWaterCenter.x
+                );
+                // Restrict angle to 120 degree arc away from water
+                angle = awayFromWater + (Math.random() - 0.5) * (Math.PI * 2 / 3);
+            }
+            
+            // During flee recovery, bias angle away from player (overrides water bias)
+            if (inFleeRecovery && playerPos) {
+                const awayFromPlayer = Math.atan2(
+                    this.deer.model.position.z - playerPos.z,
+                    this.deer.model.position.x - playerPos.x
+                );
+                // Restrict angle to 120 degree arc away from player
+                angle = awayFromPlayer + (Math.random() - 0.5) * (Math.PI * 2 / 3);
+            }
             
             let targetX = this.deer.model.position.x + Math.cos(angle) * distance;
             let targetZ = this.deer.model.position.z + Math.sin(angle) * distance;
@@ -78,7 +125,35 @@ export class DeerMovement {
             targetZ = Math.max(-boundary, Math.min(boundary, targetZ));
             
             // Check if target is in water
-            const inWater = gameContext.isWaterAt ? gameContext.isWaterAt(targetX, targetZ) : false;
+            let inWater = gameContext.isWaterAt ? gameContext.isWaterAt(targetX, targetZ) : false;
+            
+            // Also check if the PATH to the target crosses water (sample 3 points along the way)
+            if (!inWater && gameContext.isWaterAt) {
+                const deerX = this.deer.model.position.x;
+                const deerZ = this.deer.model.position.z;
+                for (let t = 0.25; t <= 0.75; t += 0.25) {
+                    const midX = deerX + (targetX - deerX) * t;
+                    const midZ = deerZ + (targetZ - deerZ) * t;
+                    if (gameContext.isWaterAt(midX, midZ)) {
+                        inWater = true;
+                        break;
+                    }
+                }
+            }
+            
+            // Only avoid player if deer has sensed them recently (flee recovery = sensed within ~30 seconds)
+            // Deer that haven't detected the hunter will naturally wander, even toward them
+            if (inFleeRecovery && playerPos) {
+                const currentDistToPlayer = this.deer.model.position.distanceTo(playerPos);
+                const targetDistToPlayer = new THREE.Vector3(targetX, 0, targetZ).distanceTo(
+                    new THREE.Vector3(playerPos.x, 0, playerPos.z)
+                );
+                
+                // Deer that sensed hunter will avoid walking closer
+                if (targetDistToPlayer < currentDistToPlayer) {
+                    continue;
+                }
+            }
             
             if (!inWater) {
                 this.wanderTarget.set(targetX, this.deer.model.position.y, targetZ);
@@ -154,10 +229,12 @@ export class DeerMovement {
             this.collisionCount = 0;
         }
         
-        // If we have a forced avoidance direction, use it
+        // If we have a forced avoidance direction, smoothly rotate toward it
         if (this.forcedAvoidanceDirection && this.forcedAvoidanceTimer > 0) {
             const targetAngle = Math.atan2(this.forcedAvoidanceDirection.x, this.forcedAvoidanceDirection.z);
-            this.deer.model.rotation.y = targetAngle;
+            const targetQuat = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), targetAngle);
+            // Smooth rotation - interpolate toward target (faster than normal wandering)
+            this.deer.model.quaternion.slerp(targetQuat, 0.08);
         }
         
         // Store original position before any movement
@@ -346,6 +423,12 @@ export class DeerMovement {
      * Instead of random rotation, find the best clear direction
      */
     handleSmoothObstacleAvoidance(currentPosition, hitTree, hitWater) {
+        // If we already have a forced avoidance direction, don't change it
+        // This prevents spinning when stuck between obstacles
+        if (this.forcedAvoidanceTimer > 0) {
+            return;
+        }
+        
         const worldSize = gameContext.terrain ? gameContext.terrain.geometry.parameters.width : 1000;
         const boundary = worldSize / 2 - this.config.worldBoundaryMargin;
         
@@ -363,9 +446,10 @@ export class DeerMovement {
             -Math.PI / 2,  // 90° left
             2 * Math.PI / 3,  // 120° right
             -2 * Math.PI / 3, // 120° left
+            Math.PI,       // 180° (turn around)
         ];
         
-        const testDistance = 5.0; // How far ahead to check
+        const testDistance = 10.0; // How far ahead to check (increased for better water avoidance)
         
         for (const angle of testAngles) {
             const testDir = currentDir.clone();
@@ -386,17 +470,18 @@ export class DeerMovement {
                 newTarget.z = Math.max(-boundary, Math.min(boundary, newTarget.z));
                 this.wanderTarget.copy(newTarget);
                 
-                // Store forced avoidance direction
+                // Store forced avoidance direction and lock it for a short time
+                // This prevents spinning when near obstacles
                 this.forcedAvoidanceDirection = newDir.clone().normalize();
+                this.forcedAvoidanceTimer = 0.8; // Lock direction for 0.8 seconds
                 
                 // Also update wound state flee direction if deer is wounded
                 if (this.deer.state === 'WOUNDED' && this.deer.woundState && this.deer.woundState.fleeDirection) {
                     this.deer.woundState.fleeDirection.copy(newDir.normalize());
                 }
                 
-                // Immediately rotate deer toward clear direction for faster response
-                const targetAngle = Math.atan2(newDir.x, newDir.z);
-                this.deer.model.rotation.y = targetAngle;
+                // Let smooth rotation handle the turn - don't snap instantly
+                // The forcedAvoidanceDirection will guide the smooth rotation in moveWithCollisionDetection
                 
                 return;
             }
@@ -602,10 +687,12 @@ export class DeerMovement {
         targetQuaternion.setFromAxisAngle(new THREE.Vector3(0, 1, 0), targetAngle);
         
         // Use faster rotation speed so deer faces target before moving far
-        // Adjust based on current state - faster when wandering, slower when fleeing (more realistic)
-        let rotationSpeed = 5.0; // radians per second (increased from 3.0)
-        if (this.deer.state === 'FLEEING' || this.deer.state === 'WOUNDED') {
-            rotationSpeed = 4.0; // Slightly slower when running - more realistic
+        // Wounded deer need faster rotation to avoid "moonwalking" backward
+        let rotationSpeed = 5.0; // radians per second
+        if (this.deer.state === 'FLEEING') {
+            rotationSpeed = 6.0; // Fast rotation when fleeing
+        } else if (this.deer.state === 'WOUNDED') {
+            rotationSpeed = 8.0; // Very fast rotation for wounded - prevents backward movement
         }
         
         const maxRotationThisFrame = rotationSpeed * delta;
