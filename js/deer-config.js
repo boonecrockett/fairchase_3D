@@ -14,8 +14,8 @@ export const deerConfig = {
     vitals: {
         name: 'Right Lung',
         size: { x: 0.04, y: 0.19, z: 0.13 },
-        offset: { x: -0.03, y: 0.71, z: 0.3 },
-        rotation: { x: 0.7, y: 0, z: 0 },
+        offset: { x: -0.02, y: 0.71, z: 0.3 },
+        rotation: { x: -0.6, y: 0, z: 0 },
         debugColor: 0xFF0000,
     },
 
@@ -42,9 +42,9 @@ export const deerConfig = {
 
     neck: {
         name: 'Neck',
-        size: { x: 0.06, y: 0.08, z: 0.25 },
-        offset: { x: 0.01, y: 0.86, z: 0.5 },
-        rotation: { x: -0.7, y: 0, z: 0 },
+        size: { x: 0.06, y: 0.08, z: 0.29 },
+        offset: { x: 0.01, y: 0.85, z: 0.48 },
+        rotation: { x: -0.73, y: 0, z: 0 },
         debugColor: 0x00FFFF,
     },
 
@@ -103,14 +103,14 @@ export const deerConfig = {
         size: { x: 0.07, y: 0.32, z: 0.09 },
         offset: { x: 0.01, y: 0.74, z: 0.48 },
         rotation: { x: 0.84, y: 0, z: 0 },
-        debugColor: 0x295603,
+        debugColor: 0xED8476,
     },
 
     leftLung: {
         name: 'Left Lung',
         size: { x: 0.04, y: 0.19, z: 0.13 },
         offset: { x: 0.03, y: 0.71, z: 0.3 },
-        rotation: { x: 0.7, y: 0, z: 0 },
+        rotation: { x: -0.65, y: 0, z: 0 },
         debugColor: 0xF417CC,
     },
 
