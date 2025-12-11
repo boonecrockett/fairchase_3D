@@ -385,8 +385,9 @@ export function shoot() {
 
         // Determine if this is an instant kill shot (vital zones)
         // Shot angle affects kill probability - poor angles reduce instant kill chance
-        const baseInstantKill = ['vitals', 'brain', 'spine'].includes(hitName);
-        const isNeckShot = hitName === 'neck';
+        // Note: Single lung shots are NOT instant kills - only heart, brain, spine, and double lung
+        const baseInstantKill = ['heart', 'brain', 'spine', 'doubleLung'].includes(hitName);
+        const isNeckShot = hitName === 'neck' || hitName === 'throat';
         const neckIsFatal = isNeckShot && Math.random() < 0.5;
         
         // Kill probability based on shot angle (per ethical hunting guidelines)
@@ -415,12 +416,14 @@ export function shoot() {
             // Clean kill - award full points based on hit zone
             const killScores = {
                 'brain': -5,   // High risk shot - penalized
-                'vitals': 50,  // Standard clean kill
+                'heart': 50,   // Clean kill
+                'doubleLung': 50, // Clean kill - both lungs hit
                 'spine': -5    // Risky shot - penalized
             };
             const killMessages = {
                 'brain': 'Head Shot - Risky Shot',
-                'vitals': 'Vital Shot - Clean Kill',
+                'heart': 'Heart Shot - Clean Kill',
+                'doubleLung': 'Double Lung Shot - Clean Kill',
                 'spine': 'Spine Shot - Risky Shot'
             };
             

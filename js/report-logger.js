@@ -218,10 +218,15 @@ export function generateCurrentReport() {
             'gut': 'Gut Shot', 
             'rear': 'Rear Shot', 
             'neck': 'Neck Shot',
+            'throat': 'Throat Shot',
             'brain': 'Head Shot',
             'spine': 'Spine Shot',
             'shoulderLeft': 'Shoulder', 
             'shoulderRight': 'Shoulder',
+            'semiVitalBack': 'Semi-Vital Back',
+            'semiVitalGut': 'Semi-Vital Gut',
+            'liver': 'Liver Shot',
+            'doubleLung': 'Double Lung Shot',
             'frontal-angle': 'Frontal Shot Angle',
             'rear-angle': 'Rear Shot Angle',
             'quartering-toward-angle': 'Quartering-Toward Angle',
@@ -229,10 +234,23 @@ export function generateCurrentReport() {
             'pushed-wounded': 'Pushed Wounded Deer',
             'after-hours-shot': 'Shot After Hours'
         };
+        
+        // Consolidate repeated penalties (e.g., pushed-wounded can occur many times)
+        const consolidatedPenalties = {};
         gameContext.badShotPenalties.forEach(shot => {
-            const name = shot.description || shotNames[shot.hitZone] || shot.hitZone;
-            penaltyItems.push({ name: name, value: shot.penalty });
-            totalPenalties += shot.penalty;
+            const key = shot.hitZone || shot.description || 'unknown';
+            if (!consolidatedPenalties[key]) {
+                consolidatedPenalties[key] = { count: 0, totalPenalty: 0, name: shot.description || shotNames[key] || key };
+            }
+            consolidatedPenalties[key].count++;
+            consolidatedPenalties[key].totalPenalty += shot.penalty;
+        });
+        
+        // Add consolidated penalties to report
+        Object.values(consolidatedPenalties).forEach(penalty => {
+            const displayName = penalty.count > 1 ? `${penalty.name} (${penalty.count}x)` : penalty.name;
+            penaltyItems.push({ name: displayName, value: penalty.totalPenalty });
+            totalPenalties += penalty.totalPenalty;
         });
     }
     

@@ -28,80 +28,16 @@ class CollisionSystem {
         }
 
         // Create hitbox meshes for each hit zone using current config
-        const hitZones = ['vitals', 'gut', 'rear', 'brain', 'spine', 'neck', 'shoulderLeft', 'shoulderRight'];
+        const hitZones = ['vitals', 'gut', 'rear', 'brain', 'spine', 'neck', 'shoulderLeft', 'shoulderRight', 'heart', 'semiVitalBack', 'liver', 'semiVitalGut', 'throat', 'leftLung'];
         const hitboxes = {};
         
         hitZones.forEach(zoneName => {
             const config = deerConfig[zoneName];
             if (!config) return;
 
-            // --- Hitbox Adjustments ---
-            let size = { ...config.size };
-            let offset = { ...config.offset };
-
-            // --- Base Scaling ---
-            let scale = 1.0;
-            if (zoneName === 'brain') {
-                // All brain scaling requests combined: 1.1 * 0.95 * 0.80 * 0.90 * 0.90
-                scale = 0.67716;
-            } else if (zoneName === 'vitals') {
-                // Vitals reduced by 25% for more challenging shots
-                // Base 1.21 * 0.75 = 0.9075
-                scale = 0.9075;
-            } else {
-                // All other boxes scaling requests combined: 1.1 * 1.1
-                scale = 1.21;
-            }
-            size.x *= scale;
-            size.y *= scale;
-            size.z *= scale;
-
-            // --- Per-Zone Dimension & Position Adjustments ---
-            if (['vitals', 'gut', 'rear'].includes(zoneName)) {
-                size.y *= 1.25; // Increase vertical by 25%
-            }
-
-            if (zoneName === 'vitals') {
-                size.z *= 1.20; // Increase depth by 20%
-            }
-
-            if (zoneName === 'gut') {
-                const originalZ = size.z;
-                size.z *= 1.50; // Extend rearward by 50%
-                offset.z -= (size.z - originalZ) / 2; // Adjust position for extension
-            }
-
-            if (zoneName === 'brain') {
-                // Move rearward by 20% of its final depth
-                offset.z -= size.z * 0.20;
-            }
-
-            // --- Final Y-Offset Calculation ---
-            if (zoneName === 'spine') {
-                // Position spine on top of the vitals box.
-                // First, calculate the final dimensions and offset of the vitals box.
-                const vitalsConfig = deerConfig['vitals'];
-                let vitalsSize = { ...vitalsConfig.size };
-                let vitalsOffset = { ...vitalsConfig.offset };
-                const vitalsScale = 1.21; // Vitals base scale
-
-                vitalsSize.x *= vitalsScale;
-                vitalsSize.y *= vitalsScale;
-                vitalsSize.z *= vitalsScale;
-                vitalsSize.y *= 1.25; // Vitals vertical increase
-                vitalsSize.z *= 1.20; // Vitals depth increase
-
-                // Vitals moves down by 40% of its final height (20% + 20%)
-                vitalsOffset.y -= vitalsSize.y * 0.40;
-
-                // Spine's center is vitals' top + half of spine's height
-                const spineHeight = size.y;
-                offset.y = vitalsOffset.y + (vitalsSize.y / 2) + (spineHeight / 2);
-
-            } else if (zoneName !== 'brain') {
-                // Body hitboxes move down by 40% of their final height (20% + 20%)
-                offset.y -= size.y * 0.40;
-            }
+            // Use exact values from config (calibrated in hitbox studio)
+            const size = { ...config.size };
+            const offset = { ...config.offset };
 
             const geometry = new THREE.BoxGeometry(
                 size.x,
@@ -109,20 +45,11 @@ class CollisionSystem {
                 size.z
             );
             
-            // Debug colors for each zone
-            const debugColors = {
-                vitals: 0xFF0000,    // Bright red
-                gut: 0x00FF00,       // Bright green  
-                rear: 0x0000FF,      // Bright blue
-                brain: 0xFFFF00,     // Bright yellow
-                spine: 0xFF00FF,     // Magenta
-                neck: 0x00FFFF,      // Cyan
-                shoulderLeft: 0xFFA500,  // Orange
-                shoulderRight: 0xFFA500  // Orange
-            };
+            // Use debug color from config
+            const debugColor = config.debugColor || 0xFFFFFF;
             
             const material = new THREE.MeshBasicMaterial({
-                color: debugColors[zoneName] || 0xFFFFFF,
+                color: debugColor,
                 wireframe: true,
                 transparent: true, // Enable transparency for opacity
                 opacity: 0.7 // Semi-transparent for better visibility
@@ -191,8 +118,8 @@ class CollisionSystem {
             intersections.sort((a, b) => a.distance - b.distance);
             
             // Conservative hit zone selection: trust the closest intersection unless there's a compelling reason not to
-            const vitalZones = ['brain', 'vitals'];
-            const bodyZones = ['gut', 'rear', 'spine'];
+            const vitalZones = ['brain', 'vitals', 'heart', 'leftLung', 'liver', 'throat'];
+            const bodyZones = ['gut', 'rear', 'spine', 'semiVitalBack', 'semiVitalGut', 'neck', 'shoulderLeft', 'shoulderRight'];
             
             let selectedIntersection = intersections[0]; // Default to closest
             
@@ -214,7 +141,17 @@ class CollisionSystem {
             }
             
             const hitbox = selectedIntersection.object;
-            const hitZone = hitbox.userData.hitZone || 'body';
+            let hitZone = hitbox.userData.hitZone || 'body';
+            
+            // Check for double lung shot - bullet passes through both lungs
+            const hitZones = intersections.map(i => i.object.userData.hitZone);
+            const hasRightLung = hitZones.includes('vitals');
+            const hasLeftLung = hitZones.includes('leftLung');
+            const isDoubleLung = hasRightLung && hasLeftLung;
+            
+            if (isDoubleLung) {
+                hitZone = 'doubleLung';
+            }
             
             return {
                 hit: true,
@@ -229,7 +166,8 @@ class CollisionSystem {
                     y: selectedIntersection.face.normal.y,
                     z: selectedIntersection.face.normal.z
                 },
-                distance: selectedIntersection.distance
+                distance: selectedIntersection.distance,
+                isDoubleLung: isDoubleLung
             };
         }
 

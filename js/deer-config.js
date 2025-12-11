@@ -12,52 +12,106 @@ export const deerConfig = {
     worldBoundaryMargin: 50, // Increased from 20 to 50 for more room near boundaries
 
     vitals: {
-        size: { x: 0.20, y: 0.16, z: 0.28 }, // Heart/lung area - front chest to behind shoulder
-        offset: { x: 0, y: 0.72, z: 0.28 }, // Moved forward so back edge (0.14) doesn't overlap gut front (0.13)
-        debugColor: 0xFF0000, // Red color for vitals hitbox
-    },
-
-    brain: {
-        size: { x: 0.12, y: 0.12, z: 0.12 }, // Increased for reliable hit detection
-        offset: { x: 0, y: 0.958, z: 0.65 }, // Positioned in head area
-        debugColor: 0xFFFF00, // Yellow color for brain hitbox
+        name: 'Right Lung',
+        size: { x: 0.04, y: 0.19, z: 0.13 },
+        offset: { x: -0.03, y: 0.71, z: 0.3 },
+        rotation: { x: 0.7, y: 0, z: 0 },
+        debugColor: 0xFF0000,
     },
 
     gut: {
-        size: { x: 0.20, y: 0.16, z: 0.16 }, // Increased for reliable hit detection
-        offset: { x: 0, y: 0.72, z: -0.08 }, // Moved back to avoid overlap with vitals (back edge at z: 0.0)
-        debugColor: 0x00FF00, // Green color for gut hitbox
+        name: 'Gut',
+        size: { x: 0.24, y: 0.14, z: 0.23 },
+        offset: { x: 0, y: 0.66, z: -0.02 },
+        debugColor: 0x00FF00,
     },
 
     rear: {
-        size: { x: 0.20, y: 0.16, z: 0.168 }, // Extended backward 20% for reliable hit detection
-        offset: { x: 0, y: 0.8, z: -0.264 }, // Positioned further back in hindquarter area
-        debugColor: 0x0000FF, // Blue color for rear hitbox
+        name: 'Rear',
+        size: { x: 0.2, y: 0.22, z: 0.21 },
+        offset: { x: 0, y: 0.7, z: -0.25 },
+        debugColor: 0x0000FF,
     },
 
     spine: {
-        size: { x: 0.05094, y: 0.10152, z: 0.6 }, // Width and height increased by 20%, doubled, then increased 50% more
-        offset: { x: 0, y: 0.84784, z: 0.1 }, // Moved up further to accommodate larger spine hitbox
-        debugColor: 0xFF00FF, // Magenta color for spine hitbox
+        name: 'Spine',
+        size: { x: 0.02547, y: 0.04, z: 0.6 },
+        offset: { x: 0, y: 0.84, z: 0.1 },
+        debugColor: 0xFF00FF,
     },
 
     neck: {
-        size: { x: 0.09, y: 0.1818, z: 0.1 }, // Reduced width and height by 10%
-        offset: { x: 0, y: 0.93818, z: 0.58 }, // Moved up additional 10% of height vertically
-        rotation: { x: 0.943, y: 0, z: 0 }, // Tilted up 30 degrees total (~54 deg) - added 10 more degrees
-        debugColor: 0x00FFFF, // Cyan for neck hitbox
+        name: 'Neck',
+        size: { x: 0.06, y: 0.08, z: 0.25 },
+        offset: { x: 0.01, y: 0.86, z: 0.5 },
+        rotation: { x: -0.7, y: 0, z: 0 },
+        debugColor: 0x00FFFF,
+    },
+
+    brain: {
+        name: 'Brain',
+        size: { x: 0.09, y: 0.09, z: 0.09 },
+        offset: { x: 0.01, y: 0.98, z: 0.62 },
+        debugColor: 0xFFFF00,
     },
 
     shoulderLeft: {
-        size: { x: 0.06, y: 0.14, z: 0.12 }, // Thin surface hitbox on left side
-        offset: { x: 0.10, y: 0.75, z: 0.32 }, // Left shoulder, forward position
-        debugColor: 0xFFA500, // Orange for shoulder hitbox
+        name: 'Shoulder Left',
+        size: { x: 0.06, y: 0.3, z: 0.12 },
+        offset: { x: 0.1, y: 0.66, z: 0.32 },
+        debugColor: 0xFFA500,
     },
 
     shoulderRight: {
-        size: { x: 0.06, y: 0.14, z: 0.12 }, // Thin surface hitbox on right side
-        offset: { x: -0.10, y: 0.75, z: 0.32 }, // Right shoulder, forward position
-        debugColor: 0xFFA500, // Orange for shoulder hitbox
+        name: 'Shoulder Right',
+        size: { x: 0.06, y: 0.3, z: 0.12 },
+        offset: { x: -0.1, y: 0.66, z: 0.32 },
+        debugColor: 0xFFA500,
+    },
+
+    heart: {
+        name: 'Heart',
+        size: { x: 0.1, y: 0.07, z: 0.07 },
+        offset: { x: 0, y: 0.64, z: 0.23 },
+        debugColor: 0xE98EE1,
+    },
+
+    semiVitalBack: {
+        name: 'Semi Vital Back',
+        size: { x: 0.1, y: 0.1, z: 0.4 },
+        offset: { x: 0, y: 0.78, z: 0.06 },
+        debugColor: 0x27BE63,
+    },
+
+    liver: {
+        name: 'Liver',
+        size: { x: 0.11, y: 0.13, z: 0.09 },
+        offset: { x: 0, y: 0.66, z: 0.15 },
+        rotation: { x: 0, y: 0.04, z: 0 },
+        debugColor: 0xF90B57,
+    },
+
+    semiVitalGut: {
+        name: 'Semi-vital Gut',
+        size: { x: 0.1, y: 0.11, z: 0.59 },
+        offset: { x: 0, y: 0.53, z: 0.04 },
+        debugColor: 0xCBAB5B,
+    },
+
+    throat: {
+        name: 'Throat area',
+        size: { x: 0.07, y: 0.32, z: 0.09 },
+        offset: { x: 0.01, y: 0.74, z: 0.48 },
+        rotation: { x: 0.84, y: 0, z: 0 },
+        debugColor: 0x295603,
+    },
+
+    leftLung: {
+        name: 'Left Lung',
+        size: { x: 0.04, y: 0.19, z: 0.13 },
+        offset: { x: 0.03, y: 0.71, z: 0.3 },
+        rotation: { x: 0.7, y: 0, z: 0 },
+        debugColor: 0xF417CC,
     },
 
     head: {
