@@ -98,6 +98,13 @@ function init() {
 
     gameContext.raycaster = collisionSystem.raycaster;
     gameContext.collisionSystem = collisionSystem;
+    
+    // Read initial hitbox visibility from debug checkbox
+    const showHitboxesCheckbox = document.getElementById('show-hitboxes');
+    if (showHitboxesCheckbox && showHitboxesCheckbox.checked) {
+        collisionSystem.debugMode = true;
+        collisionSystem.updateHitboxVisibility();
+    }
 
     // Setup scene (lights, sky, fog)
     setupScene();

@@ -129,6 +129,64 @@ export async function initUI() {
         testingOptionsPanel.style.display = 'none';
     }
 
+    // Secret Konami Code detection (↑↑↓↓←→←→BC) - only works on mode selection screen
+    const konamiCode = ['ArrowUp', 'ArrowUp', 'ArrowDown', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'ArrowLeft', 'ArrowRight', 'b', 'c'];
+    let konamiIndex = 0;
+    let debugModeEnabled = false;
+    
+    function handleKonamiCode(e) {
+        const modeSelection = document.getElementById('mode-selection');
+        
+        // Only listen when mode selection screen is visible (display: block)
+        // Use getComputedStyle to handle both inline and CSS-based display
+        if (!modeSelection) return;
+        const computedDisplay = window.getComputedStyle(modeSelection).display;
+        if (computedDisplay === 'none') {
+            return;
+        }
+        
+        const expectedKey = konamiCode[konamiIndex];
+        // Use e.code for arrows, e.key (lowercase) for letters
+        const pressedKey = e.code.startsWith('Arrow') ? e.code : e.key.toLowerCase();
+        if (pressedKey === expectedKey) {
+            konamiIndex++;
+            if (konamiIndex === konamiCode.length) {
+                // Konami code completed!
+                konamiIndex = 0;
+                debugModeEnabled = !debugModeEnabled;
+                
+                const panel = document.getElementById('testing-options-panel');
+                if (panel) {
+                    if (debugModeEnabled) {
+                        panel.style.display = 'block';
+                        // Set default: deer spawns near hunter
+                        const spawnNearRadio = document.getElementById('spawn-near');
+                        if (spawnNearRadio) {
+                            spawnNearRadio.checked = true;
+                        }
+                        console.log('🎮 Debug mode enabled');
+                    } else {
+                        panel.style.display = 'none';
+                        // Reset to normal spawn
+                        const spawnNormalRadio = document.getElementById('spawn-normal');
+                        if (spawnNormalRadio) {
+                            spawnNormalRadio.checked = true;
+                        }
+                        console.log('🎮 Debug mode disabled');
+                    }
+                }
+            }
+        } else {
+            konamiIndex = 0;
+            // Check if this key starts the sequence
+            if (e.code === konamiCode[0]) {
+                konamiIndex = 1;
+            }
+        }
+    }
+    
+    document.addEventListener('keydown', handleKonamiCode);
+
     // Handle splash screen and main menu display
     const splashScreen = document.getElementById('splash-screen');
     if (splashScreen && gameContext.mainMenu) {
