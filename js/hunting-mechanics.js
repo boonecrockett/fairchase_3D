@@ -644,7 +644,27 @@ export function shoot() {
     }
     gameContext.shotLog.push(shotResult);
 
-    logEvent("Shot Taken", shotResult.hit ? `Shot hit ${shotResult.hitType} at ${shotDistanceYards} yards` : `Shot missed at ${shotDistanceYards} yards`, {
+    // Human-readable hit zone names for logging
+    const hitZoneNames = {
+        'vitals': 'Right Lung',
+        'leftLung': 'Left Lung',
+        'doubleLung': 'Double Lung',
+        'heart': 'Heart',
+        'brain': 'Brain',
+        'spine': 'Spine',
+        'neck': 'Neck',
+        'throat': 'Throat',
+        'gut': 'Gut',
+        'rear': 'Rear',
+        'liver': 'Liver',
+        'shoulderLeft': 'Left Shoulder',
+        'shoulderRight': 'Right Shoulder',
+        'semiVitalBack': 'Upper Back',
+        'semiVitalGut': 'Lower Abdomen'
+    };
+    const hitZoneDisplay = hitZoneNames[shotResult.hitType] || shotResult.hitType;
+    
+    logEvent("Shot Taken", shotResult.hit ? `Shot hit ${hitZoneDisplay} at ${shotDistanceYards} yards` : `Shot missed at ${shotDistanceYards} yards`, {
         distance: shotDistanceYards,
         moving: wasMoving,
         hit: shotResult.hit
