@@ -60,16 +60,20 @@ export class DeerAnimation {
                 return 'idle'; // Use idle for alert state
                 
             case 'FLEEING':
-                return 'Run';
+                if (isMoving) return 'Run';
+                return 'idle';
                 
             case 'WOUNDED':
                 if (this.deer.stateTimer < 0.5) {
                     // Initial wounded reaction - use Attack animation as impact reaction
                     return 'Attack';
-                } else {
-                    // Use Run for all wounded deer - they're fleeing in panic
+                } else if (isMoving) {
+                    // Use Run for wounded deer that are actively moving
                     // Animation speed will be scaled to match actual movement speed
                     return 'Run';
+                } else {
+                    // Stationary wounded deer (bedded, collapsed) - no leg animation
+                    return 'idle';
                 }
                 
             case 'KILLED':
@@ -237,7 +241,10 @@ export class DeerAnimation {
             }
         }
         
-        if (currentAnim === 'Walk') {
+        // If deer is not moving, stop the animation entirely
+        if (speed < 0.01) {
+            targetTimeScale = 0;
+        } else if (currentAnim === 'Walk') {
             // Walk animation - calibrated to 1.2x base scale
             const baseWalkSpeed = this.config.speeds.wandering; // ~0.98
             targetTimeScale = Math.max(0.4, Math.min(1.8, (speed / baseWalkSpeed) * 1.2));

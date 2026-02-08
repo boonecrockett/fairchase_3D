@@ -86,7 +86,7 @@ export async function initUI() {
     gameContext.scoreValueElement = document.getElementById('score-value');
     gameContext.compassElement = document.getElementById('compass-value');
     gameContext.interactionPromptElement = document.getElementById('interaction-prompt');
-    gameContext.messageElement = document.getElementById('message-container');
+    gameContext.messageElement = document.getElementById('message');
     gameContext.sleepOverlay = document.getElementById('sleep-overlay');
     gameContext.mainMenu = document.getElementById('main-menu-container');
     gameContext.worldSelect = document.getElementById('world-select');
@@ -106,20 +106,13 @@ export async function initUI() {
     gameContext.endOfDayContent = document.getElementById('end-of-day-content');
     gameContext.continueToNextDayButton = document.getElementById('continue-to-next-day-button');
     gameContext.mapCanvas = document.getElementById('map-canvas');
-
-    // UI elements for game controls and indicators
-    gameContext.interactionPromptElement = document.getElementById('interaction-prompt');
     gameContext.scopeElement = document.getElementById('scope');
-    gameContext.crosshairElement = document.getElementById('crosshair');
     gameContext.windDirectionElement = document.getElementById('wind-direction');
     gameContext.windSpeedElement = document.getElementById('wind-speed');
-    gameContext.messageElement = document.getElementById('message');
     gameContext.scoreElement = document.getElementById('score');
-    gameContext.scoreValueElement = document.getElementById('score-value');
     gameContext.dayElement = document.getElementById('day');
     gameContext.dayValueElement = document.getElementById('day-value');
     gameContext.timeElement = document.getElementById('time');
-    gameContext.timeValueElement = document.getElementById('time-value');
     gameContext.weatherElement = document.getElementById('weather');
     gameContext.weatherValueElement = document.getElementById('weather-value');
 
@@ -490,8 +483,8 @@ function advanceToNextDay() {
     gameContext.currentDay++;
     
     // Update clock display
-    if (gameContext.clockValueElement) {
-        gameContext.clockValueElement.textContent = '04:30';
+    if (gameContext.timeValueElement) {
+        gameContext.timeValueElement.textContent = '04:30';
     }
     
     // Show message

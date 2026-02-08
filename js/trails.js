@@ -144,14 +144,14 @@ function getTerrainOnlyHeight(x, z) {
  * @returns {object|null} - Returns the closest tree info if too close, null otherwise
  */
 function getTreeAvoidance(x, z) {
-    if (!gameContext.trees || gameContext.trees.length === 0) {
+    if (!gameContext.trees || !gameContext.trees.children || gameContext.trees.children.length === 0) {
         return null;
     }
     
     let closestTree = null;
     let closestDist = Infinity;
     
-    for (const tree of gameContext.trees) {
+    for (const tree of gameContext.trees.children) {
         const dx = x - tree.position.x;
         const dz = z - tree.position.z;
         const dist = Math.sqrt(dx * dx + dz * dz);

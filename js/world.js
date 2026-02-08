@@ -10,9 +10,12 @@ import { createWaterMaterial } from './water-shader.js';
 // --- Constants for World Generation ---
 const WORLD_PLANE_SEGMENTS = 63; // Number of segments for the terrain plane
 
+// Cached Perlin noise instance (reused across all height queries)
+const perlin = new ImprovedNoise();
+
 // getHeightAt defaults
 const DEFAULT_SINE_COSINE_PARAMS = { freq1: 77.8, amp1: 8, freq2: 40.0, amp2: 4 };
-const DEFAULT_PERLIN_PARAMS = { quality: 1, noiseZ: undefined, amplitudeScale: 1.75, coordinateScale: 0.02 };
+const DEFAULT_PERLIN_PARAMS = { quality: 1, noiseZ: Math.random() * 100, amplitudeScale: 1.75, coordinateScale: 0.02 };
 const PERLIN_NOISE_ITERATIONS = 4;
 const PERLIN_QUALITY_MULTIPLIER = 5;
 const DEFAULT_PERLIN_HEIGHT_MULTIPLIER = 15.0;
@@ -117,10 +120,9 @@ function getHeightAt(x_world_plane, y_world_plane, worldConfig) {
         height += Math.sin(x_world_plane / freq2) * Math.cos(y_world_plane / freq2) * amp2;
         height = height * (terrainConfig.heightMultiplier || DEFAULT_SINE_COSINE_HEIGHT_MULTIPLIER);
     } else { // Default to Perlin noise
-        const perlin = new ImprovedNoise();
         const perlinParams = terrainConfig.perlinParams || DEFAULT_PERLIN_PARAMS;
         const quality = perlinParams.quality;
-        const noiseZ = perlinParams.noiseZ === undefined ? Math.random() * 100 : perlinParams.noiseZ; // Allow specific seed or random
+        const noiseZ = perlinParams.noiseZ !== undefined ? perlinParams.noiseZ : DEFAULT_PERLIN_PARAMS.noiseZ;
         const amplitudeScale = perlinParams.amplitudeScale;
         const coordinateScale = perlinParams.coordinateScale;
         
