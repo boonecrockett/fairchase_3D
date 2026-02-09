@@ -20,7 +20,6 @@ function formatGameTime(gameTime) {
  */
 export function initializeDayReport() {
     gameContext.currentDayEvents = [];
-    console.log('📝 REPORT INIT: Cleared daily events');
     gameContext.currentDayStats = {
         distanceTraveled: 0,
         trackingDistance: 0,
@@ -56,7 +55,6 @@ export function logEvent(eventType, description, data = {}) {
     // Only add to events list if not hidden from report
     // if (!data.hideFromReport) {
         gameContext.currentDayEvents.push(event);
-        console.log('📝 LOG EVENT:', eventType, 'Total events:', gameContext.currentDayEvents.length);
     // }
     
     // Always update statistics regardless of hideFromReport flag

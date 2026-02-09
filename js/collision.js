@@ -17,7 +17,6 @@ class CollisionSystem {
         // Create Three.js raycaster for hit detection
         this.raycaster = new THREE.Raycaster();
         
-        console.log('Collision system initialized');
     }
 
     // Create debug hitboxes that ARE the actual collision hitboxes
@@ -118,9 +117,6 @@ class CollisionSystem {
             intersections.sort((a, b) => a.distance - b.distance);
             
             // Conservative hit zone selection: trust the closest intersection unless there's a compelling reason not to
-            const vitalZones = ['brain', 'vitals', 'heart', 'leftLung', 'liver', 'throat'];
-            const bodyZones = ['gut', 'rear', 'spine', 'semiVitalBack', 'semiVitalGut', 'neck', 'shoulderLeft', 'shoulderRight'];
-            
             let selectedIntersection = intersections[0]; // Default to closest
             
             const closestDistance = intersections[0].distance;

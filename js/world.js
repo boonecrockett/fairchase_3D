@@ -571,14 +571,12 @@ export async function createBushes(worldConfig) {
  * @returns {Promise} Resolves when grass is loaded and placed
  */
 export function createGrass(worldConfig) {
-    console.log('🌿 GRASS: Starting grass creation...');
     const loader = new GLTFLoader();
     
     return new Promise((resolve, reject) => {
         // Delay to ensure terrain is fully ready
         setTimeout(() => {
             loader.load('assets/landscapes/redgrass1.glb', (gltf) => {
-                console.log('🌿 GRASS: Model loaded successfully');
                 
                 let grassGeometry = null;
                 let grassMaterial = null;
@@ -607,10 +605,6 @@ export function createGrass(worldConfig) {
                 }
             });
             
-            // Log model bounds to understand its origin
-            if (modelBoundingBox) {
-                console.log('🌿 GRASS: Model bounding box:', modelBoundingBox.min.y, 'to', modelBoundingBox.max.y);
-            }
 
             if (!grassGeometry || !grassMaterial) {
                 console.warn('No mesh found in grass model');
@@ -625,7 +619,6 @@ export function createGrass(worldConfig) {
                 return;
             }
             
-            console.log('🌿 GRASS: Terrain ready, proceeding with placement... v2');
 
             const vegetationConfig = worldConfig?.environment?.vegetation || {};
             const grassDensity = vegetationConfig.grassDensity || 0.8;
@@ -646,23 +639,7 @@ export function createGrass(worldConfig) {
             // Ensure terrain world matrix is updated before raycasting
             gameContext.terrain.updateMatrixWorld(true);
             
-            // Test terrain height at multiple points to verify raycasting works
-            const testHeight1 = gameContext.getHeightAt(0, 0);
-            const testHeight2 = gameContext.getHeightAt(100, 0);
-            const testHeight3 = gameContext.getHeightAt(-100, 0);
-            const testHeight4 = gameContext.getHeightAt(0, 100);
-            console.log('🌿 GRASS: Test heights - origin:', testHeight1.toFixed(2), 'x+100:', testHeight2.toFixed(2), 'x-100:', testHeight3.toFixed(2), 'z+100:', testHeight4.toFixed(2));
-            
-            // Debug: Check if water body exists and log its position
-            if (gameContext.waterBodies && gameContext.waterBodies.length > 0) {
-                const water = gameContext.waterBodies[0];
-                console.log('🌿 GRASS: Water body at:', water.position.x.toFixed(2), water.position.y.toFixed(2), water.position.z.toFixed(2));
-                // Test height at water center
-                const waterCenterHeight = gameContext.getHeightAt(water.position.x, water.position.z);
-                console.log('🌿 GRASS: Terrain height at water center:', waterCenterHeight.toFixed(2), 'Water Y:', water.position.y.toFixed(2));
-            }
-            
-            // Track min/max heights for debugging
+            // Track min/max heights for height range validation
             let minHeight = Infinity, maxHeight = -Infinity;
             let sampleCount = 0;
             
@@ -681,7 +658,9 @@ export function createGrass(worldConfig) {
                 let isSubmerged = false;
                 if (gameContext.waterBodies) {
                     for (const water of gameContext.waterBodies) {
-                        const dist = new THREE.Vector2(clusterCenterX - water.position.x, clusterCenterZ - water.position.z).length();
+                        const dwx = clusterCenterX - water.position.x;
+                        const dwz = clusterCenterZ - water.position.z;
+                        const dist = Math.sqrt(dwx * dwx + dwz * dwz);
                         const waterRadius = water.userData.config ? (water.userData.config.size / 2) : 50;
                         // Skip if within water radius OR within 10 units of water edge (buffer zone for sloping banks)
                         const bufferZone = 10;
@@ -694,7 +673,9 @@ export function createGrass(worldConfig) {
                 if (isSubmerged) continue;
                 
                 // Skip near player spawn
-                if (Math.sqrt(clusterCenterX * clusterCenterX + (clusterCenterZ - 10) ** 2) < 10) continue;
+                const spawnDx = clusterCenterX - INITIAL_PLAYER_X;
+                const spawnDz = clusterCenterZ - INITIAL_PLAYER_Z;
+                if (Math.sqrt(spawnDx * spawnDx + spawnDz * spawnDz) < 10) continue;
                 
                 const plantsInCluster = 40 + Math.floor(Math.random() * 11);
                 const clusterRadius = 1.5 + Math.random() * 2;
@@ -719,7 +700,9 @@ export function createGrass(worldConfig) {
                     let grassSubmerged = false;
                     if (gameContext.waterBodies) {
                         for (const water of gameContext.waterBodies) {
-                            const dist = new THREE.Vector2(grassX - water.position.x, grassZ - water.position.z).length();
+                            const gwx = grassX - water.position.x;
+                            const gwz = grassZ - water.position.z;
+                            const dist = Math.sqrt(gwx * gwx + gwz * gwz);
                             const waterRadius = water.userData.config ? (water.userData.config.size / 2) : 50;
                             // Skip grass within 10 units of water edge
                             if (dist < waterRadius + 10) {
@@ -755,15 +738,12 @@ export function createGrass(worldConfig) {
             
             // Log height range and offset used for grass placement
             const sampleOffset = modelBoundingBox ? modelBoundingBox.min.z * 0.15 : 0;
-            console.log(`🌿 GRASS: Height range - min: ${minHeight.toFixed(2)}, max: ${maxHeight.toFixed(2)}, samples: ${sampleCount}`);
-            console.log(`🌿 GRASS: Model min.z: ${modelBoundingBox?.min.z}, yOffset at scale 0.15: ${sampleOffset.toFixed(2)}`);
             
             instancedMesh.count = instanceIndex;
             instancedMesh.instanceMatrix.needsUpdate = true; // Force matrix update
             gameContext.grass = instancedMesh;
             gameContext.grassClusterPositions = grassClusterPositions;
             gameContext.scene.add(instancedMesh);
-            console.log(`🌿 GRASS: Created ${instanceIndex} grass instances in ${grassClusterPositions.length} clusters`);
             
             resolve(); // Grass loading complete
         }, 
@@ -851,8 +831,7 @@ export function createShaderGrass(worldConfig) {
  * @param {object} worldConfig - The world configuration
  */
 export function createGroundCover(worldConfig) {
-    console.log('🌱 GROUND COVER: Starting ground cover creation...');
-    
+    return new Promise((resolve) => {
     // Use setTimeout to avoid blocking the main thread
     setTimeout(() => {
         const worldSize = worldConfig?.terrain?.size || DEFAULT_WORLD_SIZE;
@@ -905,7 +884,9 @@ export function createGroundCover(worldConfig) {
             if (inWater) continue;
             
             // Skip near player spawn
-            if (Math.sqrt(x * x + (z - 10) ** 2) < 5) continue;
+            const spDx = x - INITIAL_PLAYER_X;
+            const spDz = z - INITIAL_PLAYER_Z;
+            if (Math.sqrt(spDx * spDx + spDz * spDz) < 5) continue;
             
             // Random scale and rotation for natural variety
             const scale = 0.8 + Math.random() * 0.8; // 0.8-1.6 scale
@@ -926,8 +907,9 @@ export function createGroundCover(worldConfig) {
         gameContext.groundCover = instancedGrass;
         gameContext.scene.add(instancedGrass);
         
-        console.log(`🌱 GROUND COVER: Created ${instanceIndex} grass blades`);
+        resolve();
     }, 100); // Delay to let other initialization complete first
+    });
 }
 
 /**

@@ -66,7 +66,6 @@ export class Animal {
             });
             
             // Log available animations for debugging
-            console.log(`🦌 ${this.config.name} animations:`, Object.keys(this.animations));
 
             // Set the loaded model as the new model.
             this.model = gltf.scene;
@@ -202,8 +201,7 @@ export class Animal {
             this.model.lookAt(center);
         }
 
-        // Update position based on terrain height
-        this.model.position.y = gameContext.getHeightAt(this.model.position.x, this.model.position.z) + this.config.heightOffset;
+        // Height update is handled by DeerMovement.updateDeerHeight() which also checks water levels
     }
 
     spawn(position, rotationY) {

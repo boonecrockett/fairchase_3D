@@ -821,11 +821,8 @@ function createHumanTrack(movementDirection) {
     
     const trackGeometry = new THREE.PlaneGeometry(HUMAN_TRACK_CONFIG.trackWidth, HUMAN_TRACK_CONFIG.trackLength);
     const track = new THREE.Mesh(trackGeometry, trackMaterial);
-    const terrainHeight = gameContext.getHeightAt(gameContext.player.position.x, gameContext.player.position.z);
-    // Further increase height offset to ensure visibility above terrain
+    const terrainHeight = gameContext.getCachedHeightAt(gameContext.player.position.x, gameContext.player.position.z);
     track.position.set(gameContext.player.position.x, terrainHeight + 0.1, gameContext.player.position.z);
-    const finalY = gameContext.getCachedHeightAt(track.position.x, track.position.z) + 0.1;
-    track.position.y = finalY;
     // Align tracks with player's compass heading
     // Use explicit YXZ order to ensure correct orientation
     track.rotation.order = 'YXZ';

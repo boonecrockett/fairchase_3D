@@ -329,6 +329,9 @@ export function setFoliageWalkSoundVolume(volume) {
 /**
  * Starts the title screen music with user interaction handling for autoplay policies.
  */
+let titleMusicRetries = 0;
+const MAX_TITLE_MUSIC_RETRIES = 20; // 10 seconds max (20 * 500ms)
+
 export function startTitleMusic() {
     // Function to start music after user interaction
     const startMusic = async () => {
@@ -340,8 +343,10 @@ export function startTitleMusic() {
             
             // Wait for the music to load if it's not loaded yet
             if (!gameContext.titleMusic.loaded) {
-                // Try again after a short delay
-                setTimeout(() => startTitleMusic(), 500);
+                if (titleMusicRetries < MAX_TITLE_MUSIC_RETRIES) {
+                    titleMusicRetries++;
+                    setTimeout(() => startTitleMusic(), 500);
+                }
                 return;
             }
             
@@ -491,24 +496,9 @@ export function updateAmbianceForTime(gameTime) {
         crossfadeToEveningAmbiance();
     }
     
-    // Stop cricket sound at midnight (24:00/0:00) and reset evening flag
-    if (gameContext.eveningCrossfadeTriggered && gameTime >= CRICKET_END_TIME) {
-        gameContext.eveningCrossfadeTriggered = false;
-        // Fade out cricket sound smoothly at midnight instead of abrupt stop
-        if (gameContext.cricketSound && gameContext.cricketSound.state === 'started') {
-            gameContext.cricketSound.volume.rampTo(-60, 0.5); // Fade to silence over 500ms
-            setTimeout(() => {
-                if (gameContext.cricketSound.state === 'started') {
-                    gameContext.cricketSound.stop();
-                    // Reset volume for next evening
-                    gameContext.cricketSound.volume.value = CRICKET_SOUND_VOLUME;
-                }
-            }, 500);
-        }
-    }
-    
-    // Also handle the case where time wraps around to 0:00 (midnight)
-    if (gameContext.eveningCrossfadeTriggered && gameTime >= 0.0 && gameTime < 0.1) {
+    // Stop cricket sound at midnight (handles both time >= 24.0 and wrap to 0.0)
+    const isMidnight = gameTime >= CRICKET_END_TIME || (gameTime >= 0.0 && gameTime < 0.1);
+    if (gameContext.eveningCrossfadeTriggered && isMidnight) {
         gameContext.eveningCrossfadeTriggered = false;
         // Fade out cricket sound smoothly at midnight instead of abrupt stop
         if (gameContext.cricketSound && gameContext.cricketSound.state === 'started') {

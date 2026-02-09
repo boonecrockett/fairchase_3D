@@ -107,6 +107,7 @@ export class DeerEffects {
             const age = currentTime - track.creationTime;
             if (age > this.config.tracking.trackFadeDurationS) {
                 gameContext.scene.remove(track.mesh);
+                track.mesh.geometry.dispose();
                 track.mesh.material.dispose();
             } else {
                 // Update opacity and keep in array
@@ -235,8 +236,9 @@ export class DeerEffects {
             const opacity = this.config.tracking.bloodOpacityStart - (age / this.config.tracking.bloodFadeDurationS);
 
             if (opacity <= 0) {
-                // Remove from scene and dispose material
+                // Remove from scene and dispose geometry and material
                 gameContext.scene.remove(drop.mesh);
+                drop.mesh.geometry.dispose();
                 drop.mesh.material.dispose();
             } else {
                 // Update opacity and keep in array
@@ -272,6 +274,7 @@ export class DeerEffects {
             if (gameContext.scene) {
                 gameContext.scene.remove(track.mesh);
             }
+            track.mesh.geometry.dispose();
             track.mesh.material.dispose();
         });
         this.tracks = [];
@@ -281,6 +284,7 @@ export class DeerEffects {
             if (gameContext.scene) {
                 gameContext.scene.remove(drop.mesh);
             }
+            drop.mesh.geometry.dispose();
             drop.mesh.material.dispose();
         });
         this.bloodDrops = [];

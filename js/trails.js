@@ -22,19 +22,13 @@ const TRAIL_CONFIG = {
  * @param {object} worldConfig - World configuration
  */
 export function createTrails(worldConfig) {
-    console.log('🛤️ TRAILS: Starting trail creation...');
-    
     if (!gameContext.waterBodies || gameContext.waterBodies.length === 0) {
-        console.log('🛤️ TRAILS: No water bodies found, skipping trail creation');
         return;
     }
     
     if (!gameContext.getHeightAt) {
-        console.log('🛤️ TRAILS: getHeightAt not available, skipping trail creation');
         return;
     }
-    
-    console.log(`🛤️ TRAILS: Found ${gameContext.waterBodies.length} water bodies`);
     
     const trailsGroup = new THREE.Group();
     trailsGroup.name = 'trails';
@@ -114,7 +108,6 @@ export function createTrails(worldConfig) {
     
     gameContext.trails = trailsGroup;
     gameContext.scene.add(trailsGroup);
-    console.log(`🛤️ TRAILS: Created ${trailsGroup.children.length} trail segments`);
 }
 
 /**
@@ -176,8 +169,6 @@ function generateTrailToTarget(startX, startZ, endX, endZ, worldConfig) {
     const worldSize = worldConfig?.terrain?.size || 500;
     const worldHalfSize = worldSize * 0.45;
     
-    console.log(`🛤️ Trail: start(${startX.toFixed(1)}, ${startZ.toFixed(1)}) -> end(${endX.toFixed(1)}, ${endZ.toFixed(1)}), worldHalfSize=${worldHalfSize}`);
-    
     // Calculate total distance and direction to target
     const totalDist = Math.sqrt((endX - startX) ** 2 + (endZ - startZ) ** 2);
     let distanceTraveled = 0;
@@ -195,7 +186,6 @@ function generateTrailToTarget(startX, startZ, endX, endZ, worldConfig) {
         // Check bounds - use full world size, not reduced
         const fullWorldHalfSize = worldSize * 0.49;
         if (Math.abs(currentX) > fullWorldHalfSize || Math.abs(currentZ) > fullWorldHalfSize) {
-            console.log(`🛤️ Trail stopped at bounds: (${currentX.toFixed(1)}, ${currentZ.toFixed(1)})`);
             break;
         }
         
@@ -281,7 +271,6 @@ function generateTrailToTarget(startX, startZ, endX, endZ, worldConfig) {
         distanceTraveled += TRAIL_CONFIG.segmentLength;
     }
     
-    console.log(`🛤️ Trail generated: ${points.length} points, iterations: ${iterations}`);
     return points;
 }
 

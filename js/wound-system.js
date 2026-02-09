@@ -395,11 +395,10 @@ export class WoundState {
                 
                 if (gameContext.bushes && gameContext.bushes.children) {
                     for (const bush of gameContext.bushes.children) {
-                        const bushDist = Math.sqrt(
-                            (bush.position.x - testX) ** 2 + 
-                            (bush.position.z - testZ) ** 2
-                        );
-                        if (bushDist < densityRadius) {
+                        const dx = bush.position.x - testX;
+                        const dz = bush.position.z - testZ;
+                        if (Math.abs(dx) + Math.abs(dz) > densityRadius * 1.5) continue;
+                        if (dx * dx + dz * dz < densityRadius * densityRadius) {
                             density += 2; // Bushes provide good cover
                         }
                     }
@@ -407,11 +406,11 @@ export class WoundState {
                 
                 if (gameContext.trees && gameContext.trees.children) {
                     for (const tree of gameContext.trees.children) {
-                        const treeDist = Math.sqrt(
-                            (tree.position.x - testX) ** 2 + 
-                            (tree.position.z - testZ) ** 2
-                        );
-                        if (treeDist < densityRadius && treeDist > 3) { // Not too close to trunk
+                        const dx = tree.position.x - testX;
+                        const dz = tree.position.z - testZ;
+                        if (Math.abs(dx) + Math.abs(dz) > densityRadius * 1.5) continue;
+                        const distSq = dx * dx + dz * dz;
+                        if (distSq < densityRadius * densityRadius && distSq > 9) { // Not too close to trunk (3²=9)
                             density += 1; // Trees provide some cover
                         }
                     }
