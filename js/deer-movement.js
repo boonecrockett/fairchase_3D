@@ -46,6 +46,7 @@ export class DeerMovement {
         // Reusable objects for hot-path methods (avoid per-frame allocations)
         this._tempVec3 = new THREE.Vector3();
         this._tempVec3b = new THREE.Vector3();
+        this._originalPos = new THREE.Vector3(); // Dedicated for moveWithCollisionDetection
         this._tempQuat = new THREE.Quaternion();
         this._upAxis = new THREE.Vector3(0, 1, 0);
     }
@@ -244,16 +245,14 @@ export class DeerMovement {
             this.deer.model.quaternion.slerp(this._tempQuat, 0.08);
         }
         
-        // Store original position before any movement
-        const originalPosition = this.deer.model.position.clone();
+        // Store original position before any movement (dedicated vector)
+        this._originalPos.copy(this.deer.model.position);
         
         // Move deer forward in its current direction
         this.deer.model.translateZ(speed);
         
-        // Get new position after movement
-        const newPosition = this.deer.model.position.clone();
-        
-        // Check for tree collision at new position
+        // Check for tree collision at new position (use actual position, no clone needed)
+        const newPosition = this.deer.model.position;
         const treeCollision = gameContext.checkTreeCollision(newPosition, 0.7);
         
         // Check for water collision - deer should not walk into water
@@ -262,7 +261,7 @@ export class DeerMovement {
         
         // Additional check: prevent deer from walking on terrain that's below nearby water level
         if (!inWater && gameContext.waterBodies && gameContext.waterBodies.length > 0) {
-            const terrainAtNewPos = gameContext.getHeightAt(newPosition.x, newPosition.z);
+            const terrainAtNewPos = gameContext.getCachedHeightAt(newPosition.x, newPosition.z);
             for (const waterBody of gameContext.waterBodies) {
                 const waterX = waterBody.position.x;
                 const waterZ = waterBody.position.z;
@@ -301,7 +300,7 @@ export class DeerMovement {
         // Simple movement validation - if any constraint is violated, revert to original position
         if (treeCollision || outOfBounds || inWater) {
             // Revert to original position
-            this.deer.model.position.copy(originalPosition);
+            this.deer.model.position.copy(this._originalPos);
             
             // Reset speed since we didn't actually move
             this.currentSpeed = 0;
@@ -313,7 +312,7 @@ export class DeerMovement {
             
             // Smooth obstacle avoidance - find a clear direction
             if (treeCollision || inWater) {
-                this.handleSmoothObstacleAvoidance(originalPosition, treeCollision, inWater);
+                this.handleSmoothObstacleAvoidance(this._originalPos, treeCollision, inWater);
                 
                 // If multiple collisions in quick succession, force a longer avoidance
                 if (this.collisionCount >= 3) {
@@ -332,8 +331,7 @@ export class DeerMovement {
         this.updateDeerHeight();
         
         // Final safety check - if somehow still in collision, force separation
-        const finalPosition = this.deer.model.position.clone();
-        if (gameContext.checkTreeCollision(finalPosition, 0.7)) {
+        if (gameContext.checkTreeCollision(this.deer.model.position, 0.7)) {
             // Emergency: push deer away from nearest tree (optimized search)
             let nearestTree = null;
             let nearestDistance = Infinity;
@@ -366,13 +364,12 @@ export class DeerMovement {
             }
             
             if (nearestTree) {
-                // Push deer directly away from the nearest tree
-                const awayFromTree = new THREE.Vector3()
-                    .subVectors(this.deer.model.position, nearestTree.position)
+                // Push deer directly away from the nearest tree (reuse temp vector)
+                this._tempVec3b.subVectors(this.deer.model.position, nearestTree.position)
                     .normalize()
                     .multiplyScalar(1.5); // Push 1.5 units away
                 
-                this.deer.model.position.copy(nearestTree.position).add(awayFromTree);
+                this.deer.model.position.copy(nearestTree.position).add(this._tempVec3b);
                 this.updateDeerHeight(); // Update height after position change
             }
         }
@@ -390,7 +387,7 @@ export class DeerMovement {
         if (!this.deer || !this.deer.model) return;
         
         const position = this.deer.model.position;
-        const terrainHeight = gameContext.getHeightAt(position.x, position.z);
+        const terrainHeight = gameContext.getCachedHeightAt(position.x, position.z);
         
         // Start with terrain height plus offset
         let targetHeight = terrainHeight + this.deer.config.heightOffset;

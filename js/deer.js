@@ -564,13 +564,15 @@ export class Deer extends Animal {
         
         const currentTime = gameContext.clock.getElapsedTime();
         const isKneeling = gameContext.playerControls?.isKneeling || false;
-        let distanceToPlayer = this.model.position.distanceTo(gameContext.player.position);
-
+        const actualDistance = this.model.position.distanceTo(gameContext.player.position);
+        
+        // Effective distance is used for detection range only, NOT for ray geometry
+        let effectiveDistance = actualDistance;
         if (isKneeling) {
-            distanceToPlayer *= 0.5;
+            effectiveDistance *= 0.5;
         }
         
-        if (distanceToPlayer > 200) {
+        if (effectiveDistance > 200) {
             this.cachedVisibility = false;
             this.lastVisibilityCheck = currentTime;
             return false;
@@ -599,39 +601,26 @@ export class Deer extends Animal {
         }
         
         // Very close range - always visible (can't hide when deer is right next to you)
-        if (distanceToPlayer < 8) {
+        if (effectiveDistance < 8) {
             this.cachedVisibility = true;
             this.lastVisibilityCheck = currentTime;
             return true;
         }
         
-        // Use reusable vector to avoid allocation
-        _playerPos.copy(gameContext.player.position);
-        
-        // Only use position-based cache if player hasn't moved much AND we have a valid cached value
-        if (this.lastPlayerPositionForVisibility && this.cachedVisibility !== undefined) {
-            const playerMovedDistance = this.lastPlayerPositionForVisibility.distanceTo(_playerPos);
-            if (playerMovedDistance < 2.0) {
-                this.lastVisibilityCheck = currentTime;
-                return this.cachedVisibility;
-            }
-        }
-        
-        // Store last position (need to clone here since we're storing it)
-        if (!this.lastPlayerPositionForVisibility) {
-            this.lastPlayerPositionForVisibility = new THREE.Vector3();
-        }
-        this.lastPlayerPositionForVisibility.copy(_playerPos);
-        
-        // Use reusable vectors for raycast setup
+        // Set up eye-level positions for ray geometry
         _deerPos.copy(this.model.position);
-        _deerPos.y += 1.5;
-        _playerPos.y += isKneeling ? 0.9 : 1.7;
+        _deerPos.y += 1.5; // Deer eye height
         
-        _direction.subVectors(_playerPos, _deerPos).normalize();
+        _playerPos.copy(gameContext.player.position);
+        _playerPos.y += isKneeling ? 0.9 : 1.7; // Player eye height
+        
+        // Direction and actual eye-to-eye distance for correct ray sampling
+        _direction.subVectors(_playerPos, _deerPos);
+        const eyeToEyeDistance = _direction.length();
+        _direction.normalize();
         
         gameContext.raycaster.set(_deerPos, _direction);
-        gameContext.raycaster.far = distanceToPlayer;
+        gameContext.raycaster.far = eyeToEyeDistance;
         
         const nearbyObjects = [];
         const MAX_OBJECTS_TO_CHECK = 16;
@@ -640,7 +629,7 @@ export class Deer extends Animal {
         if (gameContext.trees && gameContext.trees.children) {
             for (const tree of gameContext.trees.children) {
                 const treeDistance = _deerPos.distanceTo(tree.position);
-                if (treeDistance < distanceToPlayer + 3) {
+                if (treeDistance < eyeToEyeDistance + 3) {
                     nearbyObjects.push(tree);
                     if (nearbyObjects.length >= MAX_OBJECTS_TO_CHECK) break;
                 }
@@ -651,7 +640,7 @@ export class Deer extends Animal {
         if (nearbyObjects.length < MAX_OBJECTS_TO_CHECK && gameContext.bushes && gameContext.bushes.children) {
             for (const bush of gameContext.bushes.children) {
                 const bushDistance = _deerPos.distanceTo(bush.position);
-                if (bushDistance < distanceToPlayer + 3) {
+                if (bushDistance < eyeToEyeDistance + 3) {
                     nearbyObjects.push(bush);
                     if (nearbyObjects.length >= MAX_OBJECTS_TO_CHECK) break;
                 }
@@ -659,19 +648,17 @@ export class Deer extends Animal {
         }
         
         const intersects = gameContext.raycaster.intersectObjects(nearbyObjects, true);
-        const blockingIntersects = intersects.filter(intersect => intersect.distance < distanceToPlayer - 0.5);
+        const blockingIntersects = intersects.filter(intersect => intersect.distance < eyeToEyeDistance - 0.5);
         
         // Always check terrain occlusion (hills between deer and player)
-        // Sample every ~10 units along the ray for reliable hill detection
+        // Interpolate between deer eye and player eye positions using fractional t
         let terrainBlocked = false;
-        const rayLength = distanceToPlayer;
-        const numSamples = Math.max(4, Math.ceil(rayLength / 10));
-        const stepSize = rayLength / (numSamples + 1);
-        for (let i = 1; i <= numSamples; i++) {
-            const t = i * stepSize;
-            const checkX = _deerPos.x + _direction.x * t;
-            const checkZ = _deerPos.z + _direction.z * t;
-            const rayY = _deerPos.y + _direction.y * t;
+        const numSamples = Math.max(6, Math.ceil(actualDistance / 8));
+        for (let i = 1; i < numSamples; i++) {
+            const t = i / numSamples; // 0..1 fraction along the ray
+            const checkX = _deerPos.x + (_playerPos.x - _deerPos.x) * t;
+            const checkZ = _deerPos.z + (_playerPos.z - _deerPos.z) * t;
+            const rayY = _deerPos.y + (_playerPos.y - _deerPos.y) * t;
             const terrainHeight = gameContext.getCachedHeightAt(checkX, checkZ);
             if (terrainHeight > rayY + 0.3) {
                 terrainBlocked = true;
@@ -688,13 +675,13 @@ export class Deer extends Animal {
         
         // Check for backdrop cover (bushes/grass behind the player from deer's view)
         // This makes the player's silhouette harder to see
-        const hasBackdropCover = this.checkBackdropCover(_playerPos, _direction, distanceToPlayer);
+        const hasBackdropCover = this.checkBackdropCover(_playerPos, _direction, actualDistance);
         
         if (hasBackdropCover) {
             // With backdrop cover, effective distance is doubled (harder to see)
             // This means deer needs to be closer to detect the player
-            const effectiveDistance = distanceToPlayer * 2;
-            if (effectiveDistance > this.config.alertDistanceThreshold) {
+            const backdropEffective = effectiveDistance * 2;
+            if (backdropEffective > this.config.alertDistanceThreshold) {
                 this.cachedVisibility = false;
                 this.lastVisibilityCheck = currentTime;
                 return false;

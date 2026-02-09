@@ -99,7 +99,7 @@ export const gameContext = {
     // Height query caching system
     heightCache: new Map(),
     heightCacheMaxSize: 1000,
-    heightCacheGridSize: 2.0, // Cache resolution in world units
+    heightCacheGridSize: 1.0, // Cache resolution in world units
 
     // Game objects
     player: null,
@@ -211,12 +211,18 @@ export const gameContext = {
         return this.raycasterPool.visibility;
     },
     
+    // Reusable vectors for cached height queries (avoid per-call allocations)
+    _cachedHeightOrigin: new THREE.Vector3(),
+    _cachedHeightDown: new THREE.Vector3(0, -1, 0),
+    
     // Optimized height query with caching
     getCachedHeightAt(x, z) {
         // Create cache key based on grid position
-        const gridX = Math.round(x / this.heightCacheGridSize) * this.heightCacheGridSize;
-        const gridZ = Math.round(z / this.heightCacheGridSize) * this.heightCacheGridSize;
-        const cacheKey = `${gridX},${gridZ}`;
+        const gridSize = this.heightCacheGridSize;
+        const gridX = Math.round(x / gridSize) * gridSize;
+        const gridZ = Math.round(z / gridSize) * gridSize;
+        // Use numeric key to avoid string allocation
+        const cacheKey = gridX * 100000 + gridZ;
         
         // Check cache first
         if (this.heightCache.has(cacheKey)) {
@@ -227,7 +233,8 @@ export const gameContext = {
         if (!this.terrain) return 0;
         
         const terrainRaycaster = this.getTerrainRaycaster();
-        terrainRaycaster.set(new THREE.Vector3(gridX, 1000, gridZ), new THREE.Vector3(0, -1, 0));
+        this._cachedHeightOrigin.set(gridX, 1000, gridZ);
+        terrainRaycaster.set(this._cachedHeightOrigin, this._cachedHeightDown);
         const intersects = terrainRaycaster.intersectObject(this.terrain);
         const height = intersects.length > 0 ? intersects[0].point.y : 0;
         

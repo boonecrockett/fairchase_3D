@@ -82,22 +82,20 @@ export class DeerAI {
                         const waterCenter = waterBody.position;
                         const waterRadius = (waterBody.userData?.config?.size || 92) / 2;
                         
-                        // Calculate direction from water center to deer
-                        const dirToDeer = new THREE.Vector3()
-                            .subVectors(deer.model.position, waterCenter)
-                            .normalize();
+                        // Calculate direction from water center to deer (reuse temp vector)
+                        this._tempVec3.subVectors(deer.model.position, waterCenter).normalize();
                         
                         // Calculate edge point (water center + direction * (radius - 2))
                         // Subtract 2 units to stop just at the edge, not in the water
-                        const edgePoint = new THREE.Vector3()
-                            .copy(waterCenter)
-                            .add(dirToDeer.multiplyScalar(waterRadius - 2));
-                        edgePoint.y = deer.model.position.y; // Keep same height for distance calc
+                        this._tempVec3b.copy(waterCenter)
+                            .add(this._tempVec3.multiplyScalar(waterRadius - 2));
+                        this._tempVec3b.y = deer.model.position.y; // Keep same height for distance calc
                         
-                        const distance = deer.model.position.distanceTo(edgePoint);
+                        const distance = deer.model.position.distanceTo(this._tempVec3b);
                         if (distance < closestDistance) {
                             closestDistance = distance;
-                            waterEdgeTarget = edgePoint;
+                            if (!waterEdgeTarget) waterEdgeTarget = new THREE.Vector3();
+                            waterEdgeTarget.copy(this._tempVec3b);
                         }
                     }
                 }
@@ -178,39 +176,49 @@ export class DeerAI {
                 }
                 
                 // Calculate flee direction, but check if it leads to water
-                let fleeDirFromPlayer = new THREE.Vector3().subVectors(deer.model.position, gameContext.player.position).normalize();
+                this._tempVec3.subVectors(deer.model.position, gameContext.player.position).normalize();
                 
                 // Test if fleeing directly away would put deer in water
                 const testDistance = 10;
-                const testPos = deer.model.position.clone().add(fleeDirFromPlayer.clone().multiplyScalar(testDistance));
-                const fleeIntoWater = gameContext.isWaterAt ? gameContext.isWaterAt(testPos.x, testPos.z) : false;
+                // Compute test position: deer pos + fleeDir * testDistance
+                const testX = deer.model.position.x + this._tempVec3.x * testDistance;
+                const testZ = deer.model.position.z + this._tempVec3.z * testDistance;
+                const fleeIntoWater = gameContext.isWaterAt ? gameContext.isWaterAt(testX, testZ) : false;
                 
                 if (fleeIntoWater) {
-                    // Find alternative escape direction - try perpendicular directions
-                    const perpLeft = new THREE.Vector3(-fleeDirFromPlayer.z, 0, fleeDirFromPlayer.x);
-                    const perpRight = new THREE.Vector3(fleeDirFromPlayer.z, 0, -fleeDirFromPlayer.x);
+                    // Try perpendicular directions using stored flee dir components
+                    const fdx = this._tempVec3.x;
+                    const fdz = this._tempVec3.z;
                     
-                    const testLeft = deer.model.position.clone().add(perpLeft.clone().multiplyScalar(testDistance));
-                    const testRight = deer.model.position.clone().add(perpRight.clone().multiplyScalar(testDistance));
+                    const leftX = deer.model.position.x + (-fdz) * testDistance;
+                    const leftZ = deer.model.position.z + fdx * testDistance;
+                    const rightX = deer.model.position.x + fdz * testDistance;
+                    const rightZ = deer.model.position.z + (-fdx) * testDistance;
                     
-                    const leftInWater = gameContext.isWaterAt ? gameContext.isWaterAt(testLeft.x, testLeft.z) : false;
-                    const rightInWater = gameContext.isWaterAt ? gameContext.isWaterAt(testRight.x, testRight.z) : false;
+                    const leftInWater = gameContext.isWaterAt ? gameContext.isWaterAt(leftX, leftZ) : false;
+                    const rightInWater = gameContext.isWaterAt ? gameContext.isWaterAt(rightX, rightZ) : false;
                     
-                    // Choose the direction that's not in water and furthest from player
                     if (!leftInWater && !rightInWater) {
-                        // Both clear - pick the one further from player
-                        const leftDistToPlayer = testLeft.distanceTo(gameContext.player.position);
-                        const rightDistToPlayer = testRight.distanceTo(gameContext.player.position);
-                        fleeDirFromPlayer = leftDistToPlayer > rightDistToPlayer ? perpLeft : perpRight;
+                        const ldx = leftX - gameContext.player.position.x;
+                        const ldz = leftZ - gameContext.player.position.z;
+                        const rdx = rightX - gameContext.player.position.x;
+                        const rdz = rightZ - gameContext.player.position.z;
+                        if (ldx * ldx + ldz * ldz > rdx * rdx + rdz * rdz) {
+                            this._tempVec3.set(-fdz, 0, fdx); // perpLeft
+                        } else {
+                            this._tempVec3.set(fdz, 0, -fdx); // perpRight
+                        }
                     } else if (!leftInWater) {
-                        fleeDirFromPlayer = perpLeft;
+                        this._tempVec3.set(-fdz, 0, fdx);
                     } else if (!rightInWater) {
-                        fleeDirFromPlayer = perpRight;
+                        this._tempVec3.set(fdz, 0, -fdx);
                     }
-                    // If both perpendicular directions lead to water, keep original (deer is trapped)
+                    // If both lead to water, keep original flee direction
                 }
                 
-                deer.movement.smoothRotateTowards(new THREE.Vector3().addVectors(deer.model.position, fleeDirFromPlayer), delta);
+                // Compute target position for smooth rotation (reuse _tempVec3b)
+                this._tempVec3b.addVectors(deer.model.position, this._tempVec3);
+                deer.movement.smoothRotateTowards(this._tempVec3b, delta);
                 deer.movement.moveWithCollisionDetection(speed, delta);
                 
                 if (deer.stateTimer > this.config.stateTimers.fleeing) {
