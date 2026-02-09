@@ -543,22 +543,6 @@ export function updatePlayer() {
         stopWaterWalkSound();
         stopFoliageWalkSound();
         isWalking = false;
-    } else if (_velocity.lengthSq() > 0 && isWalking) {
-        // Player is moving and already walking - check if we need to switch sounds
-        // This handles the case where player transitions between water/land while moving
-        if (isWalkingOnWater) {
-            startWaterWalkSound();
-            stopWalkSound();
-            stopFoliageWalkSound();
-        } else if (isWalkingOnFoliage) {
-            startFoliageWalkSound();
-            stopWalkSound();
-            stopWaterWalkSound();
-        } else {
-            startWalkSound();
-            stopWaterWalkSound();
-            stopFoliageWalkSound();
-        }
     }
 }
 
