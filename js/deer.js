@@ -127,6 +127,9 @@ export class Deer extends Animal {
 
         this.lastPlayerPosition = new THREE.Vector3();
         this.playerMovementStartTime = 0;
+        
+        // Calibration mode
+        this.frozen = false;
         this.isTrackingPlayerMovement = false;
         this.hasDetectedMovingPlayer = false;
         this.MOVEMENT_DETECTION_THRESHOLD = 1.0;
@@ -405,6 +408,12 @@ export class Deer extends Animal {
 
     update(delta) {
         if (!this.isModelLoaded) return;
+        
+        // Calibration mode - freeze deer in place
+        if (this.frozen) {
+            this.model.position.y = gameContext.getHeightAt(this.model.position.x, this.model.position.z) + this.config.heightOffset;
+            return;
+        }
 
         if (this.state === 'KILLED' || this.stateLockedToKilled) {
             if (this.stateLockedToKilled && this.state !== 'KILLED') {
@@ -653,17 +662,21 @@ export class Deer extends Animal {
         const intersects = gameContext.raycaster.intersectObjects(nearbyObjects, true);
         const blockingIntersects = intersects.filter(intersect => intersect.distance < distanceToPlayer - 0.5);
         
+        // Always check terrain occlusion (hills between deer and player)
+        // Sample every ~10 units along the ray for reliable hill detection
         let terrainBlocked = false;
-        if (blockingIntersects.length === 0) {
-            const rayLength = distanceToPlayer;
-            const stepSize = rayLength / 5;
-            for (let i = 1; i < 5; i++) {
-                const checkPoint = new THREE.Vector3().copy(_deerPos).add(_direction.clone().multiplyScalar(i * stepSize));
-                const terrainHeight = gameContext.getHeightAt(checkPoint.x, checkPoint.z);
-                if (terrainHeight > checkPoint.y) {
-                    terrainBlocked = true;
-                    break;
-                }
+        const rayLength = distanceToPlayer;
+        const numSamples = Math.max(4, Math.ceil(rayLength / 10));
+        const stepSize = rayLength / (numSamples + 1);
+        for (let i = 1; i <= numSamples; i++) {
+            const t = i * stepSize;
+            const checkX = _deerPos.x + _direction.x * t;
+            const checkZ = _deerPos.z + _direction.z * t;
+            const rayY = _deerPos.y + _direction.y * t;
+            const terrainHeight = gameContext.getHeightAt(checkX, checkZ);
+            if (terrainHeight > rayY + 0.3) {
+                terrainBlocked = true;
+                break;
             }
         }
         
