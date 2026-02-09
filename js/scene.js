@@ -3,7 +3,7 @@ import * as THREE from 'three';
 import { gameContext } from './context.js';
 
 const DEFAULT_SKY_COLOR = 0x6ca0dc;
-const SHADOW_MAP_SIZE = 2048;
+const SHADOW_MAP_SIZE = 4096;
 
 /**
  * Sets up the main Three.js scene, camera, renderer, lighting, and event listeners.
@@ -29,11 +29,11 @@ export function setupScene() {
     if (!gameContext.renderer) {
         gameContext.renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
         gameContext.renderer.setClearColor(0x000000, 0); // Transparent background
+        gameContext.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2)); // Crisp on HiDPI, capped at 2x for performance
         gameContext.renderer.setSize(width, height);
         gameContext.renderer.shadowMap.enabled = true;
         gameContext.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
         
-        // Enhanced shadow settings for softer, more natural shadows
         gameContext.renderer.shadowMap.autoUpdate = true;
         gameContext.renderer.outputColorSpace = THREE.SRGBColorSpace;
         
@@ -64,16 +64,16 @@ export function setupScene() {
     light.shadow.mapSize.width = SHADOW_MAP_SIZE;
     light.shadow.mapSize.height = SHADOW_MAP_SIZE;
     light.shadow.camera.near = 0.1;
-    light.shadow.camera.far = 800; // Increased from 500 for better coverage
-    light.shadow.camera.left = -200; // Expanded from -100 to cover more area
-    light.shadow.camera.right = 200; // Expanded from 100 to cover more area
-    light.shadow.camera.top = 200; // Expanded from 100 to cover more area
-    light.shadow.camera.bottom = -200; // Expanded from -100 to cover more area
+    light.shadow.camera.far = 500;
+    light.shadow.camera.left = -100;
+    light.shadow.camera.right = 100;
+    light.shadow.camera.top = 100;
+    light.shadow.camera.bottom = -100;
     
-    // Enhanced shadow softness settings
-    light.shadow.radius = 10; // Increase shadow blur radius for softer edges
-    light.shadow.blurSamples = 25; // More samples for smoother shadow gradients
-    light.shadow.bias = -0.0001; // Reduce shadow acne while maintaining softness
+    // Shadow softness settings tuned for r182 PCFSoftShadowMap
+    light.shadow.radius = 4;
+    light.shadow.blurSamples = 8;
+    light.shadow.bias = -0.0005;
     gameContext.scene.add(light);
 
     // Ambient light to softly illuminate the scene
@@ -114,7 +114,7 @@ export function updateShadowCamera() {
         
         // Set shadow camera bounds once (they never change)
         if (!_shadowBoundsInitialized) {
-            const shadowSize = 150;
+            const shadowSize = 100;
             light.shadow.camera.left = -shadowSize;
             light.shadow.camera.right = shadowSize;
             light.shadow.camera.top = shadowSize;
