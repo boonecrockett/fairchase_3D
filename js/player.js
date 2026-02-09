@@ -379,9 +379,9 @@ export function updatePlayer() {
         updateSpatialAudioListener(gameContext.player.position, gameContext.player.velocity);
     }
 
-    // Update player height based on terrain
+    // Update player height based on terrain (lerp for smooth transitions with grid-cached heights)
     const targetY = gameContext.getCachedHeightAt(gameContext.player.position.x, gameContext.player.position.z);
-    gameContext.player.position.y = targetY;
+    gameContext.player.position.y = THREE.MathUtils.lerp(gameContext.player.position.y, targetY, 0.15);
 
     // Adjust camera height for kneeling
     const targetEyeHeight = isKneeling ? PLAYER_KNEEL_HEIGHT : PLAYER_EYE_HEIGHT;
