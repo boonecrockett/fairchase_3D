@@ -277,6 +277,12 @@ async function startGame(selectedWorldId) {
             completeTask('deer');
         }
         
+        // Apply Practice mode deer overrides (must happen after deer is created)
+        if (gameContext.gameMode === 'practice' && gameContext.deer && gameContext.deer.config) {
+            gameContext.deer.config.alertDistanceThreshold = 80;
+            gameContext.deer.config.fleeDistanceThreshold = 40;
+        }
+        
         // Update UI
         if (gameContext.scoreValueElement) gameContext.scoreValueElement.textContent = 0;
         

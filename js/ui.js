@@ -595,8 +595,13 @@ function applyModeConfiguration(mode) {
             gameContext.collisionSystem.updateHitboxVisibility();
         }
         
-        // Show helpful messages
-        console.log('🎯 Practice Mode: Hitboxes visible, forgiving mechanics enabled');
+        // Reduce deer detection ranges for easier approach
+        if (gameContext.deer && gameContext.deer.config) {
+            gameContext.deer.config.alertDistanceThreshold = 80;
+            gameContext.deer.config.fleeDistanceThreshold = 40;
+        }
+        
+        console.log('🎯 Practice Mode: Hitboxes visible, reduced detection, forgiving mechanics');
         
     } else if (mode === 'simulator') {
         // Hunt Simulator: Realistic settings
@@ -606,6 +611,12 @@ function applyModeConfiguration(mode) {
         if (gameContext.collisionSystem) {
             gameContext.collisionSystem.debugMode = false;
             gameContext.collisionSystem.updateHitboxVisibility();
+        }
+        
+        // Ensure full detection ranges for realism
+        if (gameContext.deer && gameContext.deer.config) {
+            gameContext.deer.config.alertDistanceThreshold = 250;
+            gameContext.deer.config.fleeDistanceThreshold = 150;
         }
         
         console.log('🦌 Hunt Simulator: Realistic mechanics, no visual aids');
