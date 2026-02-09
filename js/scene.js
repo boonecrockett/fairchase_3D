@@ -98,6 +98,8 @@ const _shadowOffset = new THREE.Vector3(100, 100, 50).normalize().multiplyScalar
 /**
  * Updates the shadow camera to follow the player and maintain consistent shadow coverage
  */
+let _shadowBoundsInitialized = false;
+
 export function updateShadowCamera() {
     if (gameContext.scene && gameContext.scene.sun && gameContext.camera) {
         const light = gameContext.scene.sun;
@@ -110,13 +112,15 @@ export function updateShadowCamera() {
         light.target.position.copy(playerPosition);
         light.target.updateMatrixWorld();
         
-        // Adjust shadow camera bounds to center on player
-        const shadowSize = 150; // Smaller, more focused shadow area
-        light.shadow.camera.left = -shadowSize;
-        light.shadow.camera.right = shadowSize;
-        light.shadow.camera.top = shadowSize;
-        light.shadow.camera.bottom = -shadowSize;
-        
-        light.shadow.camera.updateProjectionMatrix();
+        // Set shadow camera bounds once (they never change)
+        if (!_shadowBoundsInitialized) {
+            const shadowSize = 150;
+            light.shadow.camera.left = -shadowSize;
+            light.shadow.camera.right = shadowSize;
+            light.shadow.camera.top = shadowSize;
+            light.shadow.camera.bottom = -shadowSize;
+            light.shadow.camera.updateProjectionMatrix();
+            _shadowBoundsInitialized = true;
+        }
     }
 }

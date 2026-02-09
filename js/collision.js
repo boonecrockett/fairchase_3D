@@ -287,10 +287,9 @@ class CollisionSystem {
             bushesChecked++;
             
             // Calculate precise 2D distance (ignore Y axis for collision)
-            const distance = new THREE.Vector2(
-                position.x - bush.position.x,
-                position.z - bush.position.z
-            ).length();
+            const bdx = position.x - bush.position.x;
+            const bdz = position.z - bush.position.z;
+            const distance = Math.sqrt(bdx * bdx + bdz * bdz);
             
             // Estimate bush collision radius - bushes spread out wider than their center
             const bushRadius = (bush.scale.x || 1.0) * 1.5;

@@ -455,8 +455,7 @@ export class Deer extends Animal {
 
         const distanceToPlayer = this.model.position.distanceTo(gameContext.player.position);
         const playerVisible = this.isPlayerVisible();
-        const currentPlayerPosition = gameContext.player.position.clone();
-        const playerMoved = this.lastPlayerPosition.distanceTo(currentPlayerPosition) > 0.005;
+        const playerMoved = this.lastPlayerPosition.distanceTo(gameContext.player.position) > 0.005;
 
         if (playerVisible) {
             if (playerMoved) {
@@ -486,7 +485,7 @@ export class Deer extends Animal {
             this.movementSampleCount = 0;
         }
 
-        this.lastPlayerPosition.copy(currentPlayerPosition);
+        this.lastPlayerPosition.copy(gameContext.player.position);
 
         if (this.state !== 'FLEEING' && this.state !== 'WOUNDED' && this.state !== 'KILLED') {
             const currentTime = gameContext.clock.getElapsedTime();
@@ -673,7 +672,7 @@ export class Deer extends Animal {
             const checkX = _deerPos.x + _direction.x * t;
             const checkZ = _deerPos.z + _direction.z * t;
             const rayY = _deerPos.y + _direction.y * t;
-            const terrainHeight = gameContext.getHeightAt(checkX, checkZ);
+            const terrainHeight = gameContext.getCachedHeightAt(checkX, checkZ);
             if (terrainHeight > rayY + 0.3) {
                 terrainBlocked = true;
                 break;

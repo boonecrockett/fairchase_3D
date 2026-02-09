@@ -77,19 +77,18 @@ export function createHills(worldConfig) {
 
     // Create a raycaster for accurate terrain height detection
     const terrainRaycaster = new THREE.Raycaster();
+    const _rayOrigin = new THREE.Vector3();
+    const _rayDown = new THREE.Vector3(0, -1, 0);
     
     // Attach a function to the context that raycasts against the actual terrain mesh
     // This ensures objects are placed on the visible terrain, not the mathematical approximation
+    // Terrain is static - update matrix once after creation
+    gameContext.terrain.updateMatrixWorld(true);
+    
     gameContext.getHeightAt = (x, z) => {
-        // Ensure terrain world matrix is up to date for accurate raycasting
-        if (gameContext.terrain) {
-            gameContext.terrain.updateMatrixWorld(true);
-        }
-        
         // Raycast from above the terrain downward
-        const rayOrigin = new THREE.Vector3(x, 500, z);
-        const rayDirection = new THREE.Vector3(0, -1, 0);
-        terrainRaycaster.set(rayOrigin, rayDirection);
+        _rayOrigin.set(x, 500, z);
+        terrainRaycaster.set(_rayOrigin, _rayDown);
         
         const intersects = terrainRaycaster.intersectObject(gameContext.terrain);
         if (intersects.length > 0) {
@@ -942,8 +941,8 @@ export function isWaterAt(x, z) {
         
         // Check if player is within actual water body radius
         if (distance <= detectionRadius) {
-            // Get the actual terrain height at this position
-            const terrainHeight = gameContext.getHeightAt(x, z);
+            // Get the terrain height at this position (cached to avoid per-frame raycasts)
+            const terrainHeight = gameContext.getCachedHeightAt(x, z);
             
             // Player is in water only if:
             // 1. They are within the water radius AND
