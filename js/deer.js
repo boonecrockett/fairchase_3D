@@ -21,6 +21,8 @@ const DETECTION_MODAL_COOLDOWN = 5000; // 5 seconds between modals
 const _deerPos = new THREE.Vector3();
 const _playerPos = new THREE.Vector3();
 const _direction = new THREE.Vector3();
+const _backdropDir = new THREE.Vector3();
+const _toObject = new THREE.Vector3();
 
 /**
  * Shows a modal explaining how the deer detected the hunter
@@ -699,21 +701,22 @@ export class Deer extends Animal {
      * This breaks up the player's silhouette making them harder to spot
      */
     checkBackdropCover(playerPosition, directionToDeer, distanceToPlayer) {
-        // Cast a ray from player position away from deer (behind player)
-        const behindPlayerDir = directionToDeer.clone().negate();
-        const checkDistance = 5; // Check 5 units behind player
+        // Direction behind player from deer's view (reuse module vector)
+        _backdropDir.copy(directionToDeer).negate();
+        const checkDistance = 5;
         
         // Check for trees behind player (standing in front of a tree trunk)
         if (gameContext.trees && gameContext.trees.children) {
             for (const tree of gameContext.trees.children) {
-                const toTree = new THREE.Vector3().subVectors(tree.position, playerPosition);
-                toTree.y = 0;
+                _toObject.subVectors(tree.position, playerPosition);
+                _toObject.y = 0;
                 
-                const dotProduct = toTree.normalize().dot(behindPlayerDir);
-                if (dotProduct > 0.7) { // Tree must be more directly behind (~45 degrees)
-                    const distToTree = playerPosition.distanceTo(tree.position);
-                    if (distToTree < 3) { // Must be very close to tree trunk
-                        return true; // Found backdrop cover
+                const dotProduct = _toObject.normalize().dot(_backdropDir);
+                if (dotProduct > 0.7) {
+                    const dx = playerPosition.x - tree.position.x;
+                    const dz = playerPosition.z - tree.position.z;
+                    if (dx * dx + dz * dz < 9) { // 3^2
+                        return true;
                     }
                 }
             }
@@ -722,16 +725,15 @@ export class Deer extends Animal {
         // Check for bushes behind player
         if (gameContext.bushes && gameContext.bushes.children) {
             for (const bush of gameContext.bushes.children) {
-                // Get vector from player to bush
-                const toBush = new THREE.Vector3().subVectors(bush.position, playerPosition);
-                toBush.y = 0; // Ignore height difference
+                _toObject.subVectors(bush.position, playerPosition);
+                _toObject.y = 0;
                 
-                // Check if bush is roughly behind the player (from deer's view)
-                const dotProduct = toBush.normalize().dot(behindPlayerDir);
-                if (dotProduct > 0.5) { // Bush is within ~60 degrees behind player
-                    const distToBush = playerPosition.distanceTo(bush.position);
-                    if (distToBush < checkDistance) {
-                        return true; // Found backdrop cover
+                const dotProduct = _toObject.normalize().dot(_backdropDir);
+                if (dotProduct > 0.5) {
+                    const dx = playerPosition.x - bush.position.x;
+                    const dz = playerPosition.z - bush.position.z;
+                    if (dx * dx + dz * dz < checkDistance * checkDistance) {
+                        return true;
                     }
                 }
             }
@@ -740,16 +742,15 @@ export class Deer extends Animal {
         // Check for grass clusters behind player
         if (gameContext.grassClusterPositions && gameContext.grassClusterPositions.length > 0) {
             for (const cluster of gameContext.grassClusterPositions) {
-                const clusterPos = new THREE.Vector3(cluster.x, playerPosition.y, cluster.z);
-                const toCluster = new THREE.Vector3().subVectors(clusterPos, playerPosition);
-                toCluster.y = 0;
+                const dx = cluster.x - playerPosition.x;
+                const dz = cluster.z - playerPosition.z;
+                const distSq = dx * dx + dz * dz;
+                if (distSq > checkDistance * checkDistance) continue; // Quick reject
                 
-                const dotProduct = toCluster.normalize().dot(behindPlayerDir);
+                _toObject.set(dx, 0, dz).normalize();
+                const dotProduct = _toObject.dot(_backdropDir);
                 if (dotProduct > 0.5) {
-                    const distToCluster = playerPosition.distanceTo(clusterPos);
-                    if (distToCluster < checkDistance) {
-                        return true; // Found backdrop cover
-                    }
+                    return true;
                 }
             }
         }

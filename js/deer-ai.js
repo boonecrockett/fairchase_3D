@@ -11,6 +11,9 @@ export class DeerAI {
         // Reusable objects for hot-path methods (avoid per-frame allocations)
         this._tempVec3 = new THREE.Vector3();
         this._tempVec3b = new THREE.Vector3();
+        this._tempVec3c = new THREE.Vector3(); // For wounded state obstacle avoidance
+        this._tempVec3d = new THREE.Vector3(); // For look-ahead / test positions
+        this._upAxis = new THREE.Vector3(0, 1, 0);
     }
 
     update(delta) {
@@ -224,23 +227,20 @@ export class DeerAI {
                 if (deer.stateTimer > this.config.stateTimers.fleeing) {
                     // Generate new wander target AWAY from player, not random
                     // This prevents deer from immediately walking back toward the hunter
-                    const awayFromPlayer = new THREE.Vector3()
-                        .subVectors(deer.model.position, gameContext.player.position)
-                        .normalize();
+                    this._tempVec3.subVectors(deer.model.position, gameContext.player.position).normalize();
                     
                     // Set wander target 50-100 units further away from player
                     const fleeDistance = 50 + Math.random() * 50;
-                    const newTarget = deer.model.position.clone()
-                        .add(awayFromPlayer.multiplyScalar(fleeDistance));
-                    
-                    // Clamp to world bounds
                     const worldSize = gameContext.terrain ? 
                         gameContext.terrain.geometry.parameters.width / 2 : 500;
                     const margin = 50;
-                    newTarget.x = Math.max(-worldSize + margin, Math.min(worldSize - margin, newTarget.x));
-                    newTarget.z = Math.max(-worldSize + margin, Math.min(worldSize - margin, newTarget.z));
-                    
-                    deer.movement.wanderTarget = newTarget;
+                    const ntX = deer.model.position.x + this._tempVec3.x * fleeDistance;
+                    const ntZ = deer.model.position.z + this._tempVec3.z * fleeDistance;
+                    deer.movement.wanderTarget.set(
+                        Math.max(-worldSize + margin, Math.min(worldSize - margin, ntX)),
+                        deer.model.position.y,
+                        Math.max(-worldSize + margin, Math.min(worldSize - margin, ntZ))
+                    );
                     deer.fleeRecoveryTime = 30; // Stay cautious for 30 seconds
                     deer.setState('IDLE');
                 }
@@ -353,41 +353,37 @@ export class DeerAI {
                     speed = baseSpeed * speedMult * delta;
                     
                     // Get movement direction from wound system
-                    let moveDir = woundState.getMovementDirection();
+                    const moveDir = woundState.getMovementDirection();
                     
                     // Apply boundary checking
                     const worldSize = gameContext.terrain.geometry.parameters.width;
                     const boundary = worldSize / 2 - this.config.worldBoundaryMargin;
                     const safeBoundary = boundary * 0.8;
                     
-                    // Test if direction is safe (boundary check)
-                    const testPos = new THREE.Vector3().addVectors(
-                        deer.model.position, 
-                        moveDir.clone().multiplyScalar(30)
-                    );
+                    // Test if direction is safe (boundary check) - inline math
+                    const testPosX = deer.model.position.x + moveDir.x * 30;
+                    const testPosZ = deer.model.position.z + moveDir.z * 30;
                     
-                    let finalDir = moveDir.clone();
-                    if (Math.abs(testPos.x) > safeBoundary || Math.abs(testPos.z) > safeBoundary) {
-                        // Find safe direction
-                        const centerDir = new THREE.Vector3()
-                            .subVectors(new THREE.Vector3(0, 0, 0), deer.model.position)
-                            .normalize();
-                        finalDir.lerp(centerDir, 0.5).normalize();
-                        woundState.fleeDirection = finalDir.clone();
+                    // finalDir = _tempVec3c (dedicated for this scope)
+                    this._tempVec3c.copy(moveDir);
+                    if (Math.abs(testPosX) > safeBoundary || Math.abs(testPosZ) > safeBoundary) {
+                        // Find safe direction toward center
+                        this._tempVec3d.set(-deer.model.position.x, 0, -deer.model.position.z).normalize();
+                        this._tempVec3c.lerp(this._tempVec3d, 0.5).normalize();
+                        woundState.fleeDirection.copy(this._tempVec3c);
                     }
                     
                     // Proactive obstacle avoidance - check at multiple distances
-                    const lookAheadDistances = [4, 8, 12]; // Check close, medium, and far
+                    const lookAheadDistances = [4, 8, 12];
                     let obstacleAhead = false;
                     
                     for (const dist of lookAheadDistances) {
-                        const lookAheadPos = new THREE.Vector3().addVectors(
-                            deer.model.position,
-                            finalDir.clone().multiplyScalar(dist)
-                        );
+                        const laX = deer.model.position.x + this._tempVec3c.x * dist;
+                        const laZ = deer.model.position.z + this._tempVec3c.z * dist;
+                        this._tempVec3d.set(laX, deer.model.position.y, laZ);
                         
-                        if (gameContext.checkTreeCollision(lookAheadPos, 1.5) ||
-                            (gameContext.isWaterAt && gameContext.isWaterAt(lookAheadPos.x, lookAheadPos.z))) {
+                        if (gameContext.checkTreeCollision(this._tempVec3d, 1.5) ||
+                            (gameContext.isWaterAt && gameContext.isWaterAt(laX, laZ))) {
                             obstacleAhead = true;
                             break;
                         }
@@ -395,26 +391,25 @@ export class DeerAI {
                     
                     // Also check if movement system has a forced avoidance direction
                     if (deer.movement.forcedAvoidanceTimer > 0 && deer.movement.forcedAvoidanceDirection) {
-                        finalDir.copy(deer.movement.forcedAvoidanceDirection);
-                        woundState.fleeDirection = finalDir.clone();
+                        this._tempVec3c.copy(deer.movement.forcedAvoidanceDirection);
+                        woundState.fleeDirection.copy(this._tempVec3c);
                     } else if (obstacleAhead) {
                         // Find clear direction before hitting obstacle
                         const testAngles = [Math.PI/6, -Math.PI/6, Math.PI/4, -Math.PI/4, Math.PI/2, -Math.PI/2, Math.PI*3/4, -Math.PI*3/4];
                         let foundClear = false;
                         for (const angle of testAngles) {
-                            const testDir = finalDir.clone().applyAxisAngle(new THREE.Vector3(0, 1, 0), angle);
+                            this._tempVec3d.copy(this._tempVec3c).applyAxisAngle(this._upAxis, angle);
                             
                             // Check all distances for this direction
                             let directionClear = true;
                             for (const dist of lookAheadDistances) {
-                                const testPosition = new THREE.Vector3().addVectors(
-                                    deer.model.position,
-                                    testDir.clone().multiplyScalar(dist)
-                                );
+                                const tpX = deer.model.position.x + this._tempVec3d.x * dist;
+                                const tpZ = deer.model.position.z + this._tempVec3d.z * dist;
                                 
-                                const hasTree = gameContext.checkTreeCollision(testPosition, 1.5);
-                                const hasWater = gameContext.isWaterAt && gameContext.isWaterAt(testPosition.x, testPosition.z);
-                                const outOfBounds = Math.abs(testPosition.x) >= safeBoundary || Math.abs(testPosition.z) >= safeBoundary;
+                                this._tempVec3b.set(tpX, deer.model.position.y, tpZ);
+                                const hasTree = gameContext.checkTreeCollision(this._tempVec3b, 1.5);
+                                const hasWater = gameContext.isWaterAt && gameContext.isWaterAt(tpX, tpZ);
+                                const outOfBounds = Math.abs(tpX) >= safeBoundary || Math.abs(tpZ) >= safeBoundary;
                                 
                                 if (hasTree || hasWater || outOfBounds) {
                                     directionClear = false;
@@ -423,8 +418,8 @@ export class DeerAI {
                             }
                             
                             if (directionClear) {
-                                finalDir.copy(testDir).normalize();
-                                woundState.fleeDirection = finalDir.clone();
+                                this._tempVec3c.copy(this._tempVec3d).normalize();
+                                woundState.fleeDirection.copy(this._tempVec3c);
                                 foundClear = true;
                                 break;
                             }
@@ -432,11 +427,8 @@ export class DeerAI {
                         
                         // If no clear direction found, head toward center
                         if (!foundClear) {
-                            const toCenter = new THREE.Vector3()
-                                .subVectors(new THREE.Vector3(0, 0, 0), deer.model.position)
-                                .normalize();
-                            finalDir.copy(toCenter);
-                            woundState.fleeDirection = finalDir.clone();
+                            this._tempVec3c.set(-deer.model.position.x, 0, -deer.model.position.z).normalize();
+                            woundState.fleeDirection.copy(this._tempVec3c);
                         }
                     }
                     
@@ -449,20 +441,19 @@ export class DeerAI {
                     // Look back behavior (gut shots)
                     if (woundState.shouldLookBack()) {
                         // Brief pause and turn toward player
-                        const toPlayer = new THREE.Vector3()
-                            .subVectors(gameContext.player.position, deer.model.position);
-                        const lookAngle = Math.atan2(toPlayer.x, toPlayer.z);
+                        this._tempVec3b.subVectors(gameContext.player.position, deer.model.position);
+                        const lookAngle = Math.atan2(this._tempVec3b.x, this._tempVec3b.z);
                         deer.model.rotation.y = lookAngle;
                         speed = 0; // Pause briefly
                     } else {
                         // Normal wounded movement
-                        const targetPos = new THREE.Vector3().addVectors(deer.model.position, finalDir);
-                        deer.movement.smoothRotateTowards(targetPos, delta);
+                        this._tempVec3b.addVectors(deer.model.position, this._tempVec3c);
+                        deer.movement.smoothRotateTowards(this._tempVec3b, delta);
                         
                         // Check if deer is facing roughly the right direction before moving
                         // This prevents "moonwalking" where deer moves backward
-                        const deerForward = new THREE.Vector3(0, 0, 1).applyQuaternion(deer.model.quaternion);
-                        const dotProduct = deerForward.dot(finalDir);
+                        this._tempVec3b.set(0, 0, 1).applyQuaternion(deer.model.quaternion);
+                        const dotProduct = this._tempVec3b.dot(this._tempVec3c);
                         
                         // Scale speed based on facing direction:
                         // - Facing target (dot=1): full speed
@@ -485,14 +476,14 @@ export class DeerAI {
                     speed = this.config.speeds.wounded * delta;
                     
                     if (!deer.woundedFleeDirection) {
-                        deer.woundedFleeDirection = new THREE.Vector3()
-                            .subVectors(deer.model.position, gameContext.player.position)
-                            .normalize();
+                        deer.woundedFleeDirection = new THREE.Vector3();
+                    }
+                    if (deer.woundedFleeDirection.lengthSq() === 0) {
+                        deer.woundedFleeDirection.subVectors(deer.model.position, gameContext.player.position).normalize();
                     }
                     
-                    const targetPosition = new THREE.Vector3()
-                        .addVectors(deer.model.position, deer.woundedFleeDirection);
-                    deer.movement.smoothRotateTowards(targetPosition, delta);
+                    this._tempVec3b.addVectors(deer.model.position, deer.woundedFleeDirection);
+                    deer.movement.smoothRotateTowards(this._tempVec3b, delta);
                     deer.movement.moveWithCollisionDetection(speed, delta);
                     
                     if (deer.effects.shouldCreateBloodDrop()) {
@@ -546,16 +537,15 @@ export class DeerAI {
         }
         
         if (needsBoundaryEscape) {
-            const centerDirection = new THREE.Vector3(0, 0, 0).sub(deer.model.position).normalize();
-            const targetQuaternion = new THREE.Quaternion().setFromUnitVectors(
-                new THREE.Vector3(0, 0, 1),
-                centerDirection
-            );
+            this._tempVec3.set(-deer.model.position.x, 0, -deer.model.position.z).normalize();
+            if (!this._tempQuat) this._tempQuat = new THREE.Quaternion();
+            this._tempQuat.setFromUnitVectors(this._upAxis, this._tempVec3);
             
-            deer.model.quaternion.slerp(targetQuaternion, 0.5);
+            deer.model.quaternion.slerp(this._tempQuat, 0.5);
             
             if (deer.state === 'WOUNDED') {
-                deer.woundedFleeDirection = centerDirection.clone();
+                if (!deer.woundedFleeDirection) deer.woundedFleeDirection = new THREE.Vector3();
+                deer.woundedFleeDirection.copy(this._tempVec3);
                 deer.lastWoundedDirectionUpdate = gameContext.clock.getElapsedTime();
             }
             
@@ -579,14 +569,13 @@ export class DeerAI {
             const offset = i * stepSize;
             const testValue = boundaryValue > 0 ? boundaryValue - offset : boundaryValue + offset;
             
-            const testPosition = new THREE.Vector3();
             if (axis === 'x') {
-                testPosition.set(testValue, this.deer.model.position.y, otherCoordinate);
+                this._tempVec3d.set(testValue, this.deer.model.position.y, otherCoordinate);
             } else {
-                testPosition.set(otherCoordinate, this.deer.model.position.y, testValue);
+                this._tempVec3d.set(otherCoordinate, this.deer.model.position.y, testValue);
             }
             
-            if (!gameContext.checkTreeCollision(testPosition, testRadius)) {
+            if (!gameContext.checkTreeCollision(this._tempVec3d, testRadius)) {
                 return testValue;
             }
         }
@@ -635,26 +624,24 @@ export class DeerAI {
         if (deer.emergencyEscapeActive) {
             deer.stuckDetectionHistory = [];
             
-            const testDirections = [
-                new THREE.Vector3(1, 0, 0),   // East
-                new THREE.Vector3(-1, 0, 0),  // West
-                new THREE.Vector3(0, 0, 1),   // North
-                new THREE.Vector3(0, 0, -1)   // South
-            ];
+            // Test 4 cardinal directions using inline offsets
+            const escapeOffsets = [[1,0], [-1,0], [0,1], [0,-1]];
             
             let foundSafePosition = false;
             const escapeDistance = 2.0; 
             
-            for (const direction of testDirections) {
-                const testPosition = deer.model.position.clone().add(direction.clone().multiplyScalar(escapeDistance));
+            for (const [dx, dz] of escapeOffsets) {
+                const testX = deer.model.position.x + dx * escapeDistance;
+                const testZ = deer.model.position.z + dz * escapeDistance;
+                this._tempVec3d.set(testX, deer.model.position.y, testZ);
                 const boundary = gameContext.worldSize / 2 - 10;
-                const withinBounds = Math.abs(testPosition.x) < boundary && Math.abs(testPosition.z) < boundary;
-                const noTreeCollision = !gameContext.checkTreeCollision(testPosition, 0.7);
+                const withinBounds = Math.abs(testX) < boundary && Math.abs(testZ) < boundary;
+                const noTreeCollision = !gameContext.checkTreeCollision(this._tempVec3d, 0.7);
                 
                 if (withinBounds && noTreeCollision) {
-                    const moveDirection = direction.clone().multiplyScalar(escapeDistance * 0.5);
-                    deer.model.position.add(moveDirection);
-                    deer.model.position.y = gameContext.getHeightAt(deer.model.position.x, deer.model.position.z) + deer.config.heightOffset;
+                    deer.model.position.x += dx * escapeDistance * 0.5;
+                    deer.model.position.z += dz * escapeDistance * 0.5;
+                    deer.model.position.y = gameContext.getCachedHeightAt(deer.model.position.x, deer.model.position.z) + deer.config.heightOffset;
                     
                     deer.movement.generateNewWanderTarget();
                     
@@ -666,11 +653,11 @@ export class DeerAI {
             }
             
             if (!foundSafePosition) {
-                const centerDirection = new THREE.Vector3(0, 0, 0).sub(deer.model.position).normalize();
-                const centerMove = centerDirection.multiplyScalar(1.0);
+                this._tempVec3d.set(-deer.model.position.x, 0, -deer.model.position.z).normalize();
                 
-                deer.model.position.add(centerMove);
-                deer.model.position.y = gameContext.getHeightAt(deer.model.position.x, deer.model.position.z) + deer.config.heightOffset;
+                deer.model.position.x += this._tempVec3d.x;
+                deer.model.position.z += this._tempVec3d.z;
+                deer.model.position.y = gameContext.getCachedHeightAt(deer.model.position.x, deer.model.position.z) + deer.config.heightOffset;
                 deer.movement.generateNewWanderTarget();
                 
                 deer.emergencyEscapeActive = false;
