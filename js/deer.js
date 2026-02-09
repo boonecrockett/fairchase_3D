@@ -141,8 +141,13 @@ export class Deer extends Animal {
 
         this.wasActuallyHit = false;
 
-        this.stuckDetectionHistory = [];
         this.stuckDetectionMaxHistory = 60;
+        this.stuckDetectionHistory = new Array(this.stuckDetectionMaxHistory);
+        for (let i = 0; i < this.stuckDetectionMaxHistory; i++) {
+            this.stuckDetectionHistory[i] = new THREE.Vector3();
+        }
+        this.stuckDetectionIndex = 0;
+        this.stuckDetectionCount = 0;
         this.stuckThreshold = 0.2;
         
         this.cachedVisibility = undefined;

@@ -6,6 +6,11 @@ import { DAWN_START_HOUR, NIGHT_START_HOUR } from './constants.js';
 let lightingUpdateAccumulator = 0;
 const LIGHTING_UPDATE_INTERVAL = 0.1; // Update every 100ms
 
+// Reusable objects to avoid per-call allocations in color interpolation
+const _c1 = new THREE.Color();
+const _c2 = new THREE.Color();
+const _hsl = { h: 0, s: 0, l: 0 };
+
 /**
  * Checks if it is currently night time in the game.
  * @returns {boolean} True if night, false if day
@@ -23,9 +28,9 @@ export function isNight() {
  * @returns {number} Interpolated color as hex number
  */
 function interpolateColor(color1, color2, factor) {
-    const c1 = new THREE.Color(color1);
-    const c2 = new THREE.Color(color2);
-    return c1.lerp(c2, factor).getHex();
+    _c1.setHex(color1);
+    _c2.setHex(color2);
+    return _c1.lerp(_c2, factor).getHex();
 }
 
 /**
@@ -36,23 +41,14 @@ function interpolateColor(color1, color2, factor) {
  * @returns {number} Adjusted hex color
  */
 function adjustColorSaturationAndLuminosity(hexColor, saturationFactor, luminosityFactor) {
-    const color = new THREE.Color(hexColor);
+    _c1.setHex(hexColor);
+    _c1.getHSL(_hsl);
     
-    // Convert to HSL
-    const hsl = {};
-    color.getHSL(hsl);
+    _hsl.s = Math.min(1, Math.max(0, _hsl.s * saturationFactor));
+    _hsl.l = Math.min(1, Math.max(0, _hsl.l * luminosityFactor));
     
-    // Adjust saturation and luminosity
-    hsl.s *= saturationFactor;
-    hsl.l *= luminosityFactor;
-    
-    // Clamp values
-    hsl.s = Math.min(1, Math.max(0, hsl.s));
-    hsl.l = Math.min(1, Math.max(0, hsl.l));
-    
-    // Convert back to RGB and return hex
-    color.setHSL(hsl.h, hsl.s, hsl.l);
-    return color.getHex();
+    _c1.setHSL(_hsl.h, _hsl.s, _hsl.l);
+    return _c1.getHex();
 }
 
 // Throttle time display updates

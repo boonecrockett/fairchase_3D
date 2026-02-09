@@ -592,8 +592,8 @@ export class DeerAI {
             const shouldBeMovingStates = ['WANDERING', 'FLEEING', 'WOUNDED'];
             const shouldCheckForStuck = shouldBeMovingStates.includes(deer.state);
             
-            if (deer.stuckDetectionHistory.length > 0 && shouldCheckForStuck) {
-                const oldestPosition = deer.stuckDetectionHistory[0];
+            if (deer.stuckDetectionCount > 0 && shouldCheckForStuck) {
+                const oldestPosition = deer.stuckDetectionHistory[(deer.stuckDetectionIndex - deer.stuckDetectionCount + deer.stuckDetectionMaxHistory) % deer.stuckDetectionMaxHistory];
                 const distanceSinceLastCheck = deer.model.position.distanceTo(oldestPosition);
                 
                 const isInMovingAnimation = deer.animation.isInMovingAnimation();
@@ -622,7 +622,8 @@ export class DeerAI {
         }
 
         if (deer.emergencyEscapeActive) {
-            deer.stuckDetectionHistory = [];
+            deer.stuckDetectionCount = 0;
+            deer.stuckDetectionIndex = 0;
             
             // Test 4 cardinal directions using inline offsets
             const escapeOffsets = [[1,0], [-1,0], [0,1], [0,-1]];
@@ -679,10 +680,10 @@ export class DeerAI {
 
         deer.movement.lastPosition.copy(deer.model.position);
 
-        deer.stuckDetectionHistory.push(deer.model.position.clone());
-        
-        if (deer.stuckDetectionHistory.length > deer.stuckDetectionMaxHistory) {
-            deer.stuckDetectionHistory.shift();
+        deer.stuckDetectionHistory[deer.stuckDetectionIndex].copy(deer.model.position);
+        deer.stuckDetectionIndex = (deer.stuckDetectionIndex + 1) % deer.stuckDetectionMaxHistory;
+        if (deer.stuckDetectionCount < deer.stuckDetectionMaxHistory) {
+            deer.stuckDetectionCount++;
         }
     }
 }

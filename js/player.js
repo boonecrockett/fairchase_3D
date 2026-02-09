@@ -380,7 +380,7 @@ export function updatePlayer() {
     }
 
     // Update player height based on terrain
-    const targetY = gameContext.getHeightAt(gameContext.player.position.x, gameContext.player.position.z);
+    const targetY = gameContext.getCachedHeightAt(gameContext.player.position.x, gameContext.player.position.z);
     gameContext.player.position.y = targetY;
 
     // Adjust camera height for kneeling
