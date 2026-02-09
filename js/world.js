@@ -79,6 +79,7 @@ export function createHills(worldConfig) {
     const terrainRaycaster = new THREE.Raycaster();
     const _rayOrigin = new THREE.Vector3();
     const _rayDown = new THREE.Vector3(0, -1, 0);
+    const _terrainIntersects = []; // Reusable array to avoid per-frame allocation
     
     // Attach a function to the context that raycasts against the actual terrain mesh
     // This ensures objects are placed on the visible terrain, not the mathematical approximation
@@ -90,9 +91,10 @@ export function createHills(worldConfig) {
         _rayOrigin.set(x, 500, z);
         terrainRaycaster.set(_rayOrigin, _rayDown);
         
-        const intersects = terrainRaycaster.intersectObject(gameContext.terrain);
-        if (intersects.length > 0) {
-            return intersects[0].point.y;
+        _terrainIntersects.length = 0;
+        terrainRaycaster.intersectObject(gameContext.terrain, false, _terrainIntersects);
+        if (_terrainIntersects.length > 0) {
+            return _terrainIntersects[0].point.y;
         }
         
         // Fallback to mathematical calculation if raycast fails

@@ -738,7 +738,7 @@ export class DeerMovement {
      * @param {THREE.Vector3} target - The target position to set
      */
     setWanderTarget(target) {
-        this.wanderTarget = target.clone();
+        this.wanderTarget.copy(target);
     }
     
     /**

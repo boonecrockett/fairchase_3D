@@ -214,6 +214,7 @@ export const gameContext = {
     // Reusable vectors for cached height queries (avoid per-call allocations)
     _cachedHeightOrigin: new THREE.Vector3(),
     _cachedHeightDown: new THREE.Vector3(0, -1, 0),
+    _cachedHeightIntersects: [], // Reusable array for raycast results
     
     // Optimized height query with caching
     getCachedHeightAt(x, z) {
@@ -235,8 +236,9 @@ export const gameContext = {
         const terrainRaycaster = this.getTerrainRaycaster();
         this._cachedHeightOrigin.set(gridX, 1000, gridZ);
         terrainRaycaster.set(this._cachedHeightOrigin, this._cachedHeightDown);
-        const intersects = terrainRaycaster.intersectObject(this.terrain);
-        const height = intersects.length > 0 ? intersects[0].point.y : 0;
+        this._cachedHeightIntersects.length = 0;
+        terrainRaycaster.intersectObject(this.terrain, false, this._cachedHeightIntersects);
+        const height = this._cachedHeightIntersects.length > 0 ? this._cachedHeightIntersects[0].point.y : 0;
         
         // Cache the result
         if (this.heightCache.size >= this.heightCacheMaxSize) {

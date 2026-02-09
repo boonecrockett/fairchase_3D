@@ -2,6 +2,10 @@ import * as THREE from 'three';
 import { gameContext } from './context.js';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 
+// Pre-allocated for per-frame use in update()
+const _stationaryStates = new Set(['IDLE', 'GRAZING', 'DRINKING', 'ALERT', 'KILLED']);
+const _centerVec = new THREE.Vector3();
+
 export class Animal {
     constructor(config) {
         this.config = config;
@@ -176,8 +180,7 @@ export class Animal {
     update(delta) {
         // Store position before mixer update to prevent root motion from moving the model
         // during stationary states (animations may have position changes baked in)
-        const stationaryStates = ['IDLE', 'GRAZING', 'DRINKING', 'ALERT', 'KILLED'];
-        const isStationary = stationaryStates.includes(this.state);
+        const isStationary = _stationaryStates.has(this.state);
         const savedX = this.model.position.x;
         const savedZ = this.model.position.z;
         
@@ -197,8 +200,8 @@ export class Animal {
         const worldSize = gameContext.terrain.geometry.parameters.width;
         const boundary = worldSize / 2 - (this.config.worldBoundaryMargin || 20);
         if (Math.abs(this.model.position.x) > boundary || Math.abs(this.model.position.z) > boundary) {
-            const center = new THREE.Vector3(0, this.model.position.y, 0);
-            this.model.lookAt(center);
+            _centerVec.set(0, this.model.position.y, 0);
+            this.model.lookAt(_centerVec);
         }
 
         // Height update is handled by DeerMovement.updateDeerHeight() which also checks water levels

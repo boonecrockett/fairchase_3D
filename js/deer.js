@@ -23,6 +23,8 @@ const _playerPos = new THREE.Vector3();
 const _direction = new THREE.Vector3();
 const _backdropDir = new THREE.Vector3();
 const _toObject = new THREE.Vector3();
+const _nearbyObjects = []; // Reusable array for visibility raycasting
+const _visIntersects = []; // Reusable array for intersectObjects results
 
 /**
  * Shows a modal explaining how the deer detected the hunter
@@ -629,7 +631,7 @@ export class Deer extends Animal {
         gameContext.raycaster.set(_deerPos, _direction);
         gameContext.raycaster.far = eyeToEyeDistance;
         
-        const nearbyObjects = [];
+        _nearbyObjects.length = 0;
         const MAX_OBJECTS_TO_CHECK = 16;
         
         // Check trees
@@ -637,25 +639,34 @@ export class Deer extends Animal {
             for (const tree of gameContext.trees.children) {
                 const treeDistance = _deerPos.distanceTo(tree.position);
                 if (treeDistance < eyeToEyeDistance + 3) {
-                    nearbyObjects.push(tree);
-                    if (nearbyObjects.length >= MAX_OBJECTS_TO_CHECK) break;
+                    _nearbyObjects.push(tree);
+                    if (_nearbyObjects.length >= MAX_OBJECTS_TO_CHECK) break;
                 }
             }
         }
         
         // Check bushes (only if we haven't hit the limit)
-        if (nearbyObjects.length < MAX_OBJECTS_TO_CHECK && gameContext.bushes && gameContext.bushes.children) {
+        if (_nearbyObjects.length < MAX_OBJECTS_TO_CHECK && gameContext.bushes && gameContext.bushes.children) {
             for (const bush of gameContext.bushes.children) {
                 const bushDistance = _deerPos.distanceTo(bush.position);
                 if (bushDistance < eyeToEyeDistance + 3) {
-                    nearbyObjects.push(bush);
-                    if (nearbyObjects.length >= MAX_OBJECTS_TO_CHECK) break;
+                    _nearbyObjects.push(bush);
+                    if (_nearbyObjects.length >= MAX_OBJECTS_TO_CHECK) break;
                 }
             }
         }
         
-        const intersects = gameContext.raycaster.intersectObjects(nearbyObjects, true);
-        const blockingIntersects = intersects.filter(intersect => intersect.distance < eyeToEyeDistance - 0.5);
+        _visIntersects.length = 0;
+        gameContext.raycaster.intersectObjects(_nearbyObjects, true, _visIntersects);
+        // Check for blocking intersects without .filter() allocation
+        let hasBlockingIntersect = false;
+        const blockingThreshold = eyeToEyeDistance - 0.5;
+        for (let i = 0; i < _visIntersects.length; i++) {
+            if (_visIntersects[i].distance < blockingThreshold) {
+                hasBlockingIntersect = true;
+                break;
+            }
+        }
         
         // Always check terrain occlusion (hills between deer and player)
         // Interpolate between deer eye and player eye positions using fractional t
@@ -674,7 +685,7 @@ export class Deer extends Animal {
         }
         
         // If player is fully blocked, they're not visible
-        if (blockingIntersects.length > 0 || terrainBlocked) {
+        if (hasBlockingIntersect || terrainBlocked) {
             this.cachedVisibility = false;
             this.lastVisibilityCheck = currentTime;
             return false;

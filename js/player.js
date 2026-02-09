@@ -451,7 +451,8 @@ export function updatePlayer() {
         if (!lastTrackCreationPosition || 
             gameContext.player.position.distanceTo(lastTrackCreationPosition) >= HUMAN_TRACK_CONFIG.trackCreationDistanceThreshold) {
             createHumanTrack(lastMovementDirection);
-            lastTrackCreationPosition = gameContext.player.position.clone();
+            if (!lastTrackCreationPosition) lastTrackCreationPosition = new THREE.Vector3();
+            lastTrackCreationPosition.copy(gameContext.player.position);
         }
     }
 
