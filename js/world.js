@@ -740,6 +740,7 @@ export function createGrass(worldConfig) {
             
             instancedMesh.count = instanceIndex;
             instancedMesh.instanceMatrix.needsUpdate = true; // Force matrix update
+            instancedMesh.computeBoundingSphere(); // Required for r151+ frustum culling
             gameContext.grass = instancedMesh;
             gameContext.grassClusterPositions = grassClusterPositions;
             gameContext.scene.add(instancedMesh);
@@ -816,6 +817,7 @@ export function createShaderGrass(worldConfig) {
     
     instancedGrass.count = instanceIndex;
     instancedGrass.instanceMatrix.needsUpdate = true;
+    instancedGrass.computeBoundingSphere(); // Required for r151+ frustum culling
     
     gameContext.shaderGrass = instancedGrass;
     gameContext.scene.add(instancedGrass);
@@ -902,6 +904,7 @@ export function createGroundCover(worldConfig) {
         
         instancedGrass.count = instanceIndex;
         instancedGrass.instanceMatrix.needsUpdate = true;
+        instancedGrass.computeBoundingSphere(); // Required for r151+ frustum culling
         
         gameContext.groundCover = instancedGrass;
         gameContext.scene.add(instancedGrass);

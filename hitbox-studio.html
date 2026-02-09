@@ -1,0 +1,806 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Hitbox Studio - Deer Configuration</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { 
+            font-family: 'Segoe UI', Arial, sans-serif;
+            background: #1a1a2e;
+            color: #eee;
+            overflow: hidden;
+        }
+        #container {
+            display: flex;
+            height: 100vh;
+        }
+        #viewport {
+            flex: 1;
+            position: relative;
+        }
+        #canvas {
+            width: 100%;
+            height: 100%;
+            display: block;
+        }
+        #controls {
+            width: 320px;
+            background: #16213e;
+            padding: 15px;
+            overflow-y: auto;
+            border-left: 2px solid #0f3460;
+        }
+        h1 {
+            font-size: 18px;
+            margin-bottom: 15px;
+            color: #e94560;
+            border-bottom: 1px solid #0f3460;
+            padding-bottom: 10px;
+        }
+        h2 {
+            font-size: 14px;
+            margin: 15px 0 10px;
+            color: #00d9ff;
+        }
+        .control-group {
+            margin-bottom: 15px;
+            padding: 10px;
+            background: #0f3460;
+            border-radius: 5px;
+        }
+        .control-row {
+            display: flex;
+            align-items: center;
+            margin-bottom: 8px;
+        }
+        .control-row label {
+            width: 80px;
+            font-size: 12px;
+            color: #aaa;
+        }
+        .control-row input[type="range"] {
+            flex: 1;
+            margin: 0 10px;
+        }
+        .control-row input[type="number"] {
+            width: 60px;
+            background: #1a1a2e;
+            border: 1px solid #0f3460;
+            color: #eee;
+            padding: 3px 5px;
+            border-radius: 3px;
+        }
+        .hitbox-select {
+            width: 100%;
+            padding: 8px;
+            background: #1a1a2e;
+            border: 1px solid #0f3460;
+            color: #eee;
+            border-radius: 3px;
+            margin-bottom: 10px;
+        }
+        .toggle-row {
+            display: flex;
+            align-items: center;
+            margin-bottom: 10px;
+        }
+        .toggle-row label {
+            margin-left: 10px;
+            font-size: 13px;
+        }
+        .toggle-row input[type="checkbox"] {
+            width: 18px;
+            height: 18px;
+        }
+        button {
+            width: 100%;
+            padding: 10px;
+            margin-top: 10px;
+            background: #e94560;
+            border: none;
+            color: white;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: bold;
+        }
+        button:hover {
+            background: #ff6b6b;
+        }
+        button.secondary {
+            background: #0f3460;
+        }
+        button.secondary:hover {
+            background: #1a4a7a;
+        }
+        #output {
+            margin-top: 15px;
+            padding: 10px;
+            background: #1a1a2e;
+            border-radius: 5px;
+            font-family: monospace;
+            font-size: 11px;
+            max-height: 200px;
+            overflow-y: auto;
+            white-space: pre-wrap;
+            word-break: break-all;
+        }
+        .color-indicator {
+            width: 20px;
+            height: 20px;
+            border-radius: 3px;
+            margin-right: 10px;
+            display: inline-block;
+        }
+        .legend-container {
+            max-height: 150px;
+            overflow-y: auto;
+            background: #0f3460;
+            border-radius: 5px;
+            padding: 8px;
+        }
+        .legend-item {
+            display: flex;
+            align-items: center;
+            padding: 4px 0;
+            cursor: pointer;
+            border-radius: 3px;
+        }
+        .legend-item:hover {
+            background: rgba(255,255,255,0.1);
+        }
+        .legend-item.selected {
+            background: rgba(233, 69, 96, 0.3);
+        }
+        .legend-color {
+            width: 16px;
+            height: 16px;
+            border-radius: 3px;
+            margin-right: 8px;
+            border: 1px solid rgba(255,255,255,0.3);
+        }
+        .legend-name {
+            font-size: 12px;
+            flex: 1;
+        }
+        #instructions {
+            position: absolute;
+            bottom: 10px;
+            left: 10px;
+            background: rgba(0,0,0,0.7);
+            padding: 10px;
+            border-radius: 5px;
+            font-size: 12px;
+        }
+    </style>
+</head>
+<body>
+    <div id="container">
+        <div id="viewport">
+            <canvas id="canvas"></canvas>
+            <div id="instructions">
+                <strong>Controls:</strong> Left-drag to rotate | Right-drag to pan | Scroll to zoom
+            </div>
+        </div>
+        <div id="controls">
+            <h1>🦌 Hitbox Studio</h1>
+            
+            <div class="control-group">
+                <div class="toggle-row">
+                    <input type="checkbox" id="showBody" checked>
+                    <label for="showBody">Show Deer Body</label>
+                </div>
+                <div class="toggle-row">
+                    <input type="checkbox" id="showHitboxes" checked>
+                    <label for="showHitboxes">Show Hitboxes</label>
+                </div>
+            </div>
+            
+            <h2>Hitbox Legend</h2>
+            <div id="hitboxLegend" class="legend-container"></div>
+            <button id="addHitboxBtn" class="secondary" style="margin-top: 5px;">+ Add New Hitbox</button>
+            
+            <h2>Select Hitbox</h2>
+            <select id="hitboxSelect" class="hitbox-select"></select>
+            
+            <div class="control-group">
+                <h2>Hitbox Identity</h2>
+                <div class="control-row">
+                    <label>Name</label>
+                    <input type="text" id="hitboxName" style="flex:1; background:#1a1a2e; border:1px solid #0f3460; color:#eee; padding:5px; border-radius:3px;">
+                </div>
+                <div class="control-row">
+                    <label>Color</label>
+                    <input type="color" id="hitboxColor" value="#ff0000" style="width:60px; height:30px; border:none; cursor:pointer;">
+                </div>
+                <button id="deleteHitboxBtn" class="secondary" style="background:#8b0000; margin-top:5px;">🗑️ Delete This Hitbox</button>
+            </div>
+            
+            <div class="control-group">
+                <h2>Size</h2>
+                <div class="control-row">
+                    <label>Width (X)</label>
+                    <input type="range" id="sizeX" min="0.01" max="1" step="0.01" value="0.2">
+                    <input type="number" id="sizeXNum" min="0.01" max="1" step="0.01" value="0.2">
+                </div>
+                <div class="control-row">
+                    <label>Height (Y)</label>
+                    <input type="range" id="sizeY" min="0.01" max="1" step="0.01" value="0.2">
+                    <input type="number" id="sizeYNum" min="0.01" max="1" step="0.01" value="0.2">
+                </div>
+                <div class="control-row">
+                    <label>Depth (Z)</label>
+                    <input type="range" id="sizeZ" min="0.01" max="1" step="0.01" value="0.2">
+                    <input type="number" id="sizeZNum" min="0.01" max="1" step="0.01" value="0.2">
+                </div>
+            </div>
+            
+            <div class="control-group">
+                <h2>Position Offset</h2>
+                <div class="control-row">
+                    <label>X</label>
+                    <input type="range" id="offsetX" min="-1" max="1" step="0.01" value="0">
+                    <input type="number" id="offsetXNum" min="-1" max="1" step="0.01" value="0">
+                </div>
+                <div class="control-row">
+                    <label>Y</label>
+                    <input type="range" id="offsetY" min="0" max="2" step="0.01" value="0.8">
+                    <input type="number" id="offsetYNum" min="0" max="2" step="0.01" value="0.8">
+                </div>
+                <div class="control-row">
+                    <label>Z</label>
+                    <input type="range" id="offsetZ" min="-1" max="1" step="0.01" value="0">
+                    <input type="number" id="offsetZNum" min="-1" max="1" step="0.01" value="0">
+                </div>
+            </div>
+            
+            <div class="control-group">
+                <h2>Rotation (Radians)</h2>
+                <div class="control-row">
+                    <label>X</label>
+                    <input type="range" id="rotX" min="-3.14" max="3.14" step="0.01" value="0">
+                    <input type="number" id="rotXNum" min="-3.14" max="3.14" step="0.01" value="0">
+                </div>
+                <div class="control-row">
+                    <label>Y</label>
+                    <input type="range" id="rotY" min="-3.14" max="3.14" step="0.01" value="0">
+                    <input type="number" id="rotYNum" min="-3.14" max="3.14" step="0.01" value="0">
+                </div>
+                <div class="control-row">
+                    <label>Z</label>
+                    <input type="range" id="rotZ" min="-3.14" max="3.14" step="0.01" value="0">
+                    <input type="number" id="rotZNum" min="-3.14" max="3.14" step="0.01" value="0">
+                </div>
+            </div>
+            
+            <button id="exportBtn">📋 Export Configuration</button>
+            <button id="resetBtn" class="secondary">↺ Reset Current Hitbox</button>
+            
+            <h2>Configuration Output</h2>
+            <div id="output">Select a hitbox and adjust values to see configuration...</div>
+        </div>
+    </div>
+
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "https://cdn.jsdelivr.net/npm/three@0.182.0/build/three.module.js",
+                "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.182.0/examples/jsm/",
+                "three/examples/jsm/": "https://cdn.jsdelivr.net/npm/three@0.182.0/examples/jsm/"
+            }
+        }
+    </script>
+    <script type="module">
+        import * as THREE from 'three';
+        import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
+        import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
+
+        // Default hitbox configuration (from deer-config.js)
+        const defaultConfig = {
+            vitals: {
+                name: 'Vitals',
+                size: { x: 0.283, y: 0.235, z: 0.181 },
+                offset: { x: 0, y: 0.706, z: 0.275 },
+                rotation: { x: 0, y: 0, z: 0 },
+                debugColor: 0xFF0000
+            },
+            gut: {
+                name: 'Gut',
+                size: { x: 0.24, y: 0.20, z: 0.20 },
+                offset: { x: 0, y: 0.65, z: -0.05 },
+                rotation: { x: 0, y: 0, z: 0 },
+                debugColor: 0x00FF00
+            },
+            rear: {
+                name: 'Rear',
+                size: { x: 0.20, y: 0.16, z: 0.168 },
+                offset: { x: 0, y: 0.8, z: -0.264 },
+                rotation: { x: 0, y: 0, z: 0 },
+                debugColor: 0x0000FF
+            },
+            spine: {
+                name: 'Spine',
+                size: { x: 0.02547, y: 0.05076, z: 0.6 },
+                offset: { x: 0, y: 0.84784, z: 0.1 },
+                rotation: { x: 0, y: 0, z: 0 },
+                debugColor: 0xFF00FF
+            },
+            neck: {
+                name: 'Neck',
+                size: { x: 0.063, y: 0.12726, z: 0.35 },
+                offset: { x: 0, y: 0.93818, z: 0.45 },
+                rotation: { x: 0.943, y: 0, z: 0 },
+                debugColor: 0x00FFFF
+            },
+            brain: {
+                name: 'Brain',
+                size: { x: 0.08, y: 0.08, z: 0.08 },
+                offset: { x: 0, y: 1.05, z: 0.75 },
+                rotation: { x: 0, y: 0, z: 0 },
+                debugColor: 0xFFFF00
+            },
+            shoulderLeft: {
+                name: 'Shoulder Left',
+                size: { x: 0.06, y: 0.14, z: 0.12 },
+                offset: { x: 0.10, y: 0.75, z: 0.32 },
+                rotation: { x: 0, y: 0, z: 0 },
+                debugColor: 0xFFA500
+            },
+            shoulderRight: {
+                name: 'Shoulder Right',
+                size: { x: 0.06, y: 0.14, z: 0.12 },
+                offset: { x: -0.10, y: 0.75, z: 0.32 },
+                rotation: { x: 0, y: 0, z: 0 },
+                debugColor: 0xFFA500
+            }
+        };
+        
+        let hitboxCounter = 0; // For generating unique IDs for new hitboxes
+
+        // Current working configuration
+        let config = JSON.parse(JSON.stringify(defaultConfig));
+        
+        // Three.js setup
+        const canvas = document.getElementById('canvas');
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color(0x1a1a2e);
+        
+        const camera = new THREE.PerspectiveCamera(60, canvas.clientWidth / canvas.clientHeight, 0.1, 100);
+        camera.position.set(2, 1.5, 2);
+        
+        const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+        renderer.setSize(canvas.clientWidth, canvas.clientHeight);
+        renderer.setPixelRatio(window.devicePixelRatio);
+        
+        const controls = new OrbitControls(camera, renderer.domElement);
+        controls.target.set(0, 0.7, 0);
+        controls.update();
+        
+        // Lighting
+        const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+        scene.add(ambientLight);
+        
+        const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
+        directionalLight.position.set(5, 10, 5);
+        scene.add(directionalLight);
+        
+        // Grid helper
+        const gridHelper = new THREE.GridHelper(4, 20, 0x444444, 0x333333);
+        scene.add(gridHelper);
+        
+        // Axes helper
+        const axesHelper = new THREE.AxesHelper(1);
+        scene.add(axesHelper);
+        
+        // Deer model and hitboxes
+        let deerModel = null;
+        let hitboxMeshes = {};
+        let currentHitbox = 'vitals';
+        
+        // Scale factor for hitboxes - use 1 for studio (deer model is at natural scale)
+        // In the game, collision.js uses 30x scale for gameplay detection
+        const HITBOX_SCALE = 1;
+        
+        // Load deer model
+        const loader = new GLTFLoader();
+        loader.load('assets/White_Tailed_Deer_Male.glb', (gltf) => {
+            deerModel = gltf.scene;
+            deerModel.scale.set(1, 1, 1);
+            scene.add(deerModel);
+            
+            // Create hitboxes
+            createAllHitboxes();
+            
+            // Populate UI
+            updateLegend();
+            updateHitboxSelect();
+            updateUIFromConfig(currentHitbox);
+        }, undefined, (error) => {
+            console.error('Error loading deer model:', error);
+        });
+        
+        function updateLegend() {
+            const legend = document.getElementById('hitboxLegend');
+            legend.innerHTML = '';
+            
+            Object.keys(config).forEach(zoneName => {
+                const zoneConfig = config[zoneName];
+                const item = document.createElement('div');
+                item.className = 'legend-item' + (zoneName === currentHitbox ? ' selected' : '');
+                item.dataset.zone = zoneName;
+                
+                const colorBox = document.createElement('div');
+                colorBox.className = 'legend-color';
+                colorBox.style.backgroundColor = '#' + zoneConfig.debugColor.toString(16).padStart(6, '0');
+                
+                const nameSpan = document.createElement('span');
+                nameSpan.className = 'legend-name';
+                nameSpan.textContent = zoneConfig.name || zoneName;
+                
+                item.appendChild(colorBox);
+                item.appendChild(nameSpan);
+                
+                item.addEventListener('click', () => {
+                    selectHitbox(zoneName);
+                });
+                
+                legend.appendChild(item);
+            });
+        }
+        
+        function updateHitboxSelect() {
+            const select = document.getElementById('hitboxSelect');
+            select.innerHTML = '';
+            
+            Object.keys(config).forEach(zoneName => {
+                const zoneConfig = config[zoneName];
+                const option = document.createElement('option');
+                option.value = zoneName;
+                option.textContent = zoneConfig.name || zoneName;
+                select.appendChild(option);
+            });
+            
+            select.value = currentHitbox;
+        }
+        
+        function selectHitbox(zoneName) {
+            currentHitbox = zoneName;
+            document.getElementById('hitboxSelect').value = zoneName;
+            updateUIFromConfig(zoneName);
+            updateLegend();
+            
+            // Highlight selected hitbox
+            Object.entries(hitboxMeshes).forEach(([name, mesh]) => {
+                mesh.material.opacity = name === currentHitbox ? 1.0 : 0.3;
+            });
+        }
+        
+        function addNewHitbox() {
+            hitboxCounter++;
+            const newId = 'custom_' + hitboxCounter;
+            const randomColor = Math.floor(Math.random() * 0xFFFFFF);
+            
+            config[newId] = {
+                name: 'New Hitbox ' + hitboxCounter,
+                size: { x: 0.1, y: 0.1, z: 0.1 },
+                offset: { x: 0, y: 0.8, z: 0 },
+                rotation: { x: 0, y: 0, z: 0 },
+                debugColor: randomColor
+            };
+            
+            createAllHitboxes();
+            updateLegend();
+            updateHitboxSelect();
+            selectHitbox(newId);
+        }
+        
+        function deleteCurrentHitbox() {
+            if (Object.keys(config).length <= 1) {
+                alert('Cannot delete the last hitbox!');
+                return;
+            }
+            
+            if (!confirm('Delete hitbox "' + (config[currentHitbox].name || currentHitbox) + '"?')) {
+                return;
+            }
+            
+            // Remove mesh
+            if (hitboxMeshes[currentHitbox]) {
+                scene.remove(hitboxMeshes[currentHitbox]);
+                hitboxMeshes[currentHitbox].geometry.dispose();
+                hitboxMeshes[currentHitbox].material.dispose();
+                delete hitboxMeshes[currentHitbox];
+            }
+            
+            // Remove from config
+            delete config[currentHitbox];
+            
+            // Select first remaining hitbox
+            currentHitbox = Object.keys(config)[0];
+            
+            updateLegend();
+            updateHitboxSelect();
+            updateUIFromConfig(currentHitbox);
+            
+            // Update mesh opacities
+            Object.entries(hitboxMeshes).forEach(([name, mesh]) => {
+                mesh.material.opacity = name === currentHitbox ? 1.0 : 0.3;
+            });
+        }
+        
+        function createAllHitboxes() {
+            // Remove existing hitboxes
+            Object.values(hitboxMeshes).forEach(mesh => {
+                scene.remove(mesh);
+                mesh.geometry.dispose();
+                mesh.material.dispose();
+            });
+            hitboxMeshes = {};
+            
+            // Create new hitboxes
+            Object.keys(config).forEach(zoneName => {
+                const zoneConfig = config[zoneName];
+                const geometry = new THREE.BoxGeometry(
+                    zoneConfig.size.x * HITBOX_SCALE,
+                    zoneConfig.size.y * HITBOX_SCALE,
+                    zoneConfig.size.z * HITBOX_SCALE
+                );
+                
+                const material = new THREE.MeshBasicMaterial({
+                    color: zoneConfig.debugColor,
+                    wireframe: true,
+                    transparent: true,
+                    opacity: 0.8
+                });
+                
+                const mesh = new THREE.Mesh(geometry, material);
+                mesh.position.set(
+                    zoneConfig.offset.x * HITBOX_SCALE,
+                    zoneConfig.offset.y * HITBOX_SCALE,
+                    zoneConfig.offset.z * HITBOX_SCALE
+                );
+                
+                if (zoneConfig.rotation) {
+                    mesh.rotation.set(
+                        zoneConfig.rotation.x || 0,
+                        zoneConfig.rotation.y || 0,
+                        zoneConfig.rotation.z || 0
+                    );
+                }
+                
+                mesh.name = zoneName;
+                scene.add(mesh);
+                hitboxMeshes[zoneName] = mesh;
+            });
+        }
+        
+        function updateHitbox(zoneName) {
+            const mesh = hitboxMeshes[zoneName];
+            const zoneConfig = config[zoneName];
+            
+            if (!mesh || !zoneConfig) return;
+            
+            // Update geometry
+            mesh.geometry.dispose();
+            mesh.geometry = new THREE.BoxGeometry(
+                zoneConfig.size.x * HITBOX_SCALE,
+                zoneConfig.size.y * HITBOX_SCALE,
+                zoneConfig.size.z * HITBOX_SCALE
+            );
+            
+            // Update position
+            mesh.position.set(
+                zoneConfig.offset.x * HITBOX_SCALE,
+                zoneConfig.offset.y * HITBOX_SCALE,
+                zoneConfig.offset.z * HITBOX_SCALE
+            );
+            
+            // Update rotation
+            mesh.rotation.set(
+                zoneConfig.rotation?.x || 0,
+                zoneConfig.rotation?.y || 0,
+                zoneConfig.rotation?.z || 0
+            );
+        }
+        
+        function updateUIFromConfig(zoneName) {
+            const zoneConfig = config[zoneName];
+            if (!zoneConfig) return;
+            
+            // Name and color
+            document.getElementById('hitboxName').value = zoneConfig.name || zoneName;
+            document.getElementById('hitboxColor').value = '#' + zoneConfig.debugColor.toString(16).padStart(6, '0');
+            
+            // Size
+            document.getElementById('sizeX').value = zoneConfig.size.x;
+            document.getElementById('sizeXNum').value = zoneConfig.size.x;
+            document.getElementById('sizeY').value = zoneConfig.size.y;
+            document.getElementById('sizeYNum').value = zoneConfig.size.y;
+            document.getElementById('sizeZ').value = zoneConfig.size.z;
+            document.getElementById('sizeZNum').value = zoneConfig.size.z;
+            
+            // Offset
+            document.getElementById('offsetX').value = zoneConfig.offset.x;
+            document.getElementById('offsetXNum').value = zoneConfig.offset.x;
+            document.getElementById('offsetY').value = zoneConfig.offset.y;
+            document.getElementById('offsetYNum').value = zoneConfig.offset.y;
+            document.getElementById('offsetZ').value = zoneConfig.offset.z;
+            document.getElementById('offsetZNum').value = zoneConfig.offset.z;
+            
+            // Rotation
+            const rot = zoneConfig.rotation || { x: 0, y: 0, z: 0 };
+            document.getElementById('rotX').value = rot.x;
+            document.getElementById('rotXNum').value = rot.x;
+            document.getElementById('rotY').value = rot.y;
+            document.getElementById('rotYNum').value = rot.y;
+            document.getElementById('rotZ').value = rot.z;
+            document.getElementById('rotZNum').value = rot.z;
+            
+            updateOutput();
+        }
+        
+        function updateConfigFromUI() {
+            const zoneName = currentHitbox;
+            
+            config[zoneName].size.x = parseFloat(document.getElementById('sizeXNum').value);
+            config[zoneName].size.y = parseFloat(document.getElementById('sizeYNum').value);
+            config[zoneName].size.z = parseFloat(document.getElementById('sizeZNum').value);
+            
+            config[zoneName].offset.x = parseFloat(document.getElementById('offsetXNum').value);
+            config[zoneName].offset.y = parseFloat(document.getElementById('offsetYNum').value);
+            config[zoneName].offset.z = parseFloat(document.getElementById('offsetZNum').value);
+            
+            if (!config[zoneName].rotation) config[zoneName].rotation = { x: 0, y: 0, z: 0 };
+            config[zoneName].rotation.x = parseFloat(document.getElementById('rotXNum').value);
+            config[zoneName].rotation.y = parseFloat(document.getElementById('rotYNum').value);
+            config[zoneName].rotation.z = parseFloat(document.getElementById('rotZNum').value);
+            
+            updateHitbox(zoneName);
+            updateOutput();
+        }
+        
+        function updateOutput() {
+            const output = document.getElementById('output');
+            const zoneName = currentHitbox;
+            const zoneConfig = config[zoneName];
+            
+            let text = `${zoneName}: {\n`;
+            text += `    name: '${zoneConfig.name || zoneName}',\n`;
+            text += `    size: { x: ${zoneConfig.size.x}, y: ${zoneConfig.size.y}, z: ${zoneConfig.size.z} },\n`;
+            text += `    offset: { x: ${zoneConfig.offset.x}, y: ${zoneConfig.offset.y}, z: ${zoneConfig.offset.z} },\n`;
+            if (zoneConfig.rotation && (zoneConfig.rotation.x || zoneConfig.rotation.y || zoneConfig.rotation.z)) {
+                text += `    rotation: { x: ${zoneConfig.rotation.x}, y: ${zoneConfig.rotation.y}, z: ${zoneConfig.rotation.z} },\n`;
+            }
+            text += `    debugColor: 0x${zoneConfig.debugColor.toString(16).toUpperCase().padStart(6, '0')}\n`;
+            text += `}`;
+            
+            output.textContent = text;
+        }
+        
+        function exportFullConfig() {
+            let text = '// Copy this to deer-config.js\n\n';
+            
+            Object.keys(config).forEach(zoneName => {
+                const zoneConfig = config[zoneName];
+                text += `    ${zoneName}: {\n`;
+                text += `        name: '${zoneConfig.name || zoneName}',\n`;
+                text += `        size: { x: ${zoneConfig.size.x}, y: ${zoneConfig.size.y}, z: ${zoneConfig.size.z} },\n`;
+                text += `        offset: { x: ${zoneConfig.offset.x}, y: ${zoneConfig.offset.y}, z: ${zoneConfig.offset.z} },\n`;
+                if (zoneConfig.rotation && (zoneConfig.rotation.x || zoneConfig.rotation.y || zoneConfig.rotation.z)) {
+                    text += `        rotation: { x: ${zoneConfig.rotation.x}, y: ${zoneConfig.rotation.y}, z: ${zoneConfig.rotation.z} },\n`;
+                }
+                text += `        debugColor: 0x${zoneConfig.debugColor.toString(16).toUpperCase().padStart(6, '0')},\n`;
+                text += `    },\n\n`;
+            });
+            
+            document.getElementById('output').textContent = text;
+            
+            // Copy to clipboard
+            navigator.clipboard.writeText(text).then(() => {
+                alert('Configuration copied to clipboard!');
+            }).catch(() => {
+                alert('Configuration exported to output box. Please copy manually.');
+            });
+        }
+        
+        // Event listeners
+        document.getElementById('hitboxSelect').addEventListener('change', (e) => {
+            currentHitbox = e.target.value;
+            updateUIFromConfig(currentHitbox);
+            
+            // Highlight selected hitbox
+            Object.entries(hitboxMeshes).forEach(([name, mesh]) => {
+                mesh.material.opacity = name === currentHitbox ? 1.0 : 0.3;
+            });
+        });
+        
+        document.getElementById('showBody').addEventListener('change', (e) => {
+            if (deerModel) {
+                deerModel.visible = e.target.checked;
+            }
+        });
+        
+        document.getElementById('showHitboxes').addEventListener('change', (e) => {
+            Object.values(hitboxMeshes).forEach(mesh => {
+                mesh.visible = e.target.checked;
+            });
+        });
+        
+        // Slider and number input sync
+        ['sizeX', 'sizeY', 'sizeZ', 'offsetX', 'offsetY', 'offsetZ', 'rotX', 'rotY', 'rotZ'].forEach(id => {
+            const slider = document.getElementById(id);
+            const numInput = document.getElementById(id + 'Num');
+            
+            slider.addEventListener('input', () => {
+                numInput.value = slider.value;
+                updateConfigFromUI();
+            });
+            
+            numInput.addEventListener('input', () => {
+                slider.value = numInput.value;
+                updateConfigFromUI();
+            });
+        });
+        
+        document.getElementById('exportBtn').addEventListener('click', exportFullConfig);
+        
+        document.getElementById('resetBtn').addEventListener('click', () => {
+            if (defaultConfig[currentHitbox]) {
+                config[currentHitbox] = JSON.parse(JSON.stringify(defaultConfig[currentHitbox]));
+                updateUIFromConfig(currentHitbox);
+                updateHitbox(currentHitbox);
+                updateLegend();
+            } else {
+                alert('No default configuration for custom hitbox. Delete it instead.');
+            }
+        });
+        
+        // Add new hitbox button
+        document.getElementById('addHitboxBtn').addEventListener('click', addNewHitbox);
+        
+        // Delete hitbox button
+        document.getElementById('deleteHitboxBtn').addEventListener('click', deleteCurrentHitbox);
+        
+        // Hitbox name input
+        document.getElementById('hitboxName').addEventListener('input', (e) => {
+            config[currentHitbox].name = e.target.value;
+            updateLegend();
+            updateHitboxSelect();
+            updateOutput();
+        });
+        
+        // Hitbox color input
+        document.getElementById('hitboxColor').addEventListener('input', (e) => {
+            const colorHex = e.target.value.replace('#', '');
+            config[currentHitbox].debugColor = parseInt(colorHex, 16);
+            
+            // Update mesh color
+            if (hitboxMeshes[currentHitbox]) {
+                hitboxMeshes[currentHitbox].material.color.setHex(config[currentHitbox].debugColor);
+            }
+            
+            updateLegend();
+            updateOutput();
+        });
+        
+        // Animation loop
+        function animate() {
+            requestAnimationFrame(animate);
+            controls.update();
+            renderer.render(scene, camera);
+        }
+        animate();
+        
+        // Handle resize
+        window.addEventListener('resize', () => {
+            const width = canvas.clientWidth;
+            const height = canvas.clientHeight;
+            camera.aspect = width / height;
+            camera.updateProjectionMatrix();
+            renderer.setSize(width, height);
+        });
+    </script>
+</body>
+</html>
