@@ -235,25 +235,20 @@ class CollisionSystem {
             return null;
         }
         
-        // Performance optimization: Use spatial partitioning to only check nearby trees
-        const MAX_CHECK_DISTANCE = 50; // Only check trees within 50 units
-        const MAX_TREES_TO_CHECK = 20; // Limit to checking at most 20 trees per call
-        
-        let treesChecked = 0;
+        // Performance optimization: Manhattan distance pre-filter skips distant trees
+        const MAX_CHECK_DISTANCE = 20; // Only check trees within 20 units (Manhattan)
         
         // Check collision with nearby trees only
         for (const tree of gameContext.trees.children) {
-            // Quick distance check to skip far away trees
-            const roughDistance = Math.abs(position.x - tree.position.x) + Math.abs(position.z - tree.position.z);
-            if (roughDistance > MAX_CHECK_DISTANCE) {
-                continue; // Skip trees that are definitely too far away
+            // Quick Manhattan distance check to skip far away trees
+            const dx = position.x - tree.position.x;
+            const dz = position.z - tree.position.z;
+            if (Math.abs(dx) + Math.abs(dz) > MAX_CHECK_DISTANCE) {
+                continue;
             }
             
             // Calculate precise 2D distance (ignore Y axis for collision)
-            const distance = new THREE.Vector2(
-                position.x - tree.position.x,
-                position.z - tree.position.z
-            ).length();
+            const distance = Math.sqrt(dx * dx + dz * dz);
             
             // Estimate tree collision radius based on scale
             const treeRadius = (tree.scale.x || 1.0) * 1.8;
@@ -261,12 +256,6 @@ class CollisionSystem {
             // Check if collision occurs
             if (distance < treeRadius + radius) {
                 return tree; // Return the colliding tree
-            }
-            
-            // Limit the number of trees we check per call to prevent performance issues
-            treesChecked++;
-            if (treesChecked >= MAX_TREES_TO_CHECK) {
-                break;
             }
         }
         

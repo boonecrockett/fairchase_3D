@@ -30,6 +30,11 @@ const MAP_PLAYER_DOT_LINE_WIDTH = 2;
 const MAP_MARKER_OUTLINE_COLOR = 0xffffff; // White outline for markers
 const MAP_MARKER_OUTLINE_WIDTH = 2; // Width of outline ring
 
+// Cached map scene elements (built once, reused on each map open)
+let cachedMapScene = null;
+let cachedMapCamera = null;
+let dynamicMapObjects = []; // Markers that change each render
+
 /**
  * Initializes the WebGLRenderer for the map canvas.
  */
@@ -38,6 +43,176 @@ export function initMap() {
         gameContext.mapRenderer = new THREE.WebGLRenderer({ antialias: true, canvas: gameContext.mapCanvas });
         gameContext.mapRenderer.setSize(MAP_CANVAS_SIZE, MAP_CANVAS_SIZE);
     }
+}
+
+/**
+ * Builds or returns the cached map scene with static elements.
+ * Dynamic markers (player, deer) are cleared and re-added each call.
+ * @param {number} canvasWidth - Width for camera aspect
+ * @param {number} canvasHeight - Height for camera aspect
+ * @returns {{ scene: THREE.Scene, camera: THREE.OrthographicCamera }}
+ */
+function getMapScene(canvasWidth, canvasHeight) {
+    const worldSize = gameContext.terrain.geometry.parameters.width;
+    const halfWorldSize = worldSize / 2;
+    
+    if (!cachedMapScene) {
+        cachedMapScene = new THREE.Scene();
+        cachedMapScene.background = new THREE.Color(MAP_BACKGROUND_COLOR);
+        
+        // Lighting
+        const mapAmbient = new THREE.AmbientLight(MAP_AMBIENT_LIGHT_COLOR, MAP_AMBIENT_LIGHT_INTENSITY);
+        cachedMapScene.add(mapAmbient);
+        const mapDirectional = new THREE.DirectionalLight(MAP_DIRECTIONAL_LIGHT_COLOR, MAP_DIRECTIONAL_LIGHT_INTENSITY);
+        mapDirectional.position.set(MAP_DIRECTIONAL_LIGHT_POSITION.x, MAP_DIRECTIONAL_LIGHT_POSITION.y, MAP_DIRECTIONAL_LIGHT_POSITION.z);
+        cachedMapScene.add(mapDirectional);
+        
+        // Terrain (cloned once)
+        cachedMapScene.add(gameContext.terrain.clone());
+        
+        // Water bodies
+        if (gameContext.waterBodies && gameContext.waterBodies.length > 0) {
+            gameContext.waterBodies.forEach(waterBody => {
+                cachedMapScene.add(waterBody.clone());
+            });
+        }
+        
+        // Trees with map-specific material
+        if (gameContext.trees) {
+            gameContext.trees.children.forEach(tree => {
+                const mapTree = tree.clone();
+                mapTree.traverse(child => {
+                    if (child.isMesh) {
+                        child.material = new THREE.MeshBasicMaterial({ color: MAP_TREE_COLOR });
+                    }
+                });
+                cachedMapScene.add(mapTree);
+            });
+        }
+        
+        // Bushes
+        if (gameContext.bushes) {
+            gameContext.bushes.children.forEach(bush => {
+                const mapBush = bush.clone();
+                mapBush.traverse(child => {
+                    if (child.isMesh) {
+                        child.material = new THREE.MeshBasicMaterial({ color: MAP_BUSH_COLOR });
+                    }
+                });
+                cachedMapScene.add(mapBush);
+            });
+        }
+        
+        // Game trails
+        if (gameContext.trails && gameContext.trails.children && gameContext.trails.children.length > 0) {
+            gameContext.trails.children.forEach(trail => {
+                const positions = trail.geometry.attributes.position.array;
+                const trailPoints = [];
+                for (let i = 0; i < positions.length; i += 6) {
+                    const centerX = (positions[i] + positions[i + 3]) / 2;
+                    const centerZ = (positions[i + 2] + positions[i + 5]) / 2;
+                    trailPoints.push(new THREE.Vector3(centerX, 100, centerZ));
+                }
+                
+                if (trailPoints.length >= 2) {
+                    const mapTrailWidth = 4;
+                    const vertices = [];
+                    const indices = [];
+                    
+                    for (let i = 0; i < trailPoints.length; i++) {
+                        const point = trailPoints[i];
+                        let perpX, perpZ;
+                        
+                        if (i === 0) {
+                            const next = trailPoints[1];
+                            const dx = next.x - point.x;
+                            const dz = next.z - point.z;
+                            const len = Math.sqrt(dx * dx + dz * dz) || 1;
+                            perpX = -dz / len * mapTrailWidth;
+                            perpZ = dx / len * mapTrailWidth;
+                        } else if (i === trailPoints.length - 1) {
+                            const prev = trailPoints[i - 1];
+                            const dx = point.x - prev.x;
+                            const dz = point.z - prev.z;
+                            const len = Math.sqrt(dx * dx + dz * dz) || 1;
+                            perpX = -dz / len * mapTrailWidth;
+                            perpZ = dx / len * mapTrailWidth;
+                        } else {
+                            const prev = trailPoints[i - 1];
+                            const next = trailPoints[i + 1];
+                            const dx = next.x - prev.x;
+                            const dz = next.z - prev.z;
+                            const len = Math.sqrt(dx * dx + dz * dz) || 1;
+                            perpX = -dz / len * mapTrailWidth;
+                            perpZ = dx / len * mapTrailWidth;
+                        }
+                        
+                        vertices.push(point.x - perpX, 100, point.z - perpZ);
+                        vertices.push(point.x + perpX, 100, point.z + perpZ);
+                        
+                        if (i > 0) {
+                            const base = (i - 1) * 2;
+                            indices.push(base, base + 1, base + 2);
+                            indices.push(base + 1, base + 3, base + 2);
+                        }
+                    }
+                    
+                    const geometry = new THREE.BufferGeometry();
+                    geometry.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3));
+                    geometry.setIndex(indices);
+                    
+                    const mapTrail = new THREE.Mesh(geometry, new THREE.MeshBasicMaterial({
+                        color: MAP_TRAIL_COLOR,
+                        side: THREE.DoubleSide,
+                        depthTest: false
+                    }));
+                    mapTrail.renderOrder = 100;
+                    cachedMapScene.add(mapTrail);
+                }
+            });
+        }
+    }
+    
+    // Remove previous dynamic objects
+    dynamicMapObjects.forEach(obj => cachedMapScene.remove(obj));
+    dynamicMapObjects = [];
+    
+    // Add dynamic markers
+    const playerMarker = createMarkerWithOutline(10, MAP_HUNTER_COLOR, gameContext.player.position, 20);
+    cachedMapScene.add(playerMarker);
+    dynamicMapObjects.push(playerMarker);
+    
+    if (gameContext.deer && gameContext.deer.isModelLoaded) {
+        const isWounded = gameContext.deer.state === 'WOUNDED';
+        const isDead = gameContext.deer.state === 'KILLED';
+        const isTagged = gameContext.deer.tagged;
+        
+        if (isTagged) {
+            const deerMarker = createMarkerWithOutline(10, MAP_TAGGED_COLOR, gameContext.deer.model.position, 21);
+            cachedMapScene.add(deerMarker);
+            dynamicMapObjects.push(deerMarker);
+        } else if (isWounded || isDead) {
+            if (gameContext.lastHitPosition) {
+                const hitMarker = createHitMarker(gameContext.lastHitPosition, 10);
+                cachedMapScene.add(hitMarker);
+                dynamicMapObjects.push(hitMarker);
+            }
+        } else {
+            const deerMarker = createMarkerWithOutline(10, MAP_DEER_COLOR, gameContext.deer.model.position, 21);
+            cachedMapScene.add(deerMarker);
+            dynamicMapObjects.push(deerMarker);
+        }
+    }
+    
+    // Create or update camera
+    const aspectRatio = canvasWidth / canvasHeight;
+    const horizontalBounds = halfWorldSize * Math.max(1, 1 / aspectRatio);
+    const verticalBounds = halfWorldSize * Math.max(1, aspectRatio);
+    cachedMapCamera = new THREE.OrthographicCamera(-horizontalBounds, horizontalBounds, verticalBounds, -verticalBounds, MAP_CAMERA_NEAR_PLANE, MAP_CAMERA_FAR_PLANE);
+    cachedMapCamera.position.y = MAP_CAMERA_Y_POSITION;
+    cachedMapCamera.lookAt(0, 0, 0);
+    
+    return { scene: cachedMapScene, camera: cachedMapCamera };
 }
 
 /**
@@ -228,165 +403,8 @@ export function showMap() {
     // Update report if modal is open
     updateReportModal();
     
-    const worldSize = gameContext.terrain.geometry.parameters.width;
-
-    const tempScene = new THREE.Scene();
-    tempScene.background = new THREE.Color(MAP_BACKGROUND_COLOR);
-
-    const halfWorldSize = worldSize / 2;
-    // Fix aspect ratio for square map canvas (512x512)
-    const tempCamera = new THREE.OrthographicCamera(-halfWorldSize, halfWorldSize, halfWorldSize, -halfWorldSize, MAP_CAMERA_NEAR_PLANE, MAP_CAMERA_FAR_PLANE);
-    tempCamera.position.y = MAP_CAMERA_Y_POSITION;
-    tempCamera.lookAt(tempScene.position); // Look at the center of the map
-
-    const mapAmbient = new THREE.AmbientLight(MAP_AMBIENT_LIGHT_COLOR, MAP_AMBIENT_LIGHT_INTENSITY);
-    tempScene.add(mapAmbient);
-    const mapDirectional = new THREE.DirectionalLight(MAP_DIRECTIONAL_LIGHT_COLOR, MAP_DIRECTIONAL_LIGHT_INTENSITY);
-    mapDirectional.position.set(MAP_DIRECTIONAL_LIGHT_POSITION.x, MAP_DIRECTIONAL_LIGHT_POSITION.y, MAP_DIRECTIONAL_LIGHT_POSITION.z);
-    tempScene.add(mapDirectional);
-
-    tempScene.add(gameContext.terrain.clone());
-    if (gameContext.waterBodies && gameContext.waterBodies.length > 0) {
-        gameContext.waterBodies.forEach(waterBody => {
-            tempScene.add(waterBody.clone());
-        });
-    }
-    if (gameContext.trees) {
-        gameContext.trees.children.forEach(tree => {
-            const mapTree = tree.clone();
-            mapTree.traverse(child => {
-                if (child.isMesh) {
-                    child.material = new THREE.MeshBasicMaterial({ color: MAP_TREE_COLOR });
-                }
-            });
-            tempScene.add(mapTree);
-        });
-    }
-    
-    // --- Bushes (rendered for map visibility) ---
-    if (gameContext.bushes) {
-        gameContext.bushes.children.forEach(bush => {
-            const mapBush = bush.clone();
-            mapBush.traverse(child => {
-                if (child.isMesh) {
-                    child.material = new THREE.MeshBasicMaterial({ color: MAP_BUSH_COLOR });
-                }
-            });
-            tempScene.add(mapBush);
-        });
-    }
-    
-    // --- Game Trails (rendered for map visibility) ---
-    if (gameContext.trails && gameContext.trails.children && gameContext.trails.children.length > 0) {
-        console.log(`🗺️ MAP: Adding ${gameContext.trails.children.length} trails to map`);
-        gameContext.trails.children.forEach(trail => {
-            // Extract trail points and create a wider line for the map
-            const positions = trail.geometry.attributes.position.array;
-            
-            // Create a simple wide line using PlaneGeometry segments
-            const trailPoints = [];
-            for (let i = 0; i < positions.length; i += 6) {
-                // Get center point of each segment (average of left and right vertices)
-                const centerX = (positions[i] + positions[i + 3]) / 2;
-                const centerZ = (positions[i + 2] + positions[i + 5]) / 2;
-                trailPoints.push(new THREE.Vector3(centerX, 100, centerZ));
-            }
-            
-            // Create wider trail geometry for map
-            if (trailPoints.length >= 2) {
-                const mapTrailWidth = 4; // Wider for map visibility
-                const vertices = [];
-                const indices = [];
-                
-                for (let i = 0; i < trailPoints.length; i++) {
-                    const point = trailPoints[i];
-                    let perpX, perpZ;
-                    
-                    if (i === 0) {
-                        const next = trailPoints[1];
-                        const dx = next.x - point.x;
-                        const dz = next.z - point.z;
-                        const len = Math.sqrt(dx * dx + dz * dz) || 1;
-                        perpX = -dz / len * mapTrailWidth;
-                        perpZ = dx / len * mapTrailWidth;
-                    } else if (i === trailPoints.length - 1) {
-                        const prev = trailPoints[i - 1];
-                        const dx = point.x - prev.x;
-                        const dz = point.z - prev.z;
-                        const len = Math.sqrt(dx * dx + dz * dz) || 1;
-                        perpX = -dz / len * mapTrailWidth;
-                        perpZ = dx / len * mapTrailWidth;
-                    } else {
-                        const prev = trailPoints[i - 1];
-                        const next = trailPoints[i + 1];
-                        const dx = next.x - prev.x;
-                        const dz = next.z - prev.z;
-                        const len = Math.sqrt(dx * dx + dz * dz) || 1;
-                        perpX = -dz / len * mapTrailWidth;
-                        perpZ = dx / len * mapTrailWidth;
-                    }
-                    
-                    vertices.push(point.x - perpX, 100, point.z - perpZ);
-                    vertices.push(point.x + perpX, 100, point.z + perpZ);
-                    
-                    if (i > 0) {
-                        const base = (i - 1) * 2;
-                        indices.push(base, base + 1, base + 2);
-                        indices.push(base + 1, base + 3, base + 2);
-                    }
-                }
-                
-                const geometry = new THREE.BufferGeometry();
-                geometry.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3));
-                geometry.setIndex(indices);
-                
-                const mapTrail = new THREE.Mesh(geometry, new THREE.MeshBasicMaterial({
-                    color: MAP_TRAIL_COLOR,
-                    side: THREE.DoubleSide,
-                    depthTest: false
-                }));
-                // Trail geometry is already in XZ plane, no rotation needed
-                mapTrail.renderOrder = 100;
-                tempScene.add(mapTrail);
-            }
-        });
-    }
-
-    // --- Hunter Dot (3D) - Hunter's Orange with white outline ---
-    const playerMarker = createMarkerWithOutline(10, MAP_HUNTER_COLOR, gameContext.player.position, 20);
-    tempScene.add(playerMarker);
-
-    // --- Deer Marker Logic ---
-    // Show different markers based on deer state:
-    // - Alive: Brown dot (live tracking)
-    // - Wounded/Dead untagged: Red X at hit location + blood trail
-    // - Tagged: Green dot at actual location
-    
-    if (gameContext.deer && gameContext.deer.isModelLoaded) {
-        const isWounded = gameContext.deer.state === 'WOUNDED';
-        const isDead = gameContext.deer.state === 'KILLED';
-        const isTagged = gameContext.deer.tagged;
-        
-        if (isTagged) {
-            // Tagged deer - show green dot with outline at actual location
-            const deerMarker = createMarkerWithOutline(10, MAP_TAGGED_COLOR, gameContext.deer.model.position, 21);
-            tempScene.add(deerMarker);
-            
-        } else if (isWounded || isDead) {
-            // Wounded or dead untagged - show red X at hit location only
-            if (gameContext.lastHitPosition) {
-                const hitMarker = createHitMarker(gameContext.lastHitPosition, 10);
-                tempScene.add(hitMarker);
-            }
-            
-        } else {
-            // Alive deer - show brown dot with outline (GPS tracking)
-            const deerMarker = createMarkerWithOutline(10, MAP_DEER_COLOR, gameContext.deer.model.position, 21);
-            tempScene.add(deerMarker);
-        }
-    }
-
-    gameContext.mapRenderer.render(tempScene, tempCamera);
+    const { scene, camera } = getMapScene(MAP_CANVAS_SIZE, MAP_CANVAS_SIZE);
+    gameContext.mapRenderer.render(scene, camera);
     
     // Add distance legend overlay
     addDistanceLegend(gameContext.mapCanvas);
@@ -757,100 +775,10 @@ function renderSmartphoneMap() {
     const renderer = new THREE.WebGLRenderer({ canvas: canvas, antialias: true });
     renderer.setSize(350, 340);
     renderer.setPixelRatio(window.devicePixelRatio);
-    renderer.setClearColor(0x1a472a);
+    renderer.setClearColor(MAP_BACKGROUND_COLOR);
     
-    const worldSize = gameContext.terrain.geometry.parameters.width;
-    const tempScene = new THREE.Scene();
-    tempScene.background = new THREE.Color(0x1a472a);
-    
-    const halfWorldSize = worldSize / 2;
-    // Fix aspect ratio for smartphone map (310x310) - square screen
-    const aspectRatio = 1; // Square
-    
-    // For square screen, we need to expand the horizontal view to show the full world
-    // Instead of narrowing horizontal bounds, expand them to ensure full world visibility
-    const horizontalBounds = halfWorldSize / aspectRatio; // Expand horizontal to fit full world
-    const verticalBounds = halfWorldSize; // Keep vertical as full world size
-    
-    const tempCamera = new THREE.OrthographicCamera(-horizontalBounds, horizontalBounds, verticalBounds, -verticalBounds, 1, 2000);
-    tempCamera.position.y = 500;
-    tempCamera.lookAt(tempScene.position);
-    
-    // Add lighting
-    const mapAmbient = new THREE.AmbientLight(0xffffff, 0.7);
-    tempScene.add(mapAmbient);
-    const mapDirectional = new THREE.DirectionalLight(0xffffff, 0.5);
-    mapDirectional.position.set(100, 300, 200);
-    tempScene.add(mapDirectional);
-    
-    // Add terrain
-    tempScene.add(gameContext.terrain.clone());
-    
-    // Add water bodies
-    if (gameContext.waterBodies && gameContext.waterBodies.length > 0) {
-        gameContext.waterBodies.forEach(waterBody => {
-            tempScene.add(waterBody.clone());
-        });
-    }
-    
-    // Add trees
-    if (gameContext.trees) {
-        gameContext.trees.children.forEach(tree => {
-            const mapTree = tree.clone();
-            mapTree.traverse(child => {
-                if (child.isMesh) {
-                    child.material = new THREE.MeshBasicMaterial({ color: 0x14501e });
-                }
-            });
-            tempScene.add(mapTree);
-        });
-    }
-    
-    // Add game trails
-    if (gameContext.trails) {
-        gameContext.trails.children.forEach(trail => {
-            const mapTrail = trail.clone();
-            mapTrail.material = new THREE.MeshBasicMaterial({ 
-                color: MAP_TRAIL_COLOR,
-                side: THREE.DoubleSide,
-                transparent: true,
-                opacity: 0.8
-            });
-            mapTrail.position.y += 5;
-            tempScene.add(mapTrail);
-        });
-    }
-    
-    // Add hunter dot - Hunter's Orange with white outline
-    const playerMarker = createMarkerWithOutline(10, MAP_HUNTER_COLOR, gameContext.player.position, 20);
-    tempScene.add(playerMarker);
-    
-    // --- Deer Marker Logic (same as showMap) ---
-    if (gameContext.deer && gameContext.deer.isModelLoaded) {
-        const isWounded = gameContext.deer.state === 'WOUNDED';
-        const isDead = gameContext.deer.state === 'KILLED';
-        const isTagged = gameContext.deer.tagged;
-        
-        if (isTagged) {
-            // Tagged deer - show green dot with outline at actual location
-            const deerMarker = createMarkerWithOutline(10, MAP_TAGGED_COLOR, gameContext.deer.model.position, 21);
-            tempScene.add(deerMarker);
-            
-        } else if (isWounded || isDead) {
-            // Wounded or dead untagged - show red X at hit location only
-            if (gameContext.lastHitPosition) {
-                const hitMarker = createHitMarker(gameContext.lastHitPosition, 10);
-                tempScene.add(hitMarker);
-            }
-            
-        } else {
-            // Alive deer - show brown dot with outline (GPS tracking)
-            const deerMarker = createMarkerWithOutline(10, MAP_DEER_COLOR, gameContext.deer.model.position, 21);
-            tempScene.add(deerMarker);
-        }
-    }
-    
-    renderer.render(tempScene, tempCamera);
+    const { scene, camera } = getMapScene(350, 340);
+    renderer.render(scene, camera);
     
     // Add distance legend overlay
     addDistanceLegend(canvas);

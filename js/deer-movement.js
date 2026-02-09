@@ -42,6 +42,12 @@ export class DeerMovement {
         this.MOVEMENT_DISTANCE_THRESHOLD = 0.005; // Reduced from 0.01 to 0.005 for much higher sensitivity
         this.movementSampleCount = 0;
         this.REQUIRED_MOVEMENT_SAMPLES = 1; // Keep at 1 to detect even slight movement
+        
+        // Reusable objects for hot-path methods (avoid per-frame allocations)
+        this._tempVec3 = new THREE.Vector3();
+        this._tempVec3b = new THREE.Vector3();
+        this._tempQuat = new THREE.Quaternion();
+        this._upAxis = new THREE.Vector3(0, 1, 0);
     }
 
     /**
@@ -233,9 +239,9 @@ export class DeerMovement {
         // If we have a forced avoidance direction, smoothly rotate toward it
         if (this.forcedAvoidanceDirection && this.forcedAvoidanceTimer > 0) {
             const targetAngle = Math.atan2(this.forcedAvoidanceDirection.x, this.forcedAvoidanceDirection.z);
-            const targetQuat = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), targetAngle);
+            this._tempQuat.setFromAxisAngle(this._upAxis, targetAngle);
             // Smooth rotation - interpolate toward target (faster than normal wandering)
-            this.deer.model.quaternion.slerp(targetQuat, 0.08);
+            this.deer.model.quaternion.slerp(this._tempQuat, 0.08);
         }
         
         // Store original position before any movement
@@ -675,17 +681,15 @@ export class DeerMovement {
      * @param {number} delta - Time delta for smooth rotation
      */
     smoothRotateTowards(targetPosition, delta) {
-        // Calculate direction from deer to target
-        const direction = new THREE.Vector3()
-            .subVectors(targetPosition, this.deer.model.position)
-            .normalize();
+        // Calculate direction from deer to target (reuse temp vector)
+        this._tempVec3.subVectors(targetPosition, this.deer.model.position).normalize();
         
         // Calculate target rotation angle
-        const targetAngle = Math.atan2(direction.x, direction.z);
+        const targetAngle = Math.atan2(this._tempVec3.x, this._tempVec3.z);
         
-        // Create target quaternion
-        const targetQuaternion = new THREE.Quaternion();
-        targetQuaternion.setFromAxisAngle(new THREE.Vector3(0, 1, 0), targetAngle);
+        // Create target quaternion (reuse temp quaternion)
+        const targetQuaternion = this._tempQuat;
+        targetQuaternion.setFromAxisAngle(this._upAxis, targetAngle);
         
         // Use faster rotation speed so deer faces target before moving far
         // Wounded deer need faster rotation to avoid "moonwalking" backward

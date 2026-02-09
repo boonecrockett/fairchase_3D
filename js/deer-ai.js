@@ -7,6 +7,10 @@ export class DeerAI {
     constructor(deer, config) {
         this.deer = deer;
         this.config = config;
+        
+        // Reusable objects for hot-path methods (avoid per-frame allocations)
+        this._tempVec3 = new THREE.Vector3();
+        this._tempVec3b = new THREE.Vector3();
     }
 
     update(delta) {
