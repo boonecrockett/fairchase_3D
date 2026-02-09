@@ -114,6 +114,9 @@ function processKill(baseScore, baseMessage, wasMoving, shotCount, distance, hit
     let finalScore = baseScore;
     let finalMessage = baseMessage;
     let ethical = true;
+    let bonusBreakdown = [];
+    let shotIsBraced = false;
+    let shotIsKneeling = false;
 
     // Check for illegal hunting hours
     if (!isLegalHuntingTime()) {
@@ -128,6 +131,9 @@ function processKill(baseScore, baseMessage, wasMoving, shotCount, distance, hit
         const isBraced = gameContext.huntLog?.firstShotBraced ?? getIsTreeBraced();
         const isKneeling = gameContext.huntLog?.firstShotKneeling ?? getIsKneeling();
         const { bonus, bonusDetails } = calculateBonuses(distance, wasMoving, hitZone, isFirstShot, isBraced, isKneeling, wasRunning, wasWalking);
+        bonusBreakdown = bonusDetails;
+        shotIsBraced = isBraced;
+        shotIsKneeling = isKneeling;
         finalScore += bonus;
         if (bonusDetails.length > 0) {
             finalMessage += ` (${bonusDetails.join(', ')})`;
@@ -140,20 +146,13 @@ function processKill(baseScore, baseMessage, wasMoving, shotCount, distance, hit
     // Record kill time for quick recovery bonus calculation
     gameContext.killTime = Date.now();
     
-    // Get bonus details for report breakdown
-    const isFirstShot = shotCount === 1 && gameContext.huntLog && gameContext.huntLog.totalShotsTaken <= 1;
-    // Use stored shot conditions from huntLog (captured at time of shot)
-    const isBracedForInfo = gameContext.huntLog?.firstShotBraced ?? getIsTreeBraced();
-    const isKneelingForInfo = gameContext.huntLog?.firstShotKneeling ?? getIsKneeling();
-    const { bonusDetails: bonusBreakdown } = calculateBonuses(distance, wasMoving, hitZone, isFirstShot, isBracedForInfo, isKneelingForInfo, wasRunning, wasWalking);
-    
-    // Determine shooting stance for killInfo
+    // Determine shooting stance (single calculation, reused for killInfo and logEvent)
     let stance = 'Offhand';
-    if (isBracedForInfo && isKneelingForInfo) {
+    if (shotIsBraced && shotIsKneeling) {
         stance = 'Sitting & Braced';
-    } else if (isBracedForInfo) {
+    } else if (shotIsBraced) {
         stance = 'Braced';
-    } else if (isKneelingForInfo) {
+    } else if (shotIsKneeling) {
         stance = 'Sitting';
     }
     
@@ -173,28 +172,15 @@ function processKill(baseScore, baseMessage, wasMoving, shotCount, distance, hit
     showPracticeModeMessage(`${finalMessage}!${scoreText} Points`);
     
     gameContext.deer.setState('KILLED');
-    // Use stored shot conditions for log (already calculated above as isBracedForInfo/isKneelingForInfo)
-    const logBraced = isBracedForInfo;
-    const logKneeling = isKneelingForInfo;
     
-    // Determine shooting stance for report (use stored values)
-    let shootingStance = 'Offhand';
-    if (logBraced && logKneeling) {
-        shootingStance = 'Sitting & Braced';
-    } else if (logBraced) {
-        shootingStance = 'Braced';
-    } else if (logKneeling) {
-        shootingStance = 'Sitting';
-    }
-    
-    logEvent("Deer Killed", `${baseMessage} at ${distance} yards (${shootingStance})`, {
+    logEvent("Deer Killed", `${baseMessage} at ${distance} yards (${stance})`, {
         distance: distance,
         moving: wasMoving,
         shotCount: shotCount,
         ethical: ethical,
-        braced: logBraced,
-        kneeling: logKneeling,
-        shootingStance: shootingStance,
+        braced: shotIsBraced,
+        kneeling: shotIsKneeling,
+        shootingStance: stance,
         hitZone: hitZone,
         totalScore: finalScore
     });
@@ -208,6 +194,16 @@ export function shoot() {
 
     playRifleSound();
     applyRifleRecoil();
+
+    if (!gameContext.deer || !gameContext.deer.isModelLoaded) {
+        showMessage("Deer model not loaded yet", 2000);
+        return;
+    }
+
+    if (!gameContext.scene.children.includes(gameContext.deer.model)) {
+        showMessage("Deer not in scene", 2000);
+        return;
+    }
     
     // Penalty for shooting outside legal hunting hours (applies to all shots)
     if (!isLegalHuntingTime()) {
@@ -226,16 +222,6 @@ export function shoot() {
             penalty: Math.abs(afterHoursPenalty),
             description: 'Shot After Hours'
         });
-    }
-
-    if (!gameContext.deer || !gameContext.deer.isModelLoaded) {
-        showMessage("Deer model not loaded yet", 2000);
-        return;
-    }
-
-    if (!gameContext.scene.children.includes(gameContext.deer.model)) {
-        showMessage("Deer not in scene", 2000);
-        return;
     }
 
     const deerState = gameContext.deer.state;

@@ -31,7 +31,7 @@ export const worldPresets = {
             generationMethod: 'perlin',
             perlinParams: { 
                 quality: 1, 
-                noiseZ: Math.random() * 100, 
+                noiseZ: 42.7, 
                 amplitudeScale: 1.75, 
                 coordinateScale: 0.02 
             },
@@ -61,7 +61,7 @@ export const worldPresets = {
             generationMethod: 'perlin',
             perlinParams: { 
                 quality: 1, 
-                noiseZ: Math.random() * 100, 
+                noiseZ: 73.2, 
                 amplitudeScale: 2.0, // Slightly higher for more dramatic features
                 coordinateScale: 0.025 // Slightly different scale for variety
             },
@@ -79,7 +79,8 @@ export const worldPresets = {
             skyColor: 0xFFA500,
             fogColor: 0xFFDAB9,
             waterBodies: [
-                { shape: 'circle', size: 77, position: { x: -250, y: -16.94, z: -250 }, opacity: 0.85 } // Y position lowered by another 10%
+                { shape: 'circle', size: 77, position: { x: -250, y: -16.94, z: -250 }, opacity: 0.85 }, // Remote oasis
+                { shape: 'circle', size: 60, position: { x: 100, y: -16.94, z: -80 }, opacity: 0.80 } // Accessible oasis near center
             ]
         }
     }

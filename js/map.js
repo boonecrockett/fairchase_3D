@@ -345,8 +345,7 @@ export function showMap() {
                     side: THREE.DoubleSide,
                     depthTest: false
                 }));
-                mapTrail.rotation.x = -Math.PI / 2; // Lay flat
-                mapTrail.rotation.x = 0; // Already in XZ plane
+                // Trail geometry is already in XZ plane, no rotation needed
                 mapTrail.renderOrder = 100;
                 tempScene.add(mapTrail);
             }

@@ -40,15 +40,10 @@ export function applyRifleRecoil() {
     gameContext.camera.rotation.y += horizontalRecoil + directionalBiasY; // Random horizontal movement with slight bias
     gameContext.camera.rotation.z += rollRecoil; // Slight roll/twist
     
-    // Calculate varied recovery endpoint (not exact return to origin)
-    const recoveryOffsetX = (Math.random() - 0.5) * 0.05; // Dramatically increased vertical offset variation
-    const recoveryOffsetY = (Math.random() - 0.5) * 0.06; // Dramatically increased horizontal offset variation
-    const recoveryOffsetZ = (Math.random() - 0.5) * 0.025; // Dramatically increased roll offset variation
-    
-    // Calculate final recovery target position
-    const recoveryTargetX = originalRotation.x + recoveryOffsetX;
-    const recoveryTargetY = originalRotation.y + recoveryOffsetY;
-    const recoveryTargetZ = originalRotation.z + recoveryOffsetZ;
+    // Recovery target is the original rotation (prevents cumulative drift across shots)
+    const recoveryTargetX = originalRotation.x;
+    const recoveryTargetY = originalRotation.y;
+    const recoveryTargetZ = originalRotation.z;
     
     // Smooth recovery animation - gradually reduce recoil effect
     const startTime = Date.now();

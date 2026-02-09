@@ -210,18 +210,19 @@ export class DeerMovement {
     /**
      * Move the deer with collision detection
      * @param {number} speed - Speed to move (already multiplied by delta)
+     * @param {number} delta - Frame delta time in seconds
      */
-    moveWithCollisionDetection(speed) {
+    moveWithCollisionDetection(speed, delta) {
         // Track speed for animation system (speed is already delta-adjusted)
         // Convert back to units per second for animation decisions
-        this.currentSpeed = speed * 60; // Approximate: assume 60fps, convert to per-second
+        this.currentSpeed = delta > 0 ? speed / delta : 0;
         this.deer.currentSpeed = this.currentSpeed;
         
         const now = performance.now() / 1000;
         
         // Decay forced avoidance timer
         if (this.forcedAvoidanceTimer > 0) {
-            this.forcedAvoidanceTimer -= 1/60; // Assume ~60fps
+            this.forcedAvoidanceTimer -= delta || (1/60);
         }
         
         // Reset collision count if no collision for 2 seconds

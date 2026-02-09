@@ -64,7 +64,7 @@ export class DeerAI {
                     // Only move if we have a valid target
                     speed = this.config.speeds.wandering * delta;
                     deer.movement.smoothRotateTowards(deer.movement.getWanderTarget(), delta);
-                    deer.movement.moveWithCollisionDetection(speed);
+                    deer.movement.moveWithCollisionDetection(speed, delta);
                 }
                 break;
             case 'THIRSTY':
@@ -110,7 +110,7 @@ export class DeerAI {
                         // Move toward water edge
                         speed = this.config.speeds.thirsty * delta;
                         deer.movement.smoothRotateTowards(waterEdgeTarget, delta);
-                        deer.movement.moveWithCollisionDetection(speed);
+                        deer.movement.moveWithCollisionDetection(speed, delta);
                     }
                 } else {
                     deer.currentSpeed = 0;
@@ -207,7 +207,7 @@ export class DeerAI {
                 }
                 
                 deer.movement.smoothRotateTowards(new THREE.Vector3().addVectors(deer.model.position, fleeDirFromPlayer), delta);
-                deer.movement.moveWithCollisionDetection(speed);
+                deer.movement.moveWithCollisionDetection(speed, delta);
                 
                 if (deer.stateTimer > this.config.stateTimers.fleeing) {
                     // Generate new wander target AWAY from player, not random
@@ -457,7 +457,7 @@ export class DeerAI {
                         // - Perpendicular (dot=0): 30% speed (still moving while turning)
                         // - Facing away (dot=-1): 10% speed (minimal, mostly turning)
                         const facingFactor = 0.1 + Math.max(0, dotProduct) * 0.9;
-                        deer.movement.moveWithCollisionDetection(speed * facingFactor);
+                        deer.movement.moveWithCollisionDetection(speed * facingFactor, delta);
                     }
                     
                     // Blood drops based on wound bleed rate
@@ -481,7 +481,7 @@ export class DeerAI {
                     const targetPosition = new THREE.Vector3()
                         .addVectors(deer.model.position, deer.woundedFleeDirection);
                     deer.movement.smoothRotateTowards(targetPosition, delta);
-                    deer.movement.moveWithCollisionDetection(speed);
+                    deer.movement.moveWithCollisionDetection(speed, delta);
                     
                     if (deer.effects.shouldCreateBloodDrop()) {
                         deer.effects.createBloodDrop();

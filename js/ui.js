@@ -5,7 +5,7 @@ import { worldPresets } from './world-presets.js';
 import { deer } from './deer.js';
 import { stopTitleMusic } from './audio.js';
 import { generateCurrentReport, updateReportModal } from './report-logger.js';
-import { DEBUG_MODE } from './constants.js';
+import { DEBUG_MODE, INITIAL_PLAYER_X, INITIAL_PLAYER_Z } from './constants.js';
 import { startPreloading } from './preloader.js';
 
 // --- UI MODULE CONSTANTS ---
@@ -459,8 +459,6 @@ function advanceToNextDay() {
     }
     
     // Reset player position to starting point
-    const INITIAL_PLAYER_X = 60;
-    const INITIAL_PLAYER_Z = 60;
     const initialY = gameContext.getHeightAt(INITIAL_PLAYER_X, INITIAL_PLAYER_Z);
     gameContext.player.position.set(INITIAL_PLAYER_X, initialY, INITIAL_PLAYER_Z);
     gameContext.lastPlayerPosition.copy(gameContext.player.position);

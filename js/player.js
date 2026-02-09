@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { gameContext } from './context.js';
-import { MOUSE_SENSITIVITY as MOUSE_SENSITIVITY_NORMAL } from './constants.js';
+import { MOUSE_SENSITIVITY as MOUSE_SENSITIVITY_NORMAL, INITIAL_PLAYER_X, INITIAL_PLAYER_Z } from './constants.js';
 import { startWalkSound, stopWalkSound, startWaterWalkSound, stopWaterWalkSound, startFoliageWalkSound, stopFoliageWalkSound } from './audio.js';
 import { showSmartphoneMap, closeSmartphoneMap } from './map.js';
 import { updateSpatialAudioListener } from './spatial-audio.js';
@@ -32,9 +32,7 @@ function canTagDeer() {
 }
 const PLAYER_EYE_HEIGHT = 2.04; // Scaled down from 6.0
 const PLAYER_KNEEL_HEIGHT = 0.85; // Scaled down from 2.5
-// Spawn player at edge of pond, overlooking the water (pond is at 0,0 with radius ~46)
-const INITIAL_PLAYER_X = 60;
-const INITIAL_PLAYER_Z = 60;
+// Player spawn position imported from constants.js
 
 // Realistic walking speeds (1 unit ≈ 1 yard ≈ 0.91 meters)
 // Normal walking: 1.4 m/s = ~1.54 units/s (3.1 mph - average human walking)

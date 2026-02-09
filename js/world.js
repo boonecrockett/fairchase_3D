@@ -3,7 +3,7 @@ import * as THREE from 'three';
 import { gameContext } from './context.js';
 import { ImprovedNoise } from './libs/ImprovedNoise.js';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
-import { DEFAULT_WORLD_SIZE } from './constants.js';
+import { DEFAULT_WORLD_SIZE, INITIAL_PLAYER_X, INITIAL_PLAYER_Z } from './constants.js';
 import { createGrassShaderMaterial, createGrassBladeGeometry, updateGrassWind } from './grass-shader.js';
 import { createWaterMaterial } from './water-shader.js';
 
@@ -358,7 +358,7 @@ export async function createTrees(worldConfig) {
             }
             if (isSubmerged) continue;
 
-            if (new THREE.Vector3(x, terrainHeight, z).distanceTo(new THREE.Vector3(0, gameContext.getHeightAt(0, 10), 10)) < TREE_SPAWN_AVOID_PLAYER_RADIUS) {
+            if (new THREE.Vector3(x, terrainHeight, z).distanceTo(new THREE.Vector3(INITIAL_PLAYER_X, gameContext.getHeightAt(INITIAL_PLAYER_X, INITIAL_PLAYER_Z), INITIAL_PLAYER_Z)) < TREE_SPAWN_AVOID_PLAYER_RADIUS) {
                 continue;
             }
 
@@ -394,7 +394,7 @@ export async function createTrees(worldConfig) {
             }
             if (isSubmerged) continue;
 
-            if (new THREE.Vector3(x, terrainHeight, z).distanceTo(new THREE.Vector3(0, gameContext.getHeightAt(0, 10), 10)) < TREE_SPAWN_AVOID_PLAYER_RADIUS) {
+            if (new THREE.Vector3(x, terrainHeight, z).distanceTo(new THREE.Vector3(INITIAL_PLAYER_X, gameContext.getHeightAt(INITIAL_PLAYER_X, INITIAL_PLAYER_Z), INITIAL_PLAYER_Z)) < TREE_SPAWN_AVOID_PLAYER_RADIUS) {
                 continue;
             }
 
@@ -501,7 +501,7 @@ export async function createBushes(worldConfig) {
             if (tooCloseToWater) continue;
 
             // Avoid player spawn area
-            if (new THREE.Vector3(centerX, centerHeight, centerZ).distanceTo(new THREE.Vector3(0, gameContext.getHeightAt(0, 10), 10)) < TREE_SPAWN_AVOID_PLAYER_RADIUS) {
+            if (new THREE.Vector3(centerX, centerHeight, centerZ).distanceTo(new THREE.Vector3(INITIAL_PLAYER_X, gameContext.getHeightAt(INITIAL_PLAYER_X, INITIAL_PLAYER_Z), INITIAL_PLAYER_Z)) < TREE_SPAWN_AVOID_PLAYER_RADIUS) {
                 continue;
             }
 

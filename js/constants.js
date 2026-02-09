@@ -104,6 +104,18 @@ export const FOG_DENSITY_DAY = 0.004; // Reduced by 20% from 0.005
  */
 export const FOG_LERP_FACTOR = 0.05;
 
+// --- PLAYER SPAWN CONSTANTS ---
+/**
+ * Initial X position for the player spawn point.
+ * @type {number}
+ */
+export const INITIAL_PLAYER_X = 60;
+/**
+ * Initial Z position for the player spawn point.
+ * @type {number}
+ */
+export const INITIAL_PLAYER_Z = 60;
+
 // --- WORLD CONSTANTS ---
 /**
  * Default size (width and depth) for the terrain plane if not specified in a world preset.

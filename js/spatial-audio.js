@@ -189,8 +189,8 @@ export function playPositionalSound(soundType, position, velocity = null) {
                     const currentVolume = soundInstance.volume.volume.value;
                     const targetVolume = currentVolume - 6; // Gentler fade (only -6dB)
                     
-                    // Smooth fade-out using exponential ramp
-                    soundInstance.volume.volume.exponentialRampToValueAtTime(
+                    // Smooth fade-out using linear ramp (dB values can be negative)
+                    soundInstance.volume.volume.linearRampToValueAtTime(
                         targetVolume, 
                         Tone.context.currentTime + fadeOutDuration
                     );

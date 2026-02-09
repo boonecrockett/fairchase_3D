@@ -21,6 +21,7 @@ export class DeerEffects {
         // Materials (initialized lazily)
         this.trackMaterial = null;
         this.bloodDropMaterial = null;
+        this.shotBloodMaterial = null;
     }
 
     createTrack() {
@@ -181,28 +182,30 @@ export class DeerEffects {
     }
 
     createShotBloodIndicator(hitPosition) {
-        const textureLoader = new THREE.TextureLoader();
-        
-        // Create fallback material first
-        const shotBloodMaterial = new THREE.MeshLambertMaterial({
-            color: 0xff0000, // Brighter red for shot indicators
-            transparent: true,
-            opacity: 0.9 // More visible than trail blood
-        });
-        
-        // Try to load texture, but don't block on it
-        textureLoader.load(
-            'assets/textures/blood_drops.png',
-            (texture) => {
-                // Success: update material with texture
-                shotBloodMaterial.map = texture;
-                shotBloodMaterial.needsUpdate = true;
-            },
-            undefined,
-            (error) => {
-                // Error: keep using color-based fallback
-            }
-        );
+        // Initialize material once for efficiency
+        if (!this.shotBloodMaterial) {
+            const textureLoader = new THREE.TextureLoader();
+            
+            this.shotBloodMaterial = new THREE.MeshLambertMaterial({
+                color: 0xff0000, // Brighter red for shot indicators
+                transparent: true,
+                opacity: 0.9 // More visible than trail blood
+            });
+            
+            // Try to load texture, but don't block on it
+            textureLoader.load(
+                'assets/textures/blood_drops.png',
+                (texture) => {
+                    this.shotBloodMaterial.map = texture;
+                    this.shotBloodMaterial.needsUpdate = true;
+                },
+                undefined,
+                (error) => {
+                    // Error: keep using color-based fallback
+                }
+            );
+        }
+        const shotBloodMaterial = this.shotBloodMaterial;
 
         // Larger size for shot indicators
         const shotBloodSize = this.config.tracking.bloodDropSize * 3;

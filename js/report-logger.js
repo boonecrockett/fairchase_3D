@@ -254,7 +254,9 @@ export function generateCurrentReport() {
         });
     }
     
-    const finalScore = totalBonuses - totalPenalties;
+    // Use gameContext.score as authoritative score (matches HUD display)
+    // The itemized breakdown is informational but may not sum exactly to gameContext.score
+    const finalScore = gameContext.score || 0;
     
     // Build compact report
     let reportHTML = `<div class="report-compact">`;
