@@ -8,7 +8,7 @@ import { createGrassShaderMaterial, createGrassBladeGeometry, updateGrassWind } 
 import { createWaterMaterial } from './water-shader.js';
 
 // --- Constants for World Generation ---
-const WORLD_PLANE_SEGMENTS = 63; // Number of segments for the terrain plane
+const WORLD_PLANE_SEGMENTS = 127; // Number of segments for the terrain plane
 
 // Cached Perlin noise instance (reused across all height queries)
 const perlin = new ImprovedNoise();
@@ -336,7 +336,8 @@ export async function createTrees(worldConfig) {
 
         treeModel.traverse(node => {
             if (node.isMesh) {
-                node.castShadow = true;
+                node.castShadow = false;
+                node.receiveShadow = true;
             }
         });
 
@@ -404,7 +405,8 @@ export async function createTrees(worldConfig) {
             const trunkGeometry = new THREE.CylinderGeometry(TREE_TRUNK_SCALE_MIN_RADIUS * scale, TREE_TRUNK_SCALE_MAX_RADIUS * scale, trunkHeight, TREE_TRUNK_SEGMENTS);
             const trunk = new THREE.Mesh(trunkGeometry, trunkMaterial);
             trunk.position.y = trunkHeight / 2;
-            trunk.castShadow = true;
+            trunk.castShadow = false;
+            trunk.receiveShadow = true;
             tree.add(trunk);
 
             let canopy;
@@ -421,7 +423,8 @@ export async function createTrees(worldConfig) {
                 canopy.position.y = trunkHeight;
             }
 
-            canopy.castShadow = true;
+            canopy.castShadow = false;
+            canopy.receiveShadow = true;
             tree.add(canopy);
 
             // Position tree at terrain height - Y is the vertical axis after terrain rotation
@@ -453,7 +456,7 @@ export async function createBushes(worldConfig) {
 
         bushModel.traverse(node => {
             if (node.isMesh) {
-                node.castShadow = true;
+                node.castShadow = false;
                 node.receiveShadow = true;
             }
         });

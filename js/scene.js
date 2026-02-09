@@ -3,7 +3,7 @@ import * as THREE from 'three';
 import { gameContext } from './context.js';
 
 const DEFAULT_SKY_COLOR = 0x6ca0dc;
-const SHADOW_MAP_SIZE = 4096;
+const SHADOW_MAP_SIZE = 2048;
 
 /**
  * Sets up the main Three.js scene, camera, renderer, lighting, and event listeners.
@@ -29,10 +29,9 @@ export function setupScene() {
     if (!gameContext.renderer) {
         gameContext.renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
         gameContext.renderer.setClearColor(0x000000, 0); // Transparent background
-        gameContext.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2)); // Crisp on HiDPI, capped at 2x for performance
         gameContext.renderer.setSize(width, height);
         gameContext.renderer.shadowMap.enabled = true;
-        gameContext.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+        gameContext.renderer.shadowMap.type = THREE.PCFShadowMap;
         
         gameContext.renderer.shadowMap.autoUpdate = true;
         gameContext.renderer.outputColorSpace = THREE.SRGBColorSpace;
@@ -63,17 +62,14 @@ export function setupScene() {
     light.castShadow = true;
     light.shadow.mapSize.width = SHADOW_MAP_SIZE;
     light.shadow.mapSize.height = SHADOW_MAP_SIZE;
-    light.shadow.camera.near = 0.1;
-    light.shadow.camera.far = 500;
-    light.shadow.camera.left = -100;
-    light.shadow.camera.right = 100;
-    light.shadow.camera.top = 100;
-    light.shadow.camera.bottom = -100;
-    
-    // Shadow softness settings tuned for r182 PCFSoftShadowMap
-    light.shadow.radius = 4;
-    light.shadow.blurSamples = 8;
-    light.shadow.bias = -0.0005;
+    light.shadow.camera.near = 1;
+    light.shadow.camera.far = 300;
+    light.shadow.camera.left = -40;
+    light.shadow.camera.right = 40;
+    light.shadow.camera.top = 40;
+    light.shadow.camera.bottom = -40;
+    light.shadow.bias = -0.001;
+    light.shadow.normalBias = 0.02;
     gameContext.scene.add(light);
 
     // Ambient light to softly illuminate the scene
@@ -114,7 +110,7 @@ export function updateShadowCamera() {
         
         // Set shadow camera bounds once (they never change)
         if (!_shadowBoundsInitialized) {
-            const shadowSize = 100;
+            const shadowSize = 40;
             light.shadow.camera.left = -shadowSize;
             light.shadow.camera.right = shadowSize;
             light.shadow.camera.top = shadowSize;
