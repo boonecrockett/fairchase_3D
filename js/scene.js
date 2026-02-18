@@ -80,12 +80,9 @@ export function setupScene() {
     gameContext.scene.sun = light;
     gameContext.scene.ambientLight = ambientLight;
 
-    // Create a clock for delta time management
-    if (!gameContext.clock) {
-        gameContext.clock = new THREE.Clock(true); // Auto-start the clock
-    } else {
-        gameContext.clock.start();
-    }
+    // Reset timer for delta time management and connect to document for Page Visibility API
+    gameContext.clock.reset();
+    gameContext.clock.connect(document);
 }
 
 // Pre-computed shadow offset to avoid creating new Vector3 every frame

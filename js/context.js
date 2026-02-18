@@ -6,7 +6,7 @@
  * @property {THREE.PerspectiveCamera} camera - The player's camera.
  * @property {THREE.WebGLRenderer} renderer - The Three.js renderer.
  * @property {THREE.Raycaster} raycaster - Raycaster for intersections.
- * @property {THREE.Clock} clock - Clock for managing delta time.
+ * @property {THREE.Timer} clock - Timer for managing delta time.
  * @property {number} deltaTime - Time elapsed since the last frame.
  * @property {THREE.Mesh} player - The player object/mesh.
  * @property {THREE.Group} deer - The deer object/group.
@@ -85,7 +85,7 @@ export const gameContext = {
     camera: null,
     renderer: null,
     raycaster: new THREE.Raycaster(),
-    clock: new THREE.Clock(),
+    clock: new THREE.Timer(),
     deltaTime: 0,
 
     // Raycaster optimization system

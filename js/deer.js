@@ -249,7 +249,7 @@ export class Deer extends Animal {
         gameContext.deerState = newState;
         
         if (newState === 'ALERT' && oldState !== 'ALERT') {
-            this.alertStartTime = gameContext.clock.getElapsedTime();
+            this.alertStartTime = gameContext.clock.getElapsed();
             if (!this.hasAlertedPlayer) {
                 triggerDeerBlowSound(this);
                 this.hasAlertedPlayer = true;
@@ -471,10 +471,10 @@ export class Deer extends Animal {
                 this.movementSampleCount++;
                 if (!this.isTrackingPlayerMovement && this.movementSampleCount >= this.REQUIRED_MOVEMENT_SAMPLES) {
                     this.isTrackingPlayerMovement = true;
-                    this.playerMovementStartTime = gameContext.clock.getElapsedTime();
+                    this.playerMovementStartTime = gameContext.clock.getElapsed();
                     this.hasDetectedMovingPlayer = false;
                 } else if (this.isTrackingPlayerMovement) {
-                    const movementDuration = gameContext.clock.getElapsedTime() - this.playerMovementStartTime;
+                    const movementDuration = gameContext.clock.getElapsed() - this.playerMovementStartTime;
                     if (movementDuration >= this.MOVEMENT_DETECTION_THRESHOLD && !this.hasDetectedMovingPlayer) {
                         this.hasDetectedMovingPlayer = true;
                     }
@@ -497,7 +497,7 @@ export class Deer extends Animal {
         this.lastPlayerPosition.copy(gameContext.player.position);
 
         if (this.state !== 'FLEEING' && this.state !== 'WOUNDED' && this.state !== 'KILLED') {
-            const currentTime = gameContext.clock.getElapsedTime();
+            const currentTime = gameContext.clock.getElapsed();
             const inAlertDelay = this.state === 'ALERT' && (currentTime - this.alertStartTime < this.alertMovementDelay);
             
             // Check for noise-based detection (works even when player is not visible)
@@ -571,7 +571,7 @@ export class Deer extends Animal {
     isPlayerVisible() {
         if (!gameContext.player || !gameContext.trees) return true;
         
-        const currentTime = gameContext.clock.getElapsedTime();
+        const currentTime = gameContext.clock.getElapsed();
         const isKneeling = gameContext.playerControls?.isKneeling || false;
         const actualDistance = this.model.position.distanceTo(gameContext.player.position);
         

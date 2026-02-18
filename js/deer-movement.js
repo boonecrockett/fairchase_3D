@@ -610,9 +610,9 @@ export class DeerMovement {
             if (!this.deer.isTrackingPlayerMovement && this.movementSampleCount >= this.REQUIRED_MOVEMENT_SAMPLES) {
                 // Start tracking movement after enough consecutive movement samples
                 this.deer.isTrackingPlayerMovement = true;
-                this.deer.playerMovementStartTime = gameContext.clock.getElapsedTime();
+                this.deer.playerMovementStartTime = gameContext.clock.getElapsed();
             } else if (this.deer.isTrackingPlayerMovement) {
-                const movementDuration = gameContext.clock.getElapsedTime() - this.deer.playerMovementStartTime;
+                const movementDuration = gameContext.clock.getElapsed() - this.deer.playerMovementStartTime;
                 if (movementDuration >= this.MOVEMENT_DETECTION_THRESHOLD && !this.deer.hasDetectedMovingPlayer) {
                     this.deer.hasDetectedMovingPlayer = true;
                 }

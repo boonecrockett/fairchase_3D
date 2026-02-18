@@ -90,7 +90,7 @@ export class DeerEffects {
         track.rotation.z = travelAngle; // Orient track to actual travel direction with correction
         
         this.lastTrackPosition.copy(this.deer.model.position);
-        this.tracks.push({ mesh: track, creationTime: gameContext.clock.getElapsedTime() });
+        this.tracks.push({ mesh: track, creationTime: gameContext.clock.getElapsed() });
         
         // Ensure scene exists before adding
         if (gameContext.scene) {
@@ -99,7 +99,7 @@ export class DeerEffects {
     }
 
     updateTracks() {
-        const currentTime = gameContext.clock.getElapsedTime();
+        const currentTime = gameContext.clock.getElapsed();
         // Use in-place removal to avoid creating new array every frame
         let writeIndex = 0;
         for (let i = 0; i < this.tracks.length; i++) {
@@ -170,7 +170,7 @@ export class DeerEffects {
         drop.rotation.z = Math.random() * Math.PI * 2; // Randomize rotation
 
         this.lastBloodDropPosition.copy(this.deer.model.position);
-        this.bloodDrops.push({ mesh: drop, creationTime: gameContext.clock.getElapsedTime() });
+        this.bloodDrops.push({ mesh: drop, creationTime: gameContext.clock.getElapsed() });
         
         // Store blood drop position for GPS map
         if (!gameContext.bloodDrops) gameContext.bloodDrops = [];
@@ -222,12 +222,12 @@ export class DeerEffects {
         // Add to scene and track for cleanup
         if (gameContext.scene) {
             gameContext.scene.add(shotBlood);
-            this.bloodDrops.push({ mesh: shotBlood, creationTime: gameContext.clock.getElapsedTime() });
+            this.bloodDrops.push({ mesh: shotBlood, creationTime: gameContext.clock.getElapsed() });
         }
     }
 
     updateBloodDrops() {
-        const currentTime = gameContext.clock.getElapsedTime();
+        const currentTime = gameContext.clock.getElapsed();
         // Use in-place removal to avoid creating new array every frame
         let writeIndex = 0;
         for (let i = 0; i < this.bloodDrops.length; i++) {

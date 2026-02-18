@@ -817,7 +817,7 @@ function createHumanTrack(movementDirection) {
     
     // Set a higher render order to ensure tracks are rendered on top of other elements
     track.renderOrder = 1;
-    humanTracks.push({ mesh: track, creationTime: gameContext.clock.getElapsedTime() });
+    humanTracks.push({ mesh: track, creationTime: gameContext.clock.getElapsed() });
     if (gameContext.scene) {
         gameContext.scene.add(track);
     }
@@ -827,7 +827,7 @@ function createHumanTrack(movementDirection) {
  * Updates human tracks, handling fade-out and cleanup.
  */
 function updateHumanTracks() {
-    const currentTime = gameContext.clock.getElapsedTime();
+    const currentTime = gameContext.clock.getElapsed();
     humanTracks = humanTracks.filter(track => {
         const age = currentTime - track.creationTime;
         if (age > HUMAN_TRACK_CONFIG.trackFadeDurationS) {

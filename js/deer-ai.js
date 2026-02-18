@@ -546,7 +546,7 @@ export class DeerAI {
             if (deer.state === 'WOUNDED') {
                 if (!deer.woundedFleeDirection) deer.woundedFleeDirection = new THREE.Vector3();
                 deer.woundedFleeDirection.copy(this._tempVec3);
-                deer.lastWoundedDirectionUpdate = gameContext.clock.getElapsedTime();
+                deer.lastWoundedDirectionUpdate = gameContext.clock.getElapsed();
             }
             
             deer.movement.generateNewWanderTarget();
@@ -585,7 +585,7 @@ export class DeerAI {
     }
 
     checkStuck(deer, delta) {
-        const currentTime = gameContext.clock.getElapsedTime();
+        const currentTime = gameContext.clock.getElapsed();
         if (currentTime - deer.lastStuckCheckTime > deer.stuckCheckInterval) {
             deer.lastStuckCheckTime = currentTime;
             

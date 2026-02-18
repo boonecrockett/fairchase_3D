@@ -329,6 +329,7 @@ async function startGame(selectedWorldId) {
 function animate() {
     requestAnimationFrame(animate);
 
+    gameContext.clock.update();
     const delta = gameContext.clock.getDelta();
     gameContext.deltaTime = delta;
 

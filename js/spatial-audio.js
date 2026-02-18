@@ -218,7 +218,7 @@ export function updateDeerAudio(deer, delta) {
         return;
     }
     
-    const currentTime = gameContext.clock.getElapsedTime();
+    const currentTime = gameContext.clock.getElapsed();
     const deerPosition = deer.model.position;
     const playerDistance = gameContext.player.position.distanceTo(deerPosition);
     
