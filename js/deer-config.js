@@ -11,6 +11,7 @@ export const deerConfig = {
     heightOffset: 0.0, // Reset to 0.0 to fix deer floating above ground
     worldBoundaryMargin: 50, // Increased from 20 to 50 for more room near boundaries
 
+    // HITBOXES START - managed by hitbox-studio.html; do not edit by hand
     vitals: {
         name: 'Right Lung',
         size: { x: 0.04, y: 0.19, z: 0.13 },
@@ -113,6 +114,7 @@ export const deerConfig = {
         rotation: { x: -0.65, y: 0, z: 0 },
         debugColor: 0xF417CC,
     },
+    // HITBOXES END
 
     head: {
         size: { x: 0.6, y: 0.5, z: 0.7 },

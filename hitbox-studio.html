@@ -275,9 +275,11 @@
                 </div>
             </div>
             
-            <button id="exportBtn">📋 Export Configuration</button>
+            <button id="saveBtn">💾 Save to deer-config.js</button>
+            <button id="copyBtn" class="secondary">📋 Copy full deer-config.js to clipboard</button>
             <button id="resetBtn" class="secondary">↺ Reset Current Hitbox</button>
-            
+            <div id="saveStatus" style="margin-top:8px; font-size:12px; color:#8bd15a; min-height:16px;"></div>
+
             <h2>Configuration Output</h2>
             <div id="output">Select a hitbox and adjust values to see configuration...</div>
         </div>
@@ -296,70 +298,38 @@
         import * as THREE from 'three';
         import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
         import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
+        import { deerConfig } from './js/deer-config.js';
 
-        // Default hitbox configuration (from deer-config.js)
-        const defaultConfig = {
-            vitals: {
-                name: 'Vitals',
-                size: { x: 0.283, y: 0.235, z: 0.181 },
-                offset: { x: 0, y: 0.706, z: 0.275 },
-                rotation: { x: 0, y: 0, z: 0 },
-                debugColor: 0xFF0000
-            },
-            gut: {
-                name: 'Gut',
-                size: { x: 0.24, y: 0.20, z: 0.20 },
-                offset: { x: 0, y: 0.65, z: -0.05 },
-                rotation: { x: 0, y: 0, z: 0 },
-                debugColor: 0x00FF00
-            },
-            rear: {
-                name: 'Rear',
-                size: { x: 0.20, y: 0.16, z: 0.168 },
-                offset: { x: 0, y: 0.8, z: -0.264 },
-                rotation: { x: 0, y: 0, z: 0 },
-                debugColor: 0x0000FF
-            },
-            spine: {
-                name: 'Spine',
-                size: { x: 0.02547, y: 0.05076, z: 0.6 },
-                offset: { x: 0, y: 0.84784, z: 0.1 },
-                rotation: { x: 0, y: 0, z: 0 },
-                debugColor: 0xFF00FF
-            },
-            neck: {
-                name: 'Neck',
-                size: { x: 0.063, y: 0.12726, z: 0.35 },
-                offset: { x: 0, y: 0.93818, z: 0.45 },
-                rotation: { x: 0.943, y: 0, z: 0 },
-                debugColor: 0x00FFFF
-            },
-            brain: {
-                name: 'Brain',
-                size: { x: 0.08, y: 0.08, z: 0.08 },
-                offset: { x: 0, y: 1.05, z: 0.75 },
-                rotation: { x: 0, y: 0, z: 0 },
-                debugColor: 0xFFFF00
-            },
-            shoulderLeft: {
-                name: 'Shoulder Left',
-                size: { x: 0.06, y: 0.14, z: 0.12 },
-                offset: { x: 0.10, y: 0.75, z: 0.32 },
-                rotation: { x: 0, y: 0, z: 0 },
-                debugColor: 0xFFA500
-            },
-            shoulderRight: {
-                name: 'Shoulder Right',
-                size: { x: 0.06, y: 0.14, z: 0.12 },
-                offset: { x: -0.10, y: 0.75, z: 0.32 },
-                rotation: { x: 0, y: 0, z: 0 },
-                debugColor: 0xFFA500
-            }
-        };
-        
+        // Path used for both fetch (to splice) and File System Access save
+        const DEER_CONFIG_PATH = './js/deer-config.js';
+
+        // A hitbox zone is any deerConfig entry that has size + offset + debugColor.
+        // Excludes head, legs, AI behavior, speeds, tracking, etc.
+        function isHitboxZone(value) {
+            return value
+                && typeof value === 'object'
+                && value.size && typeof value.size === 'object'
+                && value.offset && typeof value.offset === 'object'
+                && typeof value.debugColor === 'number';
+        }
+
+        // Deep-clone just the hitbox-shaped entries from the live deer config.
+        function extractHitboxes(source) {
+            const out = {};
+            Object.keys(source).forEach((key) => {
+                if (isHitboxZone(source[key])) {
+                    out[key] = JSON.parse(JSON.stringify(source[key]));
+                }
+            });
+            return out;
+        }
+
+        // Snapshot of the live config at load time; used by "Reset Current Hitbox".
+        const defaultConfig = extractHitboxes(deerConfig);
+
         let hitboxCounter = 0; // For generating unique IDs for new hitboxes
 
-        // Current working configuration
+        // Current working configuration (mutated as the user edits sliders).
         let config = JSON.parse(JSON.stringify(defaultConfig));
         
         // Three.js setup
@@ -397,7 +367,7 @@
         // Deer model and hitboxes
         let deerModel = null;
         let hitboxMeshes = {};
-        let currentHitbox = 'vitals';
+        let currentHitbox = config.vitals ? 'vitals' : Object.keys(config)[0];
         
         // Scale factor for hitboxes - use 1 for studio (deer model is at natural scale)
         // In the game, collision.js uses 30x scale for gameplay detection
@@ -501,11 +471,8 @@
                 alert('Cannot delete the last hitbox!');
                 return;
             }
-            
-            if (!confirm('Delete hitbox "' + (config[currentHitbox].name || currentHitbox) + '"?')) {
-                return;
-            }
-            
+
+            // No confirmation: studio is source of truth per design.
             // Remove mesh
             if (hitboxMeshes[currentHitbox]) {
                 scene.remove(hitboxMeshes[currentHitbox]);
@@ -679,30 +646,140 @@
             output.textContent = text;
         }
         
-        function exportFullConfig() {
-            let text = '// Copy this to deer-config.js\n\n';
-            
-            Object.keys(config).forEach(zoneName => {
-                const zoneConfig = config[zoneName];
-                text += `    ${zoneName}: {\n`;
-                text += `        name: '${zoneConfig.name || zoneName}',\n`;
-                text += `        size: { x: ${zoneConfig.size.x}, y: ${zoneConfig.size.y}, z: ${zoneConfig.size.z} },\n`;
-                text += `        offset: { x: ${zoneConfig.offset.x}, y: ${zoneConfig.offset.y}, z: ${zoneConfig.offset.z} },\n`;
-                if (zoneConfig.rotation && (zoneConfig.rotation.x || zoneConfig.rotation.y || zoneConfig.rotation.z)) {
-                    text += `        rotation: { x: ${zoneConfig.rotation.x}, y: ${zoneConfig.rotation.y}, z: ${zoneConfig.rotation.z} },\n`;
+        // Formats a number for emission: rounds floating-point noise (0.30000000000000004)
+        // down to clean decimals while preserving author precision like 0.02547.
+        function fmt(n) {
+            if (n === 0 || !isFinite(n)) return '0';
+            const rounded = Math.round(n * 1e5) / 1e5;
+            return rounded.toString();
+        }
+
+        function formatZoneBlock(zoneName, zoneConfig) {
+            let text = `    ${zoneName}: {\n`;
+            text += `        name: '${(zoneConfig.name || zoneName).replace(/'/g, "\\'")}',\n`;
+            text += `        size: { x: ${fmt(zoneConfig.size.x)}, y: ${fmt(zoneConfig.size.y)}, z: ${fmt(zoneConfig.size.z)} },\n`;
+            text += `        offset: { x: ${fmt(zoneConfig.offset.x)}, y: ${fmt(zoneConfig.offset.y)}, z: ${fmt(zoneConfig.offset.z)} },\n`;
+            if (zoneConfig.rotation && (zoneConfig.rotation.x || zoneConfig.rotation.y || zoneConfig.rotation.z)) {
+                text += `        rotation: { x: ${fmt(zoneConfig.rotation.x)}, y: ${fmt(zoneConfig.rotation.y)}, z: ${fmt(zoneConfig.rotation.z)} },\n`;
+            }
+            text += `        debugColor: 0x${zoneConfig.debugColor.toString(16).toUpperCase().padStart(6, '0')},\n`;
+            text += `    },`;
+            return text;
+        }
+
+        function buildHitboxSection() {
+            const blocks = Object.keys(config).map((name) => formatZoneBlock(name, config[name]));
+            // Blank line between zones, matching existing deer-config.js style.
+            return blocks.join('\n\n');
+        }
+
+        // Fetches the current deer-config.js text and splices the hitbox zones in
+        // place between the marker comments. Everything outside the markers
+        // (comments, Math.PI expressions, AI/tracking blocks) is preserved byte-for-byte.
+        async function rebuildDeerConfigText() {
+            const res = await fetch(DEER_CONFIG_PATH, { cache: 'no-store' });
+            if (!res.ok) {
+                throw new Error(`Failed to fetch ${DEER_CONFIG_PATH}: HTTP ${res.status}`);
+            }
+            const source = await res.text();
+
+            const startMarker = /\/\/ HITBOXES START[^\n]*\n/;
+            const endMarker = /[ \t]*\/\/ HITBOXES END/;
+            const startMatch = source.match(startMarker);
+            const endMatch = source.match(endMarker);
+            if (!startMatch || !endMatch) {
+                throw new Error('deer-config.js is missing HITBOXES START/END markers.');
+            }
+
+            const startIdx = startMatch.index + startMatch[0].length;
+            const endIdx = endMatch.index;
+            const before = source.slice(0, startIdx);
+            const after = source.slice(endIdx);
+
+            // `before` ends with the start marker's newline, `after` begins with
+            // the end marker's leading whitespace. Zones go between with zone
+            // blocks separated by blank lines and a trailing newline before the
+            // end marker, matching existing deer-config.js style.
+            return before + buildHitboxSection() + '\n' + after;
+        }
+
+        // Cached FileSystemFileHandle from showSaveFilePicker. Null until first save.
+        let deerConfigFileHandle = null;
+
+        function setSaveStatus(text, isError = false) {
+            const el = document.getElementById('saveStatus');
+            el.textContent = text;
+            el.style.color = isError ? '#ff7a7a' : '#8bd15a';
+        }
+
+        async function saveToFile() {
+            let newText;
+            try {
+                newText = await rebuildDeerConfigText();
+            } catch (err) {
+                console.error(err);
+                setSaveStatus(err.message || 'Failed to build deer-config.js text.', true);
+                return;
+            }
+
+            // Preview the output either way.
+            document.getElementById('output').textContent = newText;
+
+            const hasFSA = typeof window.showSaveFilePicker === 'function';
+            if (!hasFSA) {
+                await fallbackCopyToClipboard(newText,
+                    'File System Access API unavailable in this browser. Copied full deer-config.js to clipboard.');
+                return;
+            }
+
+            try {
+                if (!deerConfigFileHandle) {
+                    deerConfigFileHandle = await window.showSaveFilePicker({
+                        suggestedName: 'deer-config.js',
+                        types: [{
+                            description: 'JavaScript module',
+                            accept: { 'text/javascript': ['.js'] }
+                        }]
+                    });
                 }
-                text += `        debugColor: 0x${zoneConfig.debugColor.toString(16).toUpperCase().padStart(6, '0')},\n`;
-                text += `    },\n\n`;
-            });
-            
-            document.getElementById('output').textContent = text;
-            
-            // Copy to clipboard
-            navigator.clipboard.writeText(text).then(() => {
-                alert('Configuration copied to clipboard!');
-            }).catch(() => {
-                alert('Configuration exported to output box. Please copy manually.');
-            });
+                const writable = await deerConfigFileHandle.createWritable();
+                await writable.write(newText);
+                await writable.close();
+                setSaveStatus(`Saved to ${deerConfigFileHandle.name} at ${new Date().toLocaleTimeString()}`);
+            } catch (err) {
+                if (err && err.name === 'AbortError') {
+                    setSaveStatus('Save cancelled.', true);
+                    return;
+                }
+                console.error(err);
+                // Handle expired or denied; fall back to clipboard.
+                deerConfigFileHandle = null;
+                await fallbackCopyToClipboard(newText,
+                    'Save failed or permission denied. Copied full deer-config.js to clipboard instead.');
+            }
+        }
+
+        async function copyFullConfigToClipboard() {
+            let newText;
+            try {
+                newText = await rebuildDeerConfigText();
+            } catch (err) {
+                console.error(err);
+                setSaveStatus(err.message || 'Failed to build deer-config.js text.', true);
+                return;
+            }
+            document.getElementById('output').textContent = newText;
+            await fallbackCopyToClipboard(newText, 'Copied full deer-config.js to clipboard.');
+        }
+
+        async function fallbackCopyToClipboard(text, successMsg) {
+            try {
+                await navigator.clipboard.writeText(text);
+                setSaveStatus(successMsg);
+            } catch (err) {
+                console.error(err);
+                setSaveStatus('Clipboard copy failed. Select text from the output box and copy manually.', true);
+            }
         }
         
         // Event listeners
@@ -744,8 +821,9 @@
             });
         });
         
-        document.getElementById('exportBtn').addEventListener('click', exportFullConfig);
-        
+        document.getElementById('saveBtn').addEventListener('click', saveToFile);
+        document.getElementById('copyBtn').addEventListener('click', copyFullConfigToClipboard);
+
         document.getElementById('resetBtn').addEventListener('click', () => {
             if (defaultConfig[currentHitbox]) {
                 config[currentHitbox] = JSON.parse(JSON.stringify(defaultConfig[currentHitbox]));
