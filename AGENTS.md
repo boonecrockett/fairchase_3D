@@ -1,5 +1,7 @@
 # Agent Instructions
 
+**B&C workspace:** Conventions in [`../AGENTS.md`](../AGENTS.md). Supabase MCP: **`user-supabase-boonecrockett`** — not **`user-supabase-personal`** for B&C.
+
 This project uses **bd** (beads) for issue tracking. Run `bd onboard` to get started.
 
 ## Quick Reference
