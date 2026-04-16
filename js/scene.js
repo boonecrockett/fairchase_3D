@@ -43,18 +43,10 @@ export function setupScene() {
         
         document.body.appendChild(gameContext.renderer.domElement);
 
-        // Handle window resize events to keep the scene responsive
-        window.addEventListener('resize', () => {
-            const newWidth = window.innerWidth || 800;
-            const newHeight = window.innerHeight || 600;
-            if (gameContext.camera) {
-                gameContext.camera.aspect = newWidth / newHeight;
-                gameContext.camera.updateProjectionMatrix();
-            }
-            if (gameContext.renderer) {
-                gameContext.renderer.setSize(newWidth, newHeight);
-            }
-        }, false);
+        // NOTE: Window resize handling lives in main.js via onWindowResize().
+        // We deliberately do NOT add another resize listener here; a previous
+        // version added a second listener that ran the same work twice on
+        // every resize.
     }
     
     const light = new THREE.DirectionalLight(0xffffff, 1);
@@ -87,6 +79,10 @@ export function setupScene() {
 
 // Pre-computed shadow offset to avoid creating new Vector3 every frame
 const _shadowOffset = new THREE.Vector3(100, 100, 50).normalize().multiplyScalar(150);
+// Scratch vector used when deriving the shadow offset from the current sun direction
+const _shadowOffsetScratch = new THREE.Vector3();
+// Distance from the player at which the directional light is placed
+const SHADOW_LIGHT_DISTANCE = 150;
 
 /**
  * Updates the shadow camera to follow the player and maintain consistent shadow coverage
@@ -97,9 +93,19 @@ export function updateShadowCamera() {
     if (gameContext.scene && gameContext.scene.sun && gameContext.camera) {
         const light = gameContext.scene.sun;
         const playerPosition = gameContext.camera.position;
-        
-        // Position shadow camera to follow player with offset based on sun direction
-        light.position.copy(playerPosition).add(_shadowOffset);
+
+        // If the environment manager has published a current sun direction,
+        // use it so the directional light (and its shadows) track time of day.
+        // Otherwise fall back to the fixed precomputed offset.
+        let offset;
+        if (gameContext.sunDirection) {
+            offset = _shadowOffsetScratch
+                .copy(gameContext.sunDirection)
+                .multiplyScalar(SHADOW_LIGHT_DISTANCE);
+        } else {
+            offset = _shadowOffset;
+        }
+        light.position.copy(playerPosition).add(offset);
         
         // Update shadow camera target to center on player
         light.target.position.copy(playerPosition);

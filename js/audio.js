@@ -340,7 +340,17 @@ export function startTitleMusic() {
             if (Tone.context.state !== 'running') {
                 await Tone.start();
             }
-            
+
+            // Guard against missing titleMusic (e.g. initTitleMusic failed or
+            // hasn't run yet). Retry for a while rather than throwing.
+            if (!gameContext.titleMusic) {
+                if (titleMusicRetries < MAX_TITLE_MUSIC_RETRIES) {
+                    titleMusicRetries++;
+                    setTimeout(() => startTitleMusic(), 500);
+                }
+                return;
+            }
+
             // Wait for the music to load if it's not loaded yet
             if (!gameContext.titleMusic.loaded) {
                 if (titleMusicRetries < MAX_TITLE_MUSIC_RETRIES) {

@@ -15,8 +15,11 @@ export class DeerMovement {
         // Movement tracking properties
         this.wanderTarget = new THREE.Vector3();
         this.lastPosition = new THREE.Vector3();
-        this.movementHistory = [0, 0, 0, 0, 0]; // Track last 5 movements
+        // Fixed-size ring buffer of recent frame-distances (avoids push/shift
+        // allocations on a per-frame hot path).
         this.movementHistorySize = 5;
+        this.movementHistory = new Float32Array(this.movementHistorySize);
+        this.movementHistoryIndex = 0;
         this.isMoving = false;
         this.movementSpeed = 0;
         this.currentSpeed = 0;
@@ -545,7 +548,7 @@ export class DeerMovement {
                 // This direction is clear - move half the distance
                 this.deer.model.position.x += this._tempVec3.x * escapeDistance * 0.5;
                 this.deer.model.position.z += this._tempVec3.z * escapeDistance * 0.5;
-                this.deer.model.position.y = gameContext.getCachedHeightAt(this.deer.model.position.x, this.deer.model.position.z) + this.deer.heightOffset;
+                this.deer.model.position.y = gameContext.getCachedHeightAt(this.deer.model.position.x, this.deer.model.position.z) + this.deer.config.heightOffset;
                 
                 // Generate a new wander target in a safe direction
                 this.generateNewWanderTarget();
@@ -562,7 +565,7 @@ export class DeerMovement {
             this._tempVec3.set(-this.deer.model.position.x, 0, -this.deer.model.position.z).normalize();
             this.deer.model.position.x += this._tempVec3.x;
             this.deer.model.position.z += this._tempVec3.z;
-            this.deer.model.position.y = gameContext.getCachedHeightAt(this.deer.model.position.x, this.deer.model.position.z) + this.deer.heightOffset;
+            this.deer.model.position.y = gameContext.getCachedHeightAt(this.deer.model.position.x, this.deer.model.position.z) + this.deer.config.heightOffset;
             
             // Generate new wander target
             this.generateNewWanderTarget();
@@ -644,7 +647,8 @@ export class DeerMovement {
      * Clear movement history (used for stationary states)
      */
     clearMovementHistory() {
-        this.movementHistory = [0, 0, 0, 0, 0];
+        this.movementHistory.fill(0);
+        this.movementHistoryIndex = 0;
         this.isMoving = false;
     }
 
@@ -653,15 +657,21 @@ export class DeerMovement {
      * @param {number} distanceMoved - Distance moved this frame
      */
     updateMovementHistory(distanceMoved) {
-        this.movementHistory.push(distanceMoved);
-        if (this.movementHistory.length > this.movementHistorySize) {
-            this.movementHistory.shift();
-        }
+        // Ring-buffer write
+        this.movementHistory[this.movementHistoryIndex] = distanceMoved;
+        this.movementHistoryIndex = (this.movementHistoryIndex + 1) % this.movementHistorySize;
 
         // Check if deer is moving based on movement history
         // Very low threshold - at 60fps with wandering speed 0.67, distance per frame is ~0.011
         const movementThreshold = 0.005; // Low enough to detect slow wandering
-        this.isMoving = this.movementHistory.some(movement => movement > movementThreshold);
+        let moving = false;
+        for (let i = 0; i < this.movementHistorySize; i++) {
+            if (this.movementHistory[i] > movementThreshold) {
+                moving = true;
+                break;
+            }
+        }
+        this.isMoving = moving;
     }
 
     /**
@@ -678,7 +688,8 @@ export class DeerMovement {
     resetMovementTracking() {
         this.isMoving = false;
         this.lastPosition.copy(this.deer.model.position);
-        this.movementHistory = [0, 0, 0, 0, 0];
+        this.movementHistory.fill(0);
+        this.movementHistoryIndex = 0;
         this.movementSampleCount = 0;
         this.consecutiveStuckChecks = 0;
         this.emergencyEscapeActive = false;

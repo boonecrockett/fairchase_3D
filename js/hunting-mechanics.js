@@ -27,6 +27,18 @@ function isLegalHuntingTime() {
 }
 
 /**
+ * Returns true if a hit zone represents a clean / vital kill.
+ * The collision system reports 'vitals' (right lung), 'leftLung', 'doubleLung',
+ * and 'heart' as lethal chest hits. Treat all of them as vital.
+ */
+function isVitalHit(hitZone) {
+    return hitZone === 'vitals' ||
+           hitZone === 'doubleLung' ||
+           hitZone === 'leftLung' ||
+           hitZone === 'heart';
+}
+
+/**
  * Updates the score display in the UI
  */
 function updateScoreDisplay() {
@@ -94,7 +106,7 @@ function calculateBonuses(distance, wasMoving, hitZone, isFirstShot = false, isB
     
     // Diligent Hunt bonus: Rewards patient stalking over 500+ yards with a vital shot
     // Only awarded for clean kills (vital shots)
-    if (hitZone === 'vitals' && gameContext.distanceTraveled >= 500) {
+    if (isVitalHit(hitZone) && gameContext.distanceTraveled >= 500) {
         bonus += 15;
         bonusDetails.push('Diligent Hunt +15');
     }
@@ -120,7 +132,11 @@ function processKill(baseScore, baseMessage, wasMoving, shotCount, distance, hit
 
     // Check for illegal hunting hours
     if (!isLegalHuntingTime()) {
-        finalScore = -100; // Penalty for illegal harvest
+        // Target total after-hours penalty for this shot is -100. If the shot
+        // already incurred the per-shot after-hours penalty in shoot(), subtract
+        // that amount so we don't stack it on top of this one.
+        const alreadyApplied = gameContext.lastShotAfterHoursPenalty || 0;
+        finalScore = -100 - alreadyApplied; // e.g. -100 - (-25) = -75
         finalMessage = "Unethical Harvest (Out of Hours)";
         ethical = false;
     } else {
@@ -206,9 +222,13 @@ export function shoot() {
     }
     
     // Penalty for shooting outside legal hunting hours (applies to all shots)
+    // Track the amount applied so processKill can avoid stacking it on top of
+    // the -100 illegal-harvest penalty for the same shot.
+    gameContext.lastShotAfterHoursPenalty = 0;
     if (!isLegalHuntingTime()) {
         const afterHoursPenalty = -25;
         gameContext.score += afterHoursPenalty;
+        gameContext.lastShotAfterHoursPenalty = afterHoursPenalty;
         updateScoreDisplay();
         showMessage(`Shooting After Hours! ${afterHoursPenalty} Points`, 2000);
         logEvent("Illegal Shot", "Shot fired outside legal hunting hours", {
@@ -739,7 +759,7 @@ export function tagDeer() {
         let tagBonusBreakdown = [{ name: 'Tagged Deer', value: 10 }];
         
         // Check if this was a clean kill (vital shot, first shot)
-        const wasVitalShot = gameContext.killInfo && gameContext.killInfo.hitZone === 'vitals';
+        const wasVitalShot = gameContext.killInfo && isVitalHit(gameContext.killInfo.hitZone);
         const wasFirstShot = gameContext.huntLog && gameContext.huntLog.totalShotsTaken <= 1;
         const hadBadShots = gameContext.badShotPenalties && gameContext.badShotPenalties.length > 0;
         

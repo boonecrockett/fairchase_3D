@@ -34,6 +34,9 @@ const MAP_MARKER_OUTLINE_WIDTH = 2; // Width of outline ring
 let cachedMapScene = null;
 let cachedMapCamera = null;
 let dynamicMapObjects = []; // Markers that change each render
+let smartphoneMapRenderer = null; // Cached WebGLRenderer for GPS map
+let smartphoneMapCanvas = null; // Canvas the cached renderer is bound to
+let smartphoneMapCloseHandler = null; // Escape-key handler, removed on close
 
 /**
  * Initializes the WebGLRenderer for the map canvas.
@@ -451,13 +454,15 @@ export function showSmartphoneMap() {
     // Render the map
     renderSmartphoneMap();
     
-    // Add escape key listener to close
+    // Add escape key listener to close. Track the handler so closeSmartphoneMap
+    // can remove it regardless of whether the user pressed Escape or used the
+    // close button (otherwise the listener leaks across opens).
     const closeHandler = (event) => {
         if (event.key === 'Escape') {
             closeSmartphoneMap();
-            document.removeEventListener('keydown', closeHandler);
         }
     };
+    smartphoneMapCloseHandler = closeHandler;
     document.addEventListener('keydown', closeHandler);
 }
 
@@ -770,17 +775,25 @@ function createSmartphoneMapModal() {
 function renderSmartphoneMap() {
     const canvas = document.getElementById('smartphone-map-canvas');
     if (!canvas || !gameContext.terrain) return;
-    
-    // Create renderer for GPS map with larger size
-    const renderer = new THREE.WebGLRenderer({ canvas: canvas, antialias: true });
-    renderer.setSize(350, 340);
-    renderer.setPixelRatio(window.devicePixelRatio);
-    renderer.setClearColor(MAP_BACKGROUND_COLOR);
-    
+
+    // Reuse a single WebGLRenderer across map opens. If the canvas element
+    // has been replaced (modal was removed), recreate the renderer bound to
+    // the new canvas. Otherwise creating a new renderer each open leaks GPU
+    // contexts (browsers typically cap around 16 live contexts).
+    if (!smartphoneMapRenderer || smartphoneMapCanvas !== canvas) {
+        if (smartphoneMapRenderer) {
+            smartphoneMapRenderer.dispose();
+        }
+        smartphoneMapRenderer = new THREE.WebGLRenderer({ canvas: canvas, antialias: true });
+        smartphoneMapRenderer.setSize(350, 340);
+        smartphoneMapRenderer.setPixelRatio(window.devicePixelRatio);
+        smartphoneMapRenderer.setClearColor(MAP_BACKGROUND_COLOR);
+        smartphoneMapCanvas = canvas;
+    }
+
     const { scene, camera } = getMapScene(350, 340);
-    renderer.render(scene, camera);
-    
-    // Add distance legend overlay
+    smartphoneMapRenderer.render(scene, camera);
+
     addDistanceLegend(canvas);
 }
 
@@ -788,10 +801,21 @@ function renderSmartphoneMap() {
  * Closes the smartphone map modal
  */
 export function closeSmartphoneMap() {
+    if (smartphoneMapCloseHandler) {
+        document.removeEventListener('keydown', smartphoneMapCloseHandler);
+        smartphoneMapCloseHandler = null;
+    }
     const modal = document.getElementById('smartphone-map-modal');
     if (modal) {
         modal.style.display = 'none';
-        // Clean up any remaining event listeners to prevent conflicts
         modal.remove();
+    }
+    // The cached renderer is bound to the canvas inside the modal; when the
+    // modal is removed, the canvas goes with it. Clear our cache so the next
+    // open recreates the renderer against the fresh canvas.
+    if (smartphoneMapRenderer) {
+        smartphoneMapRenderer.dispose();
+        smartphoneMapRenderer = null;
+        smartphoneMapCanvas = null;
     }
 }

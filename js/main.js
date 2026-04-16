@@ -161,14 +161,15 @@ async function startGame(selectedWorldId) {
         let worldConfig;
         if (typeof selectedWorldId === 'string') {
             worldConfig = worldPresets[selectedWorldId] || worldPresets['Hardwood Forest'];
-        } else if (typeof selectedWorldId === 'object') {
+        } else if (selectedWorldId && typeof selectedWorldId === 'object' && !Array.isArray(selectedWorldId)) {
             worldConfig = selectedWorldId;
             gameContext.worldId = 'custom';
         }
-        
+
         if (!worldConfig) {
             console.warn('⚠️ START GAME: World config missing, using default');
             worldConfig = worldPresets['Hardwood Forest'];
+            gameContext.worldId = 'Hardwood Forest';
         }
 
         gameContext.worldConfig = worldConfig;

@@ -3,6 +3,8 @@
  * Easy way to add/remove the center pond without editing world presets directly
  */
 
+import { gameContext } from './context.js';
+
 /**
  * Removes all ponds from the scene (for easy cleanup)
  */

@@ -410,10 +410,6 @@ export class Deer extends Animal {
     createVitals(parent) {
         this.hitbox.createVitals(parent);
     }
-    
-    createSimpleVitalsHitbox() {
-        this.hitbox.createSimpleVitalsHitbox();
-    }
 
     update(delta) {
         if (!this.isModelLoaded) return;

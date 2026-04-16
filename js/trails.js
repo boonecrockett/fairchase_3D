@@ -369,6 +369,7 @@ function createTrailMesh(points, texture, widthMultiplier = 1.0) {
     
     // Use polygon offset to render trail on top of terrain without floating
     const material = new THREE.MeshLambertMaterial({
+        map: texture,
         color: TRAIL_CONFIG.color,
         side: THREE.DoubleSide,
         transparent: true,

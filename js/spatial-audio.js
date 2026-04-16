@@ -114,7 +114,8 @@ export function updateSpatialAudioListener() {
 /**
  * Plays a positioned 3D sound at a specific location
  */
-export function playPositionalSound(soundType, position, velocity = null) {
+export function playPositionalSound(soundType, position, velocity = null, options = {}) {
+    const { ignoreDistance = false } = options;
     // console.log(`Attempting to play positional sound: ${soundType} at position:`, position); // Logging disabled
     
     if (!gameContext.spatialAudio?.sounds[soundType] || !position) {
@@ -148,8 +149,9 @@ export function playPositionalSound(soundType, position, velocity = null) {
         _relativePos.copy(position).sub(playerPos);
         const distance = _relativePos.length();
         
-        // Only play if within hearing range
-        if (distance > MAX_AUDIO_DISTANCE) {
+        // Only play if within hearing range, unless caller opts out (used by
+        // spawn notifications so distant deer can still alert the player).
+        if (!ignoreDistance && distance > MAX_AUDIO_DISTANCE) {
             soundInstance.inUse = false;
             return;
         }
@@ -265,7 +267,7 @@ export function triggerDeerSpawnBlowSound(deer) {
     
     // For spawn notifications, always play the sound regardless of distance
     // This alerts the player that a new deer has appeared on the map
-    playPositionalSound('deerBlow', deerPosition);
+    playPositionalSound('deerBlow', deerPosition, null, { ignoreDistance: true });
 }
 
 /**

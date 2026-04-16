@@ -9,6 +9,7 @@ import * as THREE from 'three';
 const preloadedAssets = {
     models: new Map(),
     textures: new Map(),
+    failedCount: 0,
     isPreloading: false,
     isComplete: false
 };
@@ -53,6 +54,7 @@ export function startPreloading() {
             })
             .catch(err => {
                 console.warn(`📦 PRELOADER: Failed to preload model '${asset.key}':`, err);
+                preloadedAssets.failedCount++;
                 checkPreloadComplete();
             });
     });
@@ -69,6 +71,7 @@ export function startPreloading() {
             undefined,
             (err) => {
                 console.warn(`📦 PRELOADER: Failed to preload texture '${asset.key}':`, err);
+                preloadedAssets.failedCount++;
                 checkPreloadComplete();
             }
         );
@@ -81,11 +84,16 @@ export function startPreloading() {
 function checkPreloadComplete() {
     const totalAssets = ASSETS_TO_PRELOAD.models.length + ASSETS_TO_PRELOAD.textures.length;
     const loadedAssets = preloadedAssets.models.size + preloadedAssets.textures.size;
-    
-    if (loadedAssets >= totalAssets) {
+    const settledAssets = loadedAssets + preloadedAssets.failedCount;
+
+    if (settledAssets >= totalAssets) {
         preloadedAssets.isComplete = true;
         preloadedAssets.isPreloading = false;
-        console.log('📦 PRELOADER: All assets preloaded!');
+        if (preloadedAssets.failedCount > 0) {
+            console.warn(`📦 PRELOADER: Complete with ${preloadedAssets.failedCount} failure(s).`);
+        } else {
+            console.log('📦 PRELOADER: All assets preloaded!');
+        }
     }
 }
 
@@ -121,6 +129,6 @@ export function isPreloadComplete() {
  */
 export function getPreloadProgress() {
     const totalAssets = ASSETS_TO_PRELOAD.models.length + ASSETS_TO_PRELOAD.textures.length;
-    const loadedAssets = preloadedAssets.models.size + preloadedAssets.textures.size;
-    return loadedAssets / totalAssets;
+    const settledAssets = preloadedAssets.models.size + preloadedAssets.textures.size + preloadedAssets.failedCount;
+    return settledAssets / totalAssets;
 }

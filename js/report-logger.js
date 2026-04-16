@@ -429,11 +429,36 @@ function getEventClass(eventType) {
 }
 
 /**
- * Updates the report modal if it's currently open
+ * Updates the report modal if it's currently open.
+ *
+ * Rebuilds are coalesced via requestAnimationFrame so a burst of logEvent()
+ * calls (e.g. during a kill sequence which logs several events in a row)
+ * results in at most one full innerHTML rebuild per animation frame while
+ * the modal is open. When the modal is closed this is a cheap display check.
  */
+let _reportModalUpdateScheduled = false;
 export function updateReportModal() {
-    if (gameContext.reportModalBackdrop && gameContext.reportModalBackdrop.style.display === 'flex') {
-        const currentReportHTML = generateCurrentReport();
-        gameContext.reportContent.innerHTML = currentReportHTML;
+    const backdrop = gameContext.reportModalBackdrop;
+    if (!backdrop || backdrop.style.display !== 'flex') return;
+
+    if (_reportModalUpdateScheduled) return;
+    _reportModalUpdateScheduled = true;
+
+    const flush = () => {
+        _reportModalUpdateScheduled = false;
+        // Re-check visibility at flush time in case the modal was closed
+        // between scheduling and running.
+        if (!gameContext.reportModalBackdrop ||
+            gameContext.reportModalBackdrop.style.display !== 'flex' ||
+            !gameContext.reportContent) {
+            return;
+        }
+        gameContext.reportContent.innerHTML = generateCurrentReport();
+    };
+
+    if (typeof requestAnimationFrame === 'function') {
+        requestAnimationFrame(flush);
+    } else {
+        flush();
     }
 }

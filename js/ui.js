@@ -269,21 +269,18 @@ export async function initUI() {
             const reportModal = document.getElementById('report-modal');
             if (!reportModal || !window.html2canvas) return;
             
+            // Temporarily hide the button group for cleaner screenshot
+            const buttonGroup = reportModal.querySelector('.button-group');
+            if (buttonGroup) buttonGroup.style.visibility = 'hidden';
+
             try {
-                // Temporarily hide the button group for cleaner screenshot
-                const buttonGroup = reportModal.querySelector('.button-group');
-                if (buttonGroup) buttonGroup.style.visibility = 'hidden';
-                
                 const canvas = await window.html2canvas(reportModal, {
                     backgroundColor: '#1a1c18',
                     scale: 3, // Higher scale for better logo quality
                     useCORS: true,
                     allowTaint: true
                 });
-                
-                // Restore button group
-                if (buttonGroup) buttonGroup.style.visibility = 'visible';
-                
+
                 // Create download link
                 const link = document.createElement('a');
                 const timestamp = new Date().toISOString().slice(0, 10);
@@ -294,6 +291,10 @@ export async function initUI() {
                 document.body.removeChild(link);
             } catch (error) {
                 console.error('Screenshot failed:', error);
+            } finally {
+                // Always restore button group, even on failure, so the modal
+                // remains usable after a failed screenshot attempt.
+                if (buttonGroup) buttonGroup.style.visibility = 'visible';
             }
         });
     }

@@ -226,6 +226,7 @@ export class WoundState {
         this.maxTravelDistance = null;
         this.beddingDistance = null;
         this.reachedTarget = false;
+        this.hasEscaped = false;
     }
     
     applyWound(woundType, hitPoint) {
@@ -236,6 +237,7 @@ export class WoundState {
         this.timeSinceWound = 0;
         this.isBedded = false;
         this.hasLookedBack = false;
+        this.hasEscaped = false;
         this.adrenalineTimer = woundType.recovers ? 30 : 0; // 30 seconds of adrenaline for muscle hits
         this.currentSpeedMultiplier = woundType.speedMultiplier;
         this.maxTravelDistance = null; // Will be set on first collapse check

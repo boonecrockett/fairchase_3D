@@ -6,6 +6,11 @@ import { deerConfig } from './deer-config.js';
 import { gameContext } from './context.js';
 import * as THREE from 'three';
 
+// Reusable vector for raycast direction; raycast is a hot path (per shot,
+// sometimes multiple per frame in hunt simulator), so we avoid allocating
+// a new Vector3 each call.
+const _rayDirection = new THREE.Vector3();
+
 class CollisionSystem {
     constructor() {
         this.raycaster = null;
@@ -99,10 +104,10 @@ class CollisionSystem {
             return { hit: false, hitZone: null, distance: null };
         }
 
-        // Set up raycaster
-        const direction = new THREE.Vector3().subVectors(to, from).normalize();
+        // Set up raycaster using a shared direction vector
+        _rayDirection.subVectors(to, from).normalize();
         const maxDistance = from.distanceTo(to);
-        this.raycaster.set(from, direction);
+        this.raycaster.set(from, _rayDirection);
         this.raycaster.far = maxDistance;
         
         // Force update world matrices for all hitboxes before raycasting

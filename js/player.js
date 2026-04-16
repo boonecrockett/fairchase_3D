@@ -6,6 +6,7 @@ import { showSmartphoneMap, closeSmartphoneMap } from './map.js';
 import { updateSpatialAudioListener } from './spatial-audio.js';
 import { tagDeer } from './hunting-mechanics.js';
 import { updateDistanceTraveled } from './report-logger.js';
+import { showMessage } from './ui.js';
 
 // --- Player Module Constants ---
 
@@ -136,10 +137,21 @@ export function createPlayer(camera, scene) {
 /**
  * Adds all necessary event listeners for player controls (keyboard and mouse).
  */
+let playerEventListenersRegistered = false;
 export function addPlayerEventListeners() {
+    // Idempotency guard: calling this more than once (e.g. on game restart)
+    // would stack handlers and cause each key/mouse event to fire multiple
+    // times. The listeners target document/body, which persist across restarts,
+    // so registering once is sufficient for the lifetime of the page.
+    if (playerEventListenersRegistered) {
+        window.toggleMap = showSmartphoneMap;
+        return;
+    }
+    playerEventListenersRegistered = true;
+
     // Expose map function globally for UI buttons
     window.toggleMap = showSmartphoneMap;
-    
+
     // Ensure document has focus for key events
     if (document.hasFocus && !document.hasFocus()) {
         window.focus();
@@ -458,8 +470,8 @@ export function updatePlayer() {
 
     // --- INTERACTION LOGIC ---
     // Check for deer tagging proximity
-    if (gameContext.deer && gameContext.deer.isFallen && !gameContext.deer.tagged) {
-        const distanceToDeer = gameContext.player.position.distanceTo(gameContext.deer.mesh.position);
+    if (gameContext.deer && gameContext.deer.fallen && !gameContext.deer.tagged) {
+        const distanceToDeer = gameContext.player.position.distanceTo(gameContext.deer.model.position);
         if (distanceToDeer < 5) { // 5 units of distance to allow tagging
             gameContext.canTag = true;
             gameContext.interactionPromptElement.textContent = 'Press E to Tag';
@@ -832,7 +844,8 @@ function updateHumanTracks() {
         const age = currentTime - track.creationTime;
         if (age > HUMAN_TRACK_CONFIG.trackFadeDurationS) {
             gameContext.scene.remove(track.mesh);
-            track.mesh.material.dispose();
+            if (track.mesh.geometry) track.mesh.geometry.dispose();
+            if (track.mesh.material) track.mesh.material.dispose();
             return false; // Remove from array
         }
         // Update opacity based on age

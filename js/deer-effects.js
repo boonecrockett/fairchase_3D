@@ -5,6 +5,10 @@
 import * as THREE from 'three';
 import { gameContext } from './context.js';
 
+// Shared scratch vector reused by effect creation (avoids a per-track
+// Vector3 allocation for the travel-direction calculation).
+const _tmpDir = new THREE.Vector3();
+
 export class DeerEffects {
     constructor(deer, config) {
         this.deer = deer;
@@ -18,10 +22,18 @@ export class DeerEffects {
         this.lastBloodDropPosition = new THREE.Vector3();
         this.lastTrackPosition = new THREE.Vector3();
         
-        // Materials (initialized lazily)
+        // Materials and geometries (initialized lazily). Geometries are
+        // intentionally shared across every track/blood instance so we don't
+        // allocate and upload a fresh PlaneGeometry per step. Size variation
+        // for blood drops is applied via mesh.scale instead. Materials are
+        // still cloned per instance because each one animates its own
+        // opacity as it fades out.
         this.trackMaterial = null;
+        this.trackGeometry = null;
         this.bloodDropMaterial = null;
+        this.bloodDropGeometry = null;
         this.shotBloodMaterial = null;
+        this.shotBloodGeometry = null;
     }
 
     createTrack() {
@@ -60,8 +72,14 @@ export class DeerEffects {
             );
         }
 
-        const trackGeometry = new THREE.PlaneGeometry(this.config.tracking.trackShapeRadius * 2, this.config.tracking.trackShapeRadius * 2);
-        const track = new THREE.Mesh(trackGeometry, this.trackMaterial.clone());
+        if (!this.trackGeometry) {
+            const size = this.config.tracking.trackShapeRadius * 2;
+            this.trackGeometry = new THREE.PlaneGeometry(size, size);
+        }
+
+        // Share geometry across all tracks; clone material so each track can
+        // fade out independently.
+        const track = new THREE.Mesh(this.trackGeometry, this.trackMaterial.clone());
 
         track.position.copy(this.deer.model.position);
         
@@ -80,13 +98,12 @@ export class DeerEffects {
         track.position.y = finalY;
         track.rotation.x = -Math.PI / 2; // Lay flat on ground
         
-        // Calculate actual movement direction from position change
-        const movementDirection = new THREE.Vector3()
-            .subVectors(this.deer.model.position, this.lastTrackPosition)
-            .normalize();
-        
+        // Calculate actual movement direction from position change using a
+        // reused scratch vector (no per-track Vector3 allocation).
+        _tmpDir.subVectors(this.deer.model.position, this.lastTrackPosition).normalize();
+
         // Convert movement direction to rotation angle and add 180° correction
-        const travelAngle = Math.atan2(movementDirection.x, movementDirection.z) + Math.PI;
+        const travelAngle = Math.atan2(_tmpDir.x, _tmpDir.z) + Math.PI;
         track.rotation.z = travelAngle; // Orient track to actual travel direction with correction
         
         this.lastTrackPosition.copy(this.deer.model.position);
@@ -107,7 +124,7 @@ export class DeerEffects {
             const age = currentTime - track.creationTime;
             if (age > this.config.tracking.trackFadeDurationS) {
                 gameContext.scene.remove(track.mesh);
-                track.mesh.geometry.dispose();
+                // Geometry is shared across all tracks - do NOT dispose here.
                 track.mesh.material.dispose();
             } else {
                 // Update opacity and keep in array
@@ -145,14 +162,16 @@ export class DeerEffects {
             );
         }
 
-        // Randomize blood drop size (current size to 30% bigger)
-        const baseDrop = this.config.tracking.bloodDropSize * 2;
+        // Lazily create a single shared unit-size geometry and reuse it for
+        // every blood drop. Size variation is applied via mesh.scale below.
+        if (!this.bloodDropGeometry) {
+            const baseDrop = this.config.tracking.bloodDropSize * 2;
+            this.bloodDropGeometry = new THREE.PlaneGeometry(baseDrop, baseDrop);
+        }
         const sizeVariation = 1 + (Math.random() * 0.3); // 1.0 to 1.3 (up to 30% bigger)
-        const randomDropSize = baseDrop * sizeVariation;
-        
-        // Create geometry with randomized size
-        const bloodDropGeometry = new THREE.PlaneGeometry(randomDropSize, randomDropSize);
-        const drop = new THREE.Mesh(bloodDropGeometry, this.bloodDropMaterial.clone());
+
+        const drop = new THREE.Mesh(this.bloodDropGeometry, this.bloodDropMaterial.clone());
+        drop.scale.setScalar(sizeVariation);
 
         // Randomize position (±1 units left/right/forward/backward from deer position)
         const randomOffsetX = (Math.random() - 0.5) * 2; // -1 to +1 units (reduced from 4 to 2)
@@ -208,10 +227,13 @@ export class DeerEffects {
         }
         const shotBloodMaterial = this.shotBloodMaterial;
 
-        // Larger size for shot indicators
-        const shotBloodSize = this.config.tracking.bloodDropSize * 3;
-        const shotBloodGeometry = new THREE.PlaneGeometry(shotBloodSize, shotBloodSize);
-        const shotBlood = new THREE.Mesh(shotBloodGeometry, shotBloodMaterial);
+        // Larger size for shot indicators. Share one geometry across all
+        // shot-blood indicators; its size is fixed.
+        if (!this.shotBloodGeometry) {
+            const shotBloodSize = this.config.tracking.bloodDropSize * 3;
+            this.shotBloodGeometry = new THREE.PlaneGeometry(shotBloodSize, shotBloodSize);
+        }
+        const shotBlood = new THREE.Mesh(this.shotBloodGeometry, shotBloodMaterial);
 
         // Position at hit location
         shotBlood.position.copy(hitPosition);
@@ -236,9 +258,9 @@ export class DeerEffects {
             const opacity = this.config.tracking.bloodOpacityStart - (age / this.config.tracking.bloodFadeDurationS);
 
             if (opacity <= 0) {
-                // Remove from scene and dispose geometry and material
+                // Remove from scene and dispose material. Geometry is shared
+                // between blood drops and shot indicators - do NOT dispose.
                 gameContext.scene.remove(drop.mesh);
-                drop.mesh.geometry.dispose();
                 drop.mesh.material.dispose();
             } else {
                 // Update opacity and keep in array
@@ -269,12 +291,12 @@ export class DeerEffects {
 
     // Cleanup all effects (useful for respawning)
     cleanup() {
-        // Remove all tracks
+        // Remove all tracks. Only materials are per-instance; geometries are
+        // shared and disposed in dispose() when the deer itself is torn down.
         this.tracks.forEach(track => {
             if (gameContext.scene) {
                 gameContext.scene.remove(track.mesh);
             }
-            track.mesh.geometry.dispose();
             track.mesh.material.dispose();
         });
         this.tracks = [];
@@ -284,7 +306,6 @@ export class DeerEffects {
             if (gameContext.scene) {
                 gameContext.scene.remove(drop.mesh);
             }
-            drop.mesh.geometry.dispose();
             drop.mesh.material.dispose();
         });
         this.bloodDrops = [];
@@ -292,5 +313,17 @@ export class DeerEffects {
         // Reset positions
         this.lastTrackPosition.set(0, 0, 0);
         this.lastBloodDropPosition.set(0, 0, 0);
+    }
+
+    // Full teardown: called when the deer instance is destroyed. Disposes
+    // the shared geometries and material prototypes we created lazily.
+    dispose() {
+        this.cleanup();
+        if (this.trackGeometry) { this.trackGeometry.dispose(); this.trackGeometry = null; }
+        if (this.bloodDropGeometry) { this.bloodDropGeometry.dispose(); this.bloodDropGeometry = null; }
+        if (this.shotBloodGeometry) { this.shotBloodGeometry.dispose(); this.shotBloodGeometry = null; }
+        if (this.trackMaterial) { this.trackMaterial.dispose(); this.trackMaterial = null; }
+        if (this.bloodDropMaterial) { this.bloodDropMaterial.dispose(); this.bloodDropMaterial = null; }
+        if (this.shotBloodMaterial) { this.shotBloodMaterial.dispose(); this.shotBloodMaterial = null; }
     }
 }

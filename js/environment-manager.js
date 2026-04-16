@@ -11,6 +11,9 @@ const _c1 = new THREE.Color();
 const _c2 = new THREE.Color();
 const _hsl = { h: 0, s: 0, l: 0 };
 
+// Reusable vector for sun direction calculation
+const _sunDir = new THREE.Vector3();
+
 /**
  * Checks if it is currently night time in the game.
  * @returns {boolean} True if night, false if day
@@ -104,6 +107,17 @@ export function updateDynamicLighting() {
     const sunZ = 100;
     
     sun.position.set(sunX, sunY, sunZ);
+
+    // Publish the sun direction (from origin, normalized) so the per-frame
+    // shadow-camera update in scene.js can position the directional light
+    // relative to the player along the correct sun direction. Without this,
+    // updateShadowCamera would overwrite sun.position with a fixed offset and
+    // the sun would not appear to track time of day.
+    if (!gameContext.sunDirection) {
+        gameContext.sunDirection = new THREE.Vector3();
+    }
+    _sunDir.set(sunX, sunY, sunZ).normalize();
+    gameContext.sunDirection.copy(_sunDir);
     
     // Define lighting phases throughout the day
     let sunColor, ambientColor, skyColor, sunIntensity, ambientIntensity;
