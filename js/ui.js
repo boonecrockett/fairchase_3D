@@ -529,8 +529,10 @@ async function startGameWithMode(mode) {
         mainMenuContainer.style.display = 'none';
     }
     
-    // Hide the testing options panel
+    // Hide the testing options panel; detect if debug mode was active before hiding
     const testingOptionsPanel = document.getElementById('testing-options-panel');
+    const wasDebugActive = testingOptionsPanel
+        && window.getComputedStyle(testingOptionsPanel).display !== 'none';
     if (testingOptionsPanel) {
         testingOptionsPanel.style.display = 'none';
     }
@@ -538,7 +540,7 @@ async function startGameWithMode(mode) {
     // Show persistent debug badge during gameplay if Konami debug mode was active
     const debugBadge = document.getElementById('debug-badge');
     if (debugBadge) {
-        debugBadge.style.display = debugModeEnabled ? '' : 'none';
+        debugBadge.style.display = wasDebugActive ? '' : 'none';
     }
     
     // Show the in-game UI by removing the helper class
