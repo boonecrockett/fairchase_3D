@@ -690,6 +690,9 @@ function onKeyDown(event) {
         case 'KeyM':
             showSmartphoneMap();
             break;
+        case 'KeyZ':
+            toggleScope();
+            break;
         case 'ShiftLeft':
         case 'ShiftRight':
             isSprinting = true;

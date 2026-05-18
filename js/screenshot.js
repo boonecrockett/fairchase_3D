@@ -294,9 +294,8 @@ export function initScreenshotListener() {
     preloadLogo();
     
     document.addEventListener('keydown', (event) => {
-        // P key for Photo/Screenshot
-        if (event.code === 'KeyP' && !event.repeat) {
-            // Don't capture if typing in an input field
+        // F key for Photo/Screenshot (P is now Pause)
+        if (event.code === 'KeyF' && !event.repeat) {
             if (event.target.tagName === 'INPUT' || event.target.tagName === 'TEXTAREA') {
                 return;
             }
@@ -306,5 +305,5 @@ export function initScreenshotListener() {
         }
     });
     
-    console.log('📷 Screenshot system initialized (Press P to capture)');
+    console.log('📷 Screenshot system initialized (Press F to capture)');
 }

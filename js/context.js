@@ -152,6 +152,7 @@ export const gameContext = {
     mapUsageCount: 0, // Track smartphone map usage for battery system
     maxMapUsage: 10,  // Maximum map uses per day
     isSleeping: false,
+    isPaused: false,
     deerSighted: false, // Flag to prevent duplicate sighting logs
 
     // UI Elements - to be populated on DOMContentLoaded

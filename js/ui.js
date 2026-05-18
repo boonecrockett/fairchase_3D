@@ -534,6 +534,12 @@ async function startGameWithMode(mode) {
     if (testingOptionsPanel) {
         testingOptionsPanel.style.display = 'none';
     }
+
+    // Show persistent debug badge during gameplay if Konami debug mode was active
+    const debugBadge = document.getElementById('debug-badge');
+    if (debugBadge) {
+        debugBadge.style.display = debugModeEnabled ? '' : 'none';
+    }
     
     // Show the in-game UI by removing the helper class
     // Exclude indicators controlled separately by game state

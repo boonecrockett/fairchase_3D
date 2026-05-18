@@ -25,6 +25,15 @@ import { showLoadingModal, hideLoadingModal, registerTask, completeTask, updateL
 import { initScreenshotListener } from './screenshot.js';
 import { animationCalibrator } from './animation-calibrator.js';
 
+function togglePause() {
+    gameContext.isPaused = !gameContext.isPaused;
+    const overlay = document.getElementById('pause-overlay');
+    if (overlay) overlay.style.display = gameContext.isPaused ? '' : 'none';
+    if (!gameContext.isPaused) {
+        gameContext.clock.update();
+    }
+}
+
 // Make calibrator available globally immediately
 window.animationCalibrator = animationCalibrator;
 
@@ -213,8 +222,16 @@ async function startGame(selectedWorldId) {
         createPlayer(gameContext.camera, gameContext.scene);
         addPlayerEventListeners();
         
-        // 5b. Initialize Screenshot System
+        // 5b. Initialize Screenshot System & Pause key
         initScreenshotListener();
+        document.addEventListener('keydown', (event) => {
+            if (event.code === 'KeyP' && !event.repeat
+                && event.target.tagName !== 'INPUT'
+                && event.target.tagName !== 'TEXTAREA') {
+                event.preventDefault();
+                togglePause();
+            }
+        });
         
         // 6. Initialize Audio
         initAudio();
@@ -329,6 +346,11 @@ async function startGame(selectedWorldId) {
 
 function animate() {
     requestAnimationFrame(animate);
+
+    if (gameContext.isPaused) {
+        gameContext.renderer.render(gameContext.scene, gameContext.camera);
+        return;
+    }
 
     gameContext.clock.update();
     const delta = gameContext.clock.getDelta();

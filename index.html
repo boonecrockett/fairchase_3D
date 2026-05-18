@@ -55,6 +55,7 @@
             <div id="shortcuts-panel" class="hud shortcuts-hud">
                 <div class="shortcuts-title">Controls</div>
                 <div class="shortcut-row"><kbd>WASD</kbd> / <kbd>Arrows</kbd> Move</div>
+                <div class="shortcut-row"><kbd>Z</kbd> Toggle Scope</div>
                 <div class="shortcut-row"><kbd>Shift</kbd> Fast Walk</div>
                 <div class="shortcut-row"><kbd>C</kbd> Kneel</div>
                 <div class="shortcut-row"><kbd>Mouse</kbd> Look Around</div>
@@ -63,7 +64,8 @@
                 <div class="shortcut-row"><kbd>M</kbd> Map</div>
                 <div class="shortcut-row"><kbd>R</kbd> Report</div>
                 <div class="shortcut-row"><kbd>E</kbd> Tag Deer</div>
-                <div class="shortcut-row"><kbd>P</kbd> Photo</div>
+                <div class="shortcut-row"><kbd>P</kbd> Pause</div>
+                <div class="shortcut-row"><kbd>F</kbd> Photo</div>
                 <div class="shortcut-row"><kbd>H</kbd> Toggle HUD</div>
                 <div class="shortcut-row"><kbd>ESC</kbd> Release Mouse</div>
             </div>
@@ -154,6 +156,7 @@
     <!-- Testing options panel in upper right -->
     <div id="testing-options-panel">
         <div class="testing-options-content">
+            <div style="text-align:center; margin-bottom:10px; padding:4px 8px; background:#ff6b6b; color:#fff; font-weight:bold; font-size:11px; letter-spacing:2px; border-radius:3px;">DEBUG MODE</div>
             <div style="margin-bottom: 12px;">
                 <div>Deer Spawn:</div>
                 <div>
@@ -254,11 +257,12 @@
                         <div><kbd>C</kbd> Kneel (steadier aim)</div>
                         <div><kbd>Mouse</kbd> Look around</div>
                         <div><kbd>Left Click</kbd> Shoot</div>
-                        <div><kbd>Right Click</kbd> Toggle scope</div>
+                        <div><kbd>Right Click</kbd> / <kbd>Z</kbd> Toggle scope</div>
                         <div><kbd>M</kbd> Hold for map</div>
                         <div><kbd>R</kbd> View report</div>
                         <div><kbd>E</kbd> Tag deer</div>
-                        <div><kbd>P</kbd> Take photo</div>
+                        <div><kbd>P</kbd> Pause game</div>
+                        <div><kbd>F</kbd> Take photo</div>
                         <div><kbd>ESC</kbd> Release mouse</div>
                     </div>
                 </div>
@@ -392,7 +396,7 @@
                 
                 <div class="instructions-section">
                     <h3>📷 Photo Mode</h3>
-                    <p>Press <kbd>P</kbd> at any time to capture a screenshot of your hunt. Photos are saved automatically and work while:</p>
+                    <p>Press <kbd>F</kbd> at any time to capture a screenshot of your hunt. Photos are saved automatically and work while:</p>
                     <ul>
                         <li>Hunting and stalking deer</li>
                         <li>Looking through the rifle scope</li>
@@ -454,6 +458,15 @@
 
     <div id="sleep-overlay">
         <div id="sleep-timer"></div>
+    </div>
+
+    <div id="debug-badge" style="display:none; position:fixed; top:8px; right:8px; z-index:9999; padding:3px 10px; background:rgba(255,107,107,0.85); color:#fff; font:bold 11px/1.4 sans-serif; letter-spacing:1px; border-radius:3px; pointer-events:none; user-select:none;">DEBUG</div>
+
+    <div id="pause-overlay" style="display:none; position:fixed; inset:0; z-index:10000; background:rgba(0,0,0,0.65); pointer-events:auto; cursor:default;">
+        <div style="position:absolute; top:50%; left:50%; transform:translate(-50%,-50%); text-align:center; color:#fff; font-family:sans-serif; user-select:none;">
+            <div style="font-size:64px; font-weight:bold; letter-spacing:8px; text-shadow:0 2px 12px rgba(0,0,0,0.5);">PAUSED</div>
+            <div style="margin-top:16px; font-size:18px; opacity:0.7;">Press P to resume</div>
+        </div>
     </div>
 
     <script type="importmap">
