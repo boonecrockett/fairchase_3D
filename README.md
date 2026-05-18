@@ -1,5 +1,7 @@
 # Fair Chase: A 3D Ethical Deer Hunting Simulation
 
+**Live site:** <https://fairchase3d.netlify.app/> (deployed via Netlify on push to `main`).
+
 Welcome to Fair Chase, a 3D deer hunting simulation designed to showcase modular game development with Three.js and emphasize ethical hunting practices.
 
 ## Description
