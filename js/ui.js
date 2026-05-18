@@ -152,7 +152,6 @@ export async function initUI() {
                 if (panel) {
                     if (debugModeEnabled) {
                         panel.style.display = 'block';
-                        // Set default: deer spawns near hunter
                         const spawnNearRadio = document.getElementById('spawn-near');
                         if (spawnNearRadio) {
                             spawnNearRadio.checked = true;
@@ -160,7 +159,6 @@ export async function initUI() {
                         console.log('🎮 Debug mode enabled');
                     } else {
                         panel.style.display = 'none';
-                        // Reset to normal spawn
                         const spawnNormalRadio = document.getElementById('spawn-normal');
                         if (spawnNormalRadio) {
                             spawnNormalRadio.checked = true;
@@ -168,6 +166,20 @@ export async function initUI() {
                         console.log('🎮 Debug mode disabled');
                     }
                 }
+
+                // Flash confirmation so the user knows it worked
+                const flash = document.createElement('div');
+                flash.textContent = debugModeEnabled ? 'DEBUG MODE ON' : 'DEBUG MODE OFF';
+                Object.assign(flash.style, {
+                    position: 'fixed', top: '0', left: '0', width: '100%', height: '100%',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    background: debugModeEnabled ? 'rgba(255,107,107,0.25)' : 'rgba(0,0,0,0.25)',
+                    color: '#fff', fontSize: '48px', fontWeight: 'bold', letterSpacing: '6px',
+                    fontFamily: 'sans-serif', zIndex: '99999', pointerEvents: 'none',
+                    textShadow: '0 2px 12px rgba(0,0,0,0.7)',
+                });
+                document.body.appendChild(flash);
+                setTimeout(() => flash.remove(), 800);
             }
         } else {
             konamiIndex = 0;
