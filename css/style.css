@@ -395,10 +395,10 @@ canvas { display: block; }
     border: 1px solid var(--color-warning);
 }
 
-/* Kneeling Indicator - 55px below compass bottom */
+/* Kneeling Indicator - below mouse-look indicator */
 #kneeling-indicator {
     position: absolute;
-    top: 123px;
+    top: 145px;
     left: 50%;
     transform: translateX(-50%);
     background-color: var(--color-bg-panel);
