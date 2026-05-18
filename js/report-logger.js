@@ -252,9 +252,9 @@ export function generateCurrentReport() {
         });
     }
     
-    // Use gameContext.score as authoritative score (matches HUD display)
-    // The itemized breakdown is informational but may not sum exactly to gameContext.score
-    const finalScore = gameContext.score || 0;
+    // Final score = itemized bonuses minus itemized penalties so the
+    // report math is always internally consistent.
+    const finalScore = totalBonuses - totalPenalties;
     
     // Build compact report
     let reportHTML = `<div class="report-compact">`;
