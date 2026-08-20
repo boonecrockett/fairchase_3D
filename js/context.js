@@ -219,6 +219,11 @@ export const gameContext = {
     
     // Optimized height query with caching
     getCachedHeightAt(x, z) {
+        // Prefer baked heightmap (O(1) bilinear) when available
+        if (this.getHeightAt && this.heightmap) {
+            return this.getHeightAt(x, z);
+        }
+
         // Create cache key based on grid position
         const gridSize = this.heightCacheGridSize;
         const gridX = Math.round(x / gridSize) * gridSize;

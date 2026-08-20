@@ -2,11 +2,11 @@ import * as THREE from 'three';
 import { gameContext } from './context.js';
 import { MOUSE_SENSITIVITY as MOUSE_SENSITIVITY_NORMAL, INITIAL_PLAYER_X, INITIAL_PLAYER_Z } from './constants.js';
 import { startWalkSound, stopWalkSound, startWaterWalkSound, stopWaterWalkSound, startFoliageWalkSound, stopFoliageWalkSound } from './audio.js';
-import { showSmartphoneMap, closeSmartphoneMap } from './map.js';
+import { showSmartphoneMap, closeSmartphoneMap } from './map.js?v=ground-4';
 import { updateSpatialAudioListener } from './spatial-audio.js';
-import { tagDeer } from './hunting-mechanics.js';
+import { tagDeer } from './hunting-mechanics.js?v=ground-4';
 import { updateDistanceTraveled } from './report-logger.js';
-import { showMessage } from './ui.js';
+import { showMessage } from './ui.js?v=ground-4';
 
 // --- Player Module Constants ---
 

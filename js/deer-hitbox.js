@@ -4,7 +4,7 @@
  */
 
 import * as THREE from 'three';
-import { collisionSystem } from './collision.js';
+import { collisionSystem } from './collision.js?v=ground-4';
 
 export class DeerHitbox {
     constructor(deer, config) {

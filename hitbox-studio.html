@@ -165,6 +165,17 @@
             font-size: 12px;
             flex: 1;
         }
+        #loadStatus {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            background: rgba(0,0,0,0.7);
+            padding: 8px 12px;
+            border-radius: 5px;
+            font-size: 12px;
+            color: #ccc;
+        }
+        #loadStatus.error { color: #ff7a7a; }
         #instructions {
             position: absolute;
             bottom: 10px;
@@ -180,6 +191,7 @@
     <div id="container">
         <div id="viewport">
             <canvas id="canvas"></canvas>
+            <div id="loadStatus">Loading deer…</div>
             <div id="instructions">
                 <strong>Controls:</strong> Left-drag to rotate | Right-drag to pan | Scroll to zoom
             </div>
@@ -297,8 +309,8 @@
     <script type="module">
         import * as THREE from 'three';
         import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
-        import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
         import { deerConfig } from './js/deer-config.js';
+        import { loadGLTF } from './js/gltf-loader.js';
 
         // Path used for both fetch (to splice) and File System Access save
         const DEER_CONFIG_PATH = './js/deer-config.js';
@@ -373,22 +385,32 @@
         // In the game, collision.js uses 30x scale for gameplay detection
         const HITBOX_SCALE = 1;
         
-        // Load deer model
-        const loader = new GLTFLoader();
-        loader.load('assets/White_Tailed_Deer_Male.glb', (gltf) => {
+        function setLoadStatus(text, isError = false) {
+            const el = document.getElementById('loadStatus');
+            el.textContent = text;
+            el.classList.toggle('error', isError);
+            el.style.display = text ? 'block' : 'none';
+        }
+
+        // Game assets are Draco-compressed; reuse the shared loader so studio
+        // can decode KHR_draco_mesh_compression the same way the hunt does.
+        loadGLTF('assets/White_Tailed_Deer_Male.glb').then((gltf) => {
             deerModel = gltf.scene;
             deerModel.scale.set(1, 1, 1);
             scene.add(deerModel);
-            
-            // Create hitboxes
+
             createAllHitboxes();
-            
-            // Populate UI
             updateLegend();
             updateHitboxSelect();
             updateUIFromConfig(currentHitbox);
-        }, undefined, (error) => {
+            setLoadStatus('');
+        }).catch((error) => {
             console.error('Error loading deer model:', error);
+            setLoadStatus('Deer failed to load. See console for details.', true);
+            createAllHitboxes();
+            updateLegend();
+            updateHitboxSelect();
+            updateUIFromConfig(currentHitbox);
         });
         
         function updateLegend() {

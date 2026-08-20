@@ -1,7 +1,9 @@
 import * as THREE from 'three';
 import { gameContext } from './context.js';
 import { triggerDeerBlowSound } from './spatial-audio.js';
-import { isOnTrail } from './trails.js';
+import { isOnTrail, getTrailWaypointToward } from './trails.js?v=trail-splat-4';
+
+const TRAIL_SPEED_BONUS = 1.22;
 
 export class DeerAI {
     constructor(deer, config) {
@@ -68,8 +70,8 @@ export class DeerAI {
                     deer.movement.clearMovementHistory();
                     deer.setState('IDLE');
                 } else {
-                    // Only move if we have a valid target
-                    speed = this.config.speeds.wandering * delta;
+                    const onTrail = isOnTrail(deer.model.position.x, deer.model.position.z, 2.2);
+                    speed = this.config.speeds.wandering * (onTrail ? TRAIL_SPEED_BONUS : 1) * delta;
                     deer.movement.smoothRotateTowards(deer.movement.getWanderTarget(), delta);
                     deer.movement.moveWithCollisionDetection(speed, delta);
                 }
@@ -81,18 +83,14 @@ export class DeerAI {
                 
                 if (gameContext.waterBodies && gameContext.waterBodies.length > 0) {
                     for (const waterBody of gameContext.waterBodies) {
-                        // Get water center and radius
                         const waterCenter = waterBody.position;
-                        const waterRadius = (waterBody.userData?.config?.size || 92) / 2;
+                        const waterRadius = waterBody.userData?.baseRadius
+                            || (waterBody.userData?.config?.size || 92) / 2;
                         
-                        // Calculate direction from water center to deer (reuse temp vector)
                         this._tempVec3.subVectors(deer.model.position, waterCenter).normalize();
-                        
-                        // Calculate edge point (water center + direction * (radius - 2))
-                        // Subtract 2 units to stop just at the edge, not in the water
                         this._tempVec3b.copy(waterCenter)
-                            .add(this._tempVec3.multiplyScalar(waterRadius - 2));
-                        this._tempVec3b.y = deer.model.position.y; // Keep same height for distance calc
+                            .add(this._tempVec3.multiplyScalar(waterRadius + 2));
+                        this._tempVec3b.y = deer.model.position.y;
                         
                         const distance = deer.model.position.distanceTo(this._tempVec3b);
                         if (distance < closestDistance) {
@@ -104,17 +102,33 @@ export class DeerAI {
                 }
                 
                 if (waterEdgeTarget) {
-                    // Check if deer is close enough to the water edge to drink
                     if (closestDistance < 5) {
-                        // Stop completely before drinking
                         deer.currentSpeed = 0;
                         deer.movement.currentSpeed = 0;
                         deer.movement.clearMovementHistory();
                         deer.setState('DRINKING');
                     } else {
-                        // Move toward water edge
-                        speed = this.config.speeds.thirsty * delta;
-                        deer.movement.smoothRotateTowards(waterEdgeTarget, delta);
+                        const pond = gameContext.waterBodies[0];
+                        const trailWp = getTrailWaypointToward(
+                            deer.model.position.x,
+                            deer.model.position.z,
+                            pond.position.x,
+                            pond.position.z,
+                            22,
+                        );
+                        const moveTarget = this._tempVec3d;
+                        if (trailWp && closestDistance > 12) {
+                            moveTarget.set(trailWp.x, deer.model.position.y, trailWp.z);
+                        } else {
+                            moveTarget.copy(waterEdgeTarget);
+                        }
+                        const onTrail = trailWp ? trailWp.onTrail : isOnTrail(
+                            deer.model.position.x,
+                            deer.model.position.z,
+                            2.2,
+                        );
+                        speed = this.config.speeds.thirsty * (onTrail ? TRAIL_SPEED_BONUS : 1) * delta;
+                        deer.movement.smoothRotateTowards(moveTarget, delta);
                         deer.movement.moveWithCollisionDetection(speed, delta);
                     }
                 } else {
@@ -331,7 +345,7 @@ export class DeerAI {
                             });
                             
                             // Import and show message
-                            import('./ui.js').then(ui => {
+                            import('./ui.js?v=ground-4').then(ui => {
                                 ui.showMessage(`${penaltyDesc}! -${pushPenalty} pts. Give wounded deer time to bed.`);
                             });
                         }

@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { gameContext } from './context.js';
-import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
+import { loadGLTF } from './gltf-loader.js';
 
 // Pre-allocated for per-frame use in update()
 const _stationaryStates = new Set(['IDLE', 'GRAZING', 'DRINKING', 'ALERT', 'KILLED']);
@@ -32,8 +32,7 @@ export class Animal {
     }
 
     loadModel(path) {
-        const loader = new GLTFLoader();
-        loader.load(path, (gltf) => {
+        loadGLTF(path).then((gltf) => {
             const loadedScene = gltf.scene;
 
             // Configure the loaded model's scale, position, and rotation.
@@ -42,44 +41,25 @@ export class Animal {
             // loadedScene.rotation.y = -Math.PI / 2; // 90 degrees clockwise
             loadedScene.position.y = this.config.yOffset || 0;
 
-            let bodyMesh = null;
             loadedScene.traverse((child) => {
                 if (child.isMesh) {
-                    // The first mesh found is assumed to be the main body.
-                    if (!bodyMesh) bodyMesh = child;
-                    child.name = 'body'; // Name all meshes 'body' for simplicity.
-                    child.castShadow = true; // Enable shadows for all meshes
+                    child.name = 'body';
+                    child.castShadow = true;
                     child.receiveShadow = true;
                 }
             });
 
-            // Add the configured scene to the main model group.
-            this.model.add(loadedScene);
-
-            // Create vitals hitbox and attach it to the identified body mesh.
-            if (this.config.vitals && bodyMesh) {
-                this.createVitals(bodyMesh);
-            }
-
-
-
-            // Set up the animation mixer.
             this.mixer = new THREE.AnimationMixer(loadedScene);
-            gltf.animations.forEach((clip, index) => {
+            gltf.animations.forEach((clip) => {
                 this.animations[clip.name] = clip;
             });
-            
-            // Log available animations for debugging
 
-            // Set the loaded model as the new model.
-            this.model = gltf.scene;
+            // Hitboxes use studio coords in deer-local space. The live model
+            // must be the GLB root before those boxes are created and bound.
+            this.model = loadedScene;
 
-            // RESTORE HITBOXES: Re-attach hitboxes from the hitboxMeshes array to the new model.
-            if (this.hitboxMeshes && this.hitboxMeshes.length > 0) {
-                // console.log(`🔴 DEBUG: Re-attaching ${this.hitboxMeshes.length} hitboxes to new model.`);
-                this.hitboxMeshes.forEach(hitbox => {
-                    this.model.add(hitbox);
-                });
+            if (this.config.vitals) {
+                this.createVitals(this.model);
             }
 
             this.setupModel();
@@ -89,13 +69,17 @@ export class Animal {
                 this.spawn(this.pendingSpawnPosition, this.pendingSpawnRotation);
                 this.shouldSpawnOnLoad = false;
             }
-        }, undefined, (error) => {
+        }).catch((error) => {
             // console.error(`An error happened loading model: ${path}`, error); // Logging disabled
             // Fallback to procedural model if GLB fails to load
             this.createBody();
             this.createLegs();
             this.createHead();
             this.isModelLoaded = true;
+            if (this.shouldSpawnOnLoad) {
+                this.spawn(this.pendingSpawnPosition, this.pendingSpawnRotation);
+                this.shouldSpawnOnLoad = false;
+            }
         });
     }
 

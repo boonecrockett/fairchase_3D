@@ -1,14 +1,15 @@
 import * as THREE from 'three';
-import { setupScene, updateShadowCamera } from './scene.js';
-import { createHills, createWater, findDrinkingSpots, createTrees, createBushes, createGrass, createGroundCover, createShaderGrass, isWaterAt } from './world.js';
-import { createTrails } from './trails.js';
-import { createPlayer, addPlayerEventListeners, updatePlayer, getIsTreeBraced } from './player.js';
-import { deer } from './deer.js';
-import { initUI, showMessage, updateInteraction, updateCompass, ensureMainMenuHidden } from './ui.js';
+import { setupScene, updateShadowCamera, updateSkySun, applyQualityToRenderer } from './scene.js?v=ground-4';
+import { createHills, createWater, findDrinkingSpots, createTrees, createBushes, createGrass, updateWater, isWaterAt } from './world.js?v=ground-4';
+import { createTrails } from './trails.js?v=trail-splat-4';
+import { invalidateMapCache } from './map.js?v=ground-4';
+import { createPlayer, addPlayerEventListeners, updatePlayer, getIsTreeBraced } from './player.js?v=ground-4';
+import { deer } from './deer.js?v=ground-4';
+import { initUI, showMessage, updateInteraction, updateCompass, ensureMainMenuHidden } from './ui.js?v=ground-4';
 import { initAudio, playRifleSound, updateAmbianceForTime } from './audio.js';
 import { logEvent, initializeDayReport, updateDistanceTraveled } from './report-logger.js';
 import { gameContext } from './context.js';
-import { collisionSystem } from './collision.js'; 
+import { collisionSystem } from './collision.js?v=ground-4'; 
 import {
     GAME_TIME_SPEED_MULTIPLIER,
     HOURS_IN_DAY,
@@ -19,12 +20,55 @@ import {
     SLEEP_FADE_OUT_DURATION_MS
 } from './constants.js';
 import { updateSpatialAudioListener } from './spatial-audio.js';
-import { shoot, tagDeer } from './hunting-mechanics.js';
-import { updateTimeDisplay, updateDynamicLighting, isNight } from './environment-manager.js';
+import { shoot, tagDeer } from './hunting-mechanics.js?v=ground-4';
+import { updateTimeDisplay, updateDynamicLighting, isNight } from './environment-manager.js?v=ground-4';
 import { showLoadingModal, hideLoadingModal, registerTask, completeTask, updateLoadingStatus, initLoadingManager } from './loading-manager.js';
-import { initScreenshotListener } from './screenshot.js';
+import { initScreenshotListener } from './screenshot.js?v=ground-4';
 import { animationCalibrator } from './animation-calibrator.js';
+import { getQualitySettings } from './quality-settings.js';
 
+const MAX_DELTA = 1 / 15;
+let animationFrameId = null;
+let documentHidden = false;
+
+function disposeObject3D(object) {
+    if (!object) return;
+    object.traverse((child) => {
+        if (child.geometry) child.geometry.dispose();
+        if (child.material) {
+            const materials = Array.isArray(child.material) ? child.material : [child.material];
+            for (const mat of materials) {
+                if (!mat) continue;
+                for (const key of Object.keys(mat)) {
+                    const value = mat[key];
+                    if (value && value.isTexture) value.dispose();
+                }
+                mat.dispose();
+            }
+        }
+    });
+}
+
+function clearSceneContents() {
+    if (!gameContext.scene) return;
+    const toRemove = [...gameContext.scene.children];
+    for (const child of toRemove) {
+        gameContext.scene.remove(child);
+        disposeObject3D(child);
+    }
+    gameContext.treeInstancedMeshes = [];
+    gameContext.bushInstancedMeshes = [];
+    gameContext.treeHash = null;
+    gameContext.bushHash = null;
+    gameContext.grassHash = null;
+    gameContext.grass = null;
+    gameContext.shaderGrass = null;
+    gameContext.sky = null;
+    gameContext.heightmap = null;
+    gameContext.trails = null;
+    invalidateMapCache();
+    gameContext.clearHeightCache?.();
+}
 function togglePause() {
     gameContext.isPaused = !gameContext.isPaused;
     const overlay = document.getElementById('pause-overlay');
@@ -36,6 +80,19 @@ function togglePause() {
 
 // Make calibrator available globally immediately
 window.animationCalibrator = animationCalibrator;
+
+function isNearHashedFoliage(hash, x, z, pad) {
+    if (!hash || !hash.entries.length) return false;
+    const candidates = hash.query(x, z, 16);
+    for (let i = 0; i < candidates.length; i++) {
+        const entry = candidates[i];
+        const reach = (entry.foliageRadius || entry.radius || 1) + pad;
+        const dx = x - entry.x;
+        const dz = z - entry.z;
+        if (dx * dx + dz * dz < reach * reach) return true;
+    }
+    return false;
+}
 
 // Initialize game
 function init() {
@@ -50,10 +107,7 @@ function init() {
     let lastFoliageCheck = { x: 0, z: 0, result: false, time: 0 };
     const FOLIAGE_CHECK_INTERVAL = 0.05; // Check every 50ms for responsive sound
     const FOLIAGE_CHECK_DISTANCE = 0.3; // Recheck if moved more than 0.3 units (more precise)
-    
-    // Reusable vector for foliage check
-    const _foliageCheckPos = new THREE.Vector3();
-    
+
     gameContext.isFoliageAt = (x, z) => {
         const now = performance.now() / 1000;
         const dx = x - lastFoliageCheck.x;
@@ -65,33 +119,9 @@ function init() {
             now - lastFoliageCheck.time < FOLIAGE_CHECK_INTERVAL) {
             return lastFoliageCheck.result;
         }
-        
-        _foliageCheckPos.set(x, 0, z);
-        
-        // Check bushes - increased radius for better detection
-        let inBush = false;
-        if (gameContext.checkBushCollision) {
-            inBush = !!gameContext.checkBushCollision(_foliageCheckPos, 3.25);
-        }
-        
-        // Check grass clusters
-        let inGrass = false;
-        if (gameContext.grassClusterPositions && gameContext.grassClusterPositions.length > 0) {
-            const clusters = gameContext.grassClusterPositions;
-            for (let i = 0, len = clusters.length; i < len; i++) {
-                const cluster = clusters[i];
-                const cdx = x - cluster.x;
-                const cdz = z - cluster.z;
-                const distSq = cdx * cdx + cdz * cdz;
-                // Use stored detection radius with increase for better feel
-                const checkRadius = cluster.radius * 1.7;
-                if (distSq < checkRadius * checkRadius) {
-                    inGrass = true;
-                    break;
-                }
-            }
-        }
-        
+
+        const inBush = isNearHashedFoliage(gameContext.bushHash, x, z, 0.6);
+        const inGrass = isNearHashedFoliage(gameContext.grassHash, x, z, 0.5);
         const result = inBush || inGrass;
         
         // Update cache (avoid creating new object - reuse properties)
@@ -115,6 +145,10 @@ function init() {
         collisionSystem.updateHitboxVisibility();
     }
 
+    // Expose context functions early so UI can start a hunt even if later setup throws
+    gameContext.init = startGame;
+    gameContext.animate = animate;
+
     // Setup scene (lights, sky, fog)
     setupScene();
 
@@ -126,19 +160,14 @@ function init() {
     window.fireWeapon = shoot; // Use extracted shoot function
     window.tagAnimal = tagDeer; // Use extracted tagDeer function
     
-    // Expose context functions for ui.js
-    gameContext.init = startGame;
-    gameContext.animate = animate;
-    
     // Handle window resize
     window.addEventListener('resize', onWindowResize, false);
     
-    // Add visibility change listener to pause/resume game if needed
+    // Add visibility change listener to pause rendering when tab is hidden
     document.addEventListener('visibilitychange', () => {
-        if (document.hidden) {
-            // Optional: Pause game logic
-        } else {
-            // Optional: Resume game logic
+        documentHidden = document.hidden;
+        if (!document.hidden && gameContext.clock) {
+            gameContext.clock.update();
         }
     });
 }
@@ -186,14 +215,12 @@ async function startGame(selectedWorldId) {
             gameContext.worldId = selectedWorldId;
         }
         
-        // Clear existing scene elements if any (for restart)
-        while(gameContext.scene.children.length > 0){ 
-            gameContext.scene.remove(gameContext.scene.children[0]); 
-        }
+        // Clear existing scene elements if any (for restart) — dispose GPU resources
+        clearSceneContents();
         
         // Re-setup basic scene elements
         setupScene();
-        
+        applyQualityToRenderer(getQualitySettings());
         // 1. Generate Terrain (synchronous)
         updateLoadingStatus('Generating terrain...');
         createHills(worldConfig);
@@ -205,12 +232,7 @@ async function startGame(selectedWorldId) {
         findDrinkingSpots();
         completeTask('water');
         
-        // 3. Add Trails (synchronous)
-        updateLoadingStatus('Creating game trails...');
-        createTrails(worldConfig);
-        completeTask('trails');
-        
-        // 4. Add Vegetation (async - models need to load)
+        // 3. Vegetation first so trails can skirt trees and sit on top of grass
         updateLoadingStatus('Loading vegetation...');
         
         // Create promises for async vegetation loading
@@ -295,7 +317,9 @@ async function startGame(selectedWorldId) {
             completeTask('deer');
         }
         
-        // Apply Practice mode deer overrides (must happen after deer is created)
+        updateLoadingStatus('Creating game trails...');
+        createTrails(worldConfig);
+        completeTask('trails');
         if (gameContext.gameMode === 'practice' && gameContext.deer && gameContext.deer.config) {
             gameContext.deer.config.alertDistanceThreshold = 80;
             gameContext.deer.config.fleeDistanceThreshold = 40;
@@ -345,15 +369,20 @@ async function startGame(selectedWorldId) {
 }
 
 function animate() {
-    requestAnimationFrame(animate);
+    animationFrameId = requestAnimationFrame(animate);
+
+    if (documentHidden) {
+        return;
+    }
 
     if (gameContext.isPaused) {
-        gameContext.renderer.render(gameContext.scene, gameContext.camera);
+        // Skip GPU work while paused; HUD overlay is enough
         return;
     }
 
     gameContext.clock.update();
-    const delta = gameContext.clock.getDelta();
+    let delta = gameContext.clock.getDelta();
+    if (delta > MAX_DELTA) delta = MAX_DELTA;
     gameContext.deltaTime = delta;
 
     // Update game time
@@ -368,6 +397,7 @@ function animate() {
     // Core updates
     updateTimeDisplay();
     updateDynamicLighting();
+    updateSkySun();
     updatePlayer();
     updateInteraction();
     updateCompass();
@@ -381,6 +411,8 @@ function animate() {
     if (gameContext.updateGrassWind) {
         gameContext.updateGrassWind(delta);
     }
+
+    updateWater(delta);
     
     // Update Shadow Camera to follow player
     updateShadowCamera();
@@ -389,8 +421,12 @@ function animate() {
 }
 
 function onWindowResize() {
+    if (!gameContext.camera || !gameContext.renderer) return;
+    const quality = getQualitySettings();
     gameContext.camera.aspect = window.innerWidth / window.innerHeight;
+    gameContext.camera.far = quality.cameraFar;
     gameContext.camera.updateProjectionMatrix();
+    gameContext.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, quality.pixelRatioCap));
     gameContext.renderer.setSize(window.innerWidth, window.innerHeight);
 }
 

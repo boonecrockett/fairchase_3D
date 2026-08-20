@@ -438,7 +438,7 @@ class AnimationCalibrator {
 
         if (state === 'WOUNDED') {
             // Import wound system and apply a default wound
-            import('./wound-system.js').then(({ WOUND_TYPES }) => {
+            import('./wound-system.js?v=ground-4').then(({ WOUND_TYPES }) => {
                 deer.woundState.applyWound(WOUND_TYPES.DOUBLE_LUNG, deer.model.position);
                 deer.setState('WOUNDED');
                 console.log('Applied DOUBLE_LUNG wound');
@@ -455,7 +455,7 @@ class AnimationCalibrator {
         const deer = gameContext.deer;
         if (!deer) return;
 
-        import('./wound-system.js').then(({ WOUND_TYPES }) => {
+        import('./wound-system.js?v=ground-4').then(({ WOUND_TYPES }) => {
             const woundTypeMap = {
                 heart: WOUND_TYPES.HEART,
                 doubleLung: WOUND_TYPES.DOUBLE_LUNG,

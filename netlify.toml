@@ -17,9 +17,19 @@
   [headers.values]
     Cache-Control = "public, max-age=31536000"
 
-# Handle Three.js module imports
+[[headers]]
+  for = "/js/*"
+  [headers.values]
+    Cache-Control = "no-cache"
+
+[[headers]]
+  for = "/index.html"
+  [headers.values]
+    Cache-Control = "no-cache"
+
+# Handle Three.js module imports (legacy path; import map uses 0.184.0)
 [[redirects]]
   from = "/three"
-  to = "https://cdn.skypack.dev/three@0.128.0"
+  to = "https://cdn.jsdelivr.net/npm/three@0.184.0/build/three.module.js"
   status = 200
   force = false

@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { gameContext } from './context.js';
+import { updateSkySun } from './scene.js?v=ground-4';
 import { DAWN_START_HOUR, NIGHT_START_HOUR } from './constants.js';
 
 // Throttle lighting updates - no need to update every frame
@@ -131,8 +132,8 @@ export function updateDynamicLighting() {
         skyColor = adjustColorSaturationAndLuminosity(
             interpolateColor(0x0f0f23, 0xff8c69, progress), 0.5, 1.2 // Dark blue to salmon
         );
-        sunIntensity = 0.1 + progress * 0.7; // 0.1 to 0.8
-        ambientIntensity = 0.1 + progress * 0.4; // 0.1 to 0.5
+        sunIntensity = 0.15 + progress * 0.95;
+        ambientIntensity = 0.18 + progress * 0.5;
         
     } else if (timeOfDay >= 7 && timeOfDay < 10) {
         // Early Morning (7-10 AM) - golden hour
@@ -142,8 +143,8 @@ export function updateDynamicLighting() {
         skyColor = adjustColorSaturationAndLuminosity(
             interpolateColor(0xff8c69, 0x87ceeb, progress), 0.5, 1.2
         ); // Salmon to sky blue with reduced saturation and increased luminosity
-        sunIntensity = 0.8 + progress * 0.2; // 0.8 to 1.0
-        ambientIntensity = 0.5 + progress * 0.2; // 0.5 to 0.7
+        sunIntensity = 1.1 + progress * 0.25;
+        ambientIntensity = 0.68 + progress * 0.22;
         
     } else if (timeOfDay >= 10 && timeOfDay < 15) {
         // Midday (10 AM - 3 PM) - bright white/blue light
@@ -153,8 +154,8 @@ export function updateDynamicLighting() {
         skyColor = adjustColorSaturationAndLuminosity(
             interpolateColor(0x87ceeb, 0x4169e1, progress), 0.5, 1.2
         ); // Sky blue to royal blue with reduced saturation and increased luminosity
-        sunIntensity = 1.0; // Peak brightness
-        ambientIntensity = 0.7; // Peak ambient
+        sunIntensity = 1.45;
+        ambientIntensity = 0.95;
         
     } else if (timeOfDay >= 15 && timeOfDay < 17) {
         // Late Afternoon (3-5 PM) - warm white to golden
@@ -164,8 +165,8 @@ export function updateDynamicLighting() {
         skyColor = adjustColorSaturationAndLuminosity(
             interpolateColor(0x4169e1, 0xff8c69, progress), 0.5, 1.2
         ); // Royal blue to salmon
-        sunIntensity = 1.0 - progress * 0.2; // 1.0 to 0.8
-        ambientIntensity = 0.7 - progress * 0.2; // 0.7 to 0.5
+        sunIntensity = 1.45 - progress * 0.25;
+        ambientIntensity = 0.95 - progress * 0.22;
         
     } else if (timeOfDay >= 17 && timeOfDay < 19.5) {
         // Sunset (5-7:30 PM) - Golden to orange/red to purple
@@ -175,8 +176,8 @@ export function updateDynamicLighting() {
         skyColor = adjustColorSaturationAndLuminosity(
             interpolateColor(0xff8c69, 0x191970, progress), 0.6, 1.0
         ); // Salmon to midnight blue
-        sunIntensity = 0.8 - progress * 0.7; // 0.8 to 0.1
-        ambientIntensity = 0.5 - progress * 0.4; // 0.5 to 0.1
+        sunIntensity = 1.2 - progress * 1.05;
+        ambientIntensity = 0.73 - progress * 0.55;
         
     } else {
         // Night (7:30 PM - 4:30 AM)
@@ -195,6 +196,19 @@ export function updateDynamicLighting() {
     sun.intensity = sunIntensity;
     ambientLight.color.setHex(ambientColor);
     ambientLight.intensity = ambientIntensity;
+
+    if (gameContext.scene.hemiLight) {
+        gameContext.scene.hemiLight.intensity = Math.max(0.14, ambientIntensity * 0.75);
+        gameContext.scene.hemiLight.color.setHex(skyColor);
+    }
+
+    // The physical Sky shader does not consume the existing skyColor ramp.
+    // Hide it outside daylight so the established night clear color is visible
+    // instead of leaving a permanently horizon-lit daytime atmosphere.
+    if (gameContext.sky) {
+        const daylightSky = timeOfDay >= 4.5 && timeOfDay < 19.5;
+        gameContext.sky.visible = daylightSky;
+    }
     
     // Update sky color (fog)
     if (gameContext.scene.fog) {
@@ -203,4 +217,8 @@ export function updateDynamicLighting() {
     
     // Explicitly set alpha to 1 to ensure opaque background, preventing HTML leak-through
     gameContext.renderer.setClearColor(skyColor, 1);
+
+    if (gameContext.sky?.visible) {
+        updateSkySun();
+    }
 }

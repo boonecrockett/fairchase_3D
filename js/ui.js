@@ -1,12 +1,14 @@
 // js/ui.js
 import { gameContext } from './context.js';
-import { initMap, showMap } from './map.js';
+import { initMap, showMap } from './map.js?v=ground-4';
 import { worldPresets } from './world-presets.js';
-import { deer } from './deer.js';
+import { deer } from './deer.js?v=ground-4';
 import { stopTitleMusic } from './audio.js';
 import { generateCurrentReport, updateReportModal } from './report-logger.js';
 import { DEBUG_MODE, INITIAL_PLAYER_X, INITIAL_PLAYER_Z } from './constants.js';
 import { startPreloading } from './preloader.js';
+import { loadQualityPreference, setQualityLevel, getQualityLevel } from './quality-settings.js';
+import { applyQualityToRenderer } from './scene.js?v=ground-4';
 
 // --- UI MODULE CONSTANTS ---
 
@@ -34,8 +36,8 @@ const INTERACTION_PROMPT_TAG_DEER = 'Press [E] to Tag Deer';
  * This is purely cosmetic
  */
 function animateLoadingBar() {
-    // Preloading disabled - was causing stutters
-    // startPreloading();
+    // Quiet background preload of deer + track textures (paths fixed; vegetation loads at start)
+    startPreloading();
     
     return new Promise(resolve => {
         const progressRingFill = document.getElementById('progress-ring-fill');
@@ -74,6 +76,17 @@ function animateLoadingBar() {
 
 export async function initUI() {
     console.log('🎨 UI: initUI() function started');
+
+    // Graphics quality preference (Low / Medium / High)
+    loadQualityPreference();
+    const qualitySelect = document.getElementById('graphics-quality-select');
+    if (qualitySelect) {
+        qualitySelect.value = getQualityLevel();
+        qualitySelect.addEventListener('change', () => {
+            const settings = setQualityLevel(qualitySelect.value);
+            applyQualityToRenderer(settings);
+        });
+    }
 
     // Populate UI Elements in Context
     gameContext.timeValueElement = document.getElementById('clock-value');

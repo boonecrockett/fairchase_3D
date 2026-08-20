@@ -127,72 +127,31 @@ export const WOUND_TYPES = {
 };
 
 // Map hitbox zones to wound types
-export function getWoundTypeFromHitbox(hitZone, hitPoint, deerPosition, deerRotation) {
+export function getWoundTypeFromHitbox(hitZone) {
     switch (hitZone) {
+        case 'heart':
+            return WOUND_TYPES.HEART;
+        case 'doubleLung':
+            return WOUND_TYPES.DOUBLE_LUNG;
         case 'vitals':
-            // Determine heart vs lung based on hit position
-            // Heart is lower and more forward in the vitals box
-            if (hitPoint) {
-                const localY = hitPoint.y - deerPosition.y;
-                const localZ = hitPoint.z - deerPosition.z;
-                
-                // Heart is in lower-forward portion of vitals
-                if (localY < 0.75 && localZ > 0.2) {
-                    return WOUND_TYPES.HEART;
-                }
-                
-                // Check for double vs single lung
-                // Double lung requires a broadside shot through center of chest
-                const distFromCenterX = Math.abs(hitPoint.x - deerPosition.x);
-                
-                // Check shot angle if we have player position
-                let isBroadsideShot = false;
-                if (gameContext.player && deerRotation !== undefined) {
-                    // Calculate angle between shot direction and deer facing
-                    const shotDir = new THREE.Vector3()
-                        .subVectors(deerPosition, gameContext.player.position)
-                        .normalize();
-                    
-                    // Deer's facing direction (forward is +Z in local space)
-                    const deerFacing = new THREE.Vector3(0, 0, 1)
-                        .applyAxisAngle(new THREE.Vector3(0, 1, 0), deerRotation);
-                    
-                    // Dot product: 0 = broadside, 1/-1 = front/back
-                    const dotProduct = Math.abs(shotDir.dot(deerFacing));
-                    
-                    // Broadside shot is when dot product is close to 0 (perpendicular)
-                    isBroadsideShot = dotProduct < 0.5; // Within ~60 degrees of broadside
-                }
-                
-                // Double lung: broadside shot AND reasonably centered
-                // Single lung: angled shot OR hit near edge
-                if (isBroadsideShot && distFromCenterX < 0.08) {
-                    return WOUND_TYPES.DOUBLE_LUNG;
-                }
-            }
+        case 'leftLung':
             return WOUND_TYPES.SINGLE_LUNG;
-            
+        case 'liver':
+            return WOUND_TYPES.LIVER;
         case 'gut':
-            // Check if hit is in liver area (upper gut, more forward)
-            if (hitPoint) {
-                const localY = hitPoint.y - deerPosition.y;
-                if (localY > 0.7) {
-                    return WOUND_TYPES.LIVER;
-                }
-            }
+        case 'semiVitalGut':
             return WOUND_TYPES.GUT;
-            
         case 'shoulderLeft':
         case 'shoulderRight':
             return WOUND_TYPES.SHOULDER;
-            
-        case 'rear':
-            return WOUND_TYPES.MUSCLE;
-            
+        case 'brain':
+        case 'spine':
+            return WOUND_TYPES.HEART;
         case 'neck':
-            // Non-fatal neck hits act like muscle hits
-            return WOUND_TYPES.MUSCLE;
-            
+        case 'throat':
+        case 'rear':
+        case 'semiVitalBack':
+        case 'body':
         default:
             return WOUND_TYPES.MUSCLE;
     }

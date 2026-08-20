@@ -1,12 +1,12 @@
 import * as THREE from 'three';
 import { gameContext } from './context.js';
 import { playRifleSound } from './audio.js';
-import { showMessage, showSeasonCompleteModal } from './ui.js';
+import { showMessage, showSeasonCompleteModal } from './ui.js?v=ground-4';
 import { logEvent } from './report-logger.js';
-import { collisionSystem } from './collision.js';
+import { collisionSystem } from './collision.js?v=ground-4';
 import { LEGAL_HUNTING_START_HOUR, LEGAL_HUNTING_END_HOUR } from './constants.js';
 import { applyRifleRecoil } from './camera-effects.js';
-import { getIsTreeBraced, getIsKneeling } from './player.js';
+import { getIsTreeBraced, getIsKneeling } from './player.js?v=ground-4';
 
 /**
  * Shows a message only in practice mode (not hunt simulator)

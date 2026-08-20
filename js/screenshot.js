@@ -4,7 +4,7 @@
  */
 
 import { gameContext } from './context.js';
-import { showMessage } from './ui.js';
+import { showMessage } from './ui.js?v=ground-4';
 
 // Screenshot counter for unique filenames
 let screenshotCounter = 0;

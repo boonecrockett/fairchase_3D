@@ -1,7 +1,7 @@
 // js/map.js
 import * as THREE from 'three';
 import { gameContext } from './context.js';
-import { ensureMainMenuHidden } from './ui.js';
+import { ensureMainMenuHidden } from './ui.js?v=ground-4';
 import { logEvent, updateReportModal } from './report-logger.js';
 
 // This file assumes THREE.js is loaded globally, as it is not imported as a module in main.js
@@ -19,7 +19,8 @@ const MAP_DIRECTIONAL_LIGHT_INTENSITY = 0.5;
 const MAP_DIRECTIONAL_LIGHT_POSITION = { x: 100, y: 300, z: 200 };
 const MAP_TREE_COLOR = 0x14501e;
 const MAP_BUSH_COLOR = 0x2d5a27;        // Slightly lighter green for bushes
-const MAP_TRAIL_COLOR = 0xbeb5a3;       // Tan - brand color
+const MAP_TRAIL_COLOR = 0xc4a06a;
+const MAP_TRAIL_OUTLINE_COLOR = 0x5a4126;
 const MAP_HUNTER_COLOR = 0xba5216;      // Autumn - brand color for player
 const MAP_DEER_COLOR = 0x5f4d4d;        // Hide - brand color for deer
 const MAP_HIT_MARKER_COLOR = 0xa63d2a;  // Danger red for hit marker
@@ -37,6 +38,108 @@ let dynamicMapObjects = []; // Markers that change each render
 let smartphoneMapRenderer = null; // Cached WebGLRenderer for GPS map
 let smartphoneMapCanvas = null; // Canvas the cached renderer is bound to
 let smartphoneMapCloseHandler = null; // Escape-key handler, removed on close
+
+export function invalidateMapCache() {
+    cachedMapScene = null;
+    cachedMapCamera = null;
+    dynamicMapObjects = [];
+}
+
+function mapEdgeWear(along, seed, side) {
+    const s = seed + side * 13.7;
+    return 0.62
+        + 0.24 * Math.sin(along * 0.21 + s)
+        + 0.16 * Math.sin(along * 0.53 + s * 1.8)
+        + 0.11 * Math.sin(along * 1.15 - s)
+        + 0.08 * Math.sin(along * 2.3 + side * 4.1);
+}
+
+function addMapTrailRibbon(points, halfWidth, color, renderOrder, edges, seed = 0) {
+    const vertices = [];
+    const indices = [];
+    let along = 0;
+    for (let i = 0; i < points.length; i++) {
+        const point = points[i];
+        let dx;
+        let dz;
+        if (i === 0) {
+            dx = points[1].x - point.x;
+            dz = points[1].z - point.z;
+        } else if (i === points.length - 1) {
+            dx = point.x - points[i - 1].x;
+            dz = point.z - points[i - 1].z;
+        } else {
+            dx = points[i + 1].x - points[i - 1].x;
+            dz = points[i + 1].z - points[i - 1].z;
+        }
+        if (i > 0) {
+            along += Math.hypot(point.x - points[i - 1].x, point.z - points[i - 1].z);
+        }
+        const len = Math.hypot(dx, dz) || 1;
+        const nx = -dz / len;
+        const nz = dx / len;
+        const envL = edges?.[i]?.l ?? 1;
+        const envR = edges?.[i]?.r ?? 1;
+        const leftW = Math.max(0.9, halfWidth * envL * mapEdgeWear(along, seed, 0));
+        const rightW = Math.max(0.9, halfWidth * envR * mapEdgeWear(along, seed, 1));
+        vertices.push(point.x - nx * leftW, 100, point.z - nz * leftW);
+        vertices.push(point.x + nx * rightW, 100, point.z + nz * rightW);
+        if (i > 0) {
+            const base = (i - 1) * 2;
+            indices.push(base, base + 1, base + 2, base + 1, base + 3, base + 2);
+        }
+    }
+    const geometry = new THREE.BufferGeometry();
+    geometry.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3));
+    geometry.setIndex(indices);
+    const mesh = new THREE.Mesh(geometry, new THREE.MeshBasicMaterial({
+        color,
+        side: THREE.DoubleSide,
+        depthTest: false,
+    }));
+    mesh.renderOrder = renderOrder;
+    mesh.userData.isMapTrail = true;
+    cachedMapScene.add(mesh);
+}
+
+function rebuildMapTrails() {
+    if (!cachedMapScene) return;
+    const stale = [];
+    for (let i = 0; i < cachedMapScene.children.length; i++) {
+        const child = cachedMapScene.children[i];
+        if (child.userData?.isMapTrail) stale.push(child);
+    }
+    for (let i = 0; i < stale.length; i++) {
+        const mesh = stale[i];
+        cachedMapScene.remove(mesh);
+        mesh.geometry?.dispose();
+        mesh.material?.dispose();
+    }
+    if (!gameContext.trails?.children?.length) return;
+    gameContext.trails.children.forEach((trail) => {
+        const trailPoints = [];
+        const line = trail.userData?.centerline;
+        if (line && line.length >= 2) {
+            for (let i = 0; i < line.length; i++) {
+                trailPoints.push(new THREE.Vector3(line[i].x, 100, line[i].z));
+            }
+        } else if (trail.geometry?.attributes?.position) {
+            const positions = trail.geometry.attributes.position.array;
+            for (let i = 0; i < positions.length; i += 6) {
+                trailPoints.push(new THREE.Vector3(
+                    (positions[i] + positions[i + 3]) / 2,
+                    100,
+                    (positions[i + 2] + positions[i + 5]) / 2,
+                ));
+            }
+        }
+        if (trailPoints.length < 2) return;
+        const edges = trail.userData?.edges;
+        const seed = trailPoints[0].x * 0.13 + trailPoints[0].z * 0.17;
+        addMapTrailRibbon(trailPoints, 5.2, MAP_TRAIL_OUTLINE_COLOR, 99, edges, seed);
+        addMapTrailRibbon(trailPoints, 3.4, MAP_TRAIL_COLOR, 100, edges, seed);
+    });
+}
 
 /**
  * Initializes the WebGLRenderer for the map canvas.
@@ -80,101 +183,36 @@ function getMapScene(canvasWidth, canvasHeight) {
             });
         }
         
-        // Trees with map-specific material
+        // Trees — markers from instanced vegetation (lightweight cones for map)
         if (gameContext.trees) {
+            const treeGeo = new THREE.ConeGeometry(2.5, 10, 5);
+            const treeMat = new THREE.MeshBasicMaterial({ color: MAP_TREE_COLOR });
             gameContext.trees.children.forEach(tree => {
-                const mapTree = tree.clone();
-                mapTree.traverse(child => {
-                    if (child.isMesh) {
-                        child.material = new THREE.MeshBasicMaterial({ color: MAP_TREE_COLOR });
-                    }
-                });
+                const mapTree = new THREE.Mesh(treeGeo, treeMat);
+                mapTree.position.copy(tree.position);
+                mapTree.position.y += 5;
+                const s = tree.scale?.x || 1;
+                mapTree.scale.set(s, s, s);
                 cachedMapScene.add(mapTree);
             });
         }
         
-        // Bushes
+        // Bushes — markers
         if (gameContext.bushes) {
+            const bushGeo = new THREE.SphereGeometry(2, 6, 4);
+            const bushMat = new THREE.MeshBasicMaterial({ color: MAP_BUSH_COLOR });
             gameContext.bushes.children.forEach(bush => {
-                const mapBush = bush.clone();
-                mapBush.traverse(child => {
-                    if (child.isMesh) {
-                        child.material = new THREE.MeshBasicMaterial({ color: MAP_BUSH_COLOR });
-                    }
-                });
+                const mapBush = new THREE.Mesh(bushGeo, bushMat);
+                mapBush.position.copy(bush.position);
+                mapBush.position.y += 1;
+                const s = bush.scale?.x || 1;
+                mapBush.scale.set(s, s, s);
                 cachedMapScene.add(mapBush);
             });
         }
-        
-        // Game trails
-        if (gameContext.trails && gameContext.trails.children && gameContext.trails.children.length > 0) {
-            gameContext.trails.children.forEach(trail => {
-                const positions = trail.geometry.attributes.position.array;
-                const trailPoints = [];
-                for (let i = 0; i < positions.length; i += 6) {
-                    const centerX = (positions[i] + positions[i + 3]) / 2;
-                    const centerZ = (positions[i + 2] + positions[i + 5]) / 2;
-                    trailPoints.push(new THREE.Vector3(centerX, 100, centerZ));
-                }
-                
-                if (trailPoints.length >= 2) {
-                    const mapTrailWidth = 4;
-                    const vertices = [];
-                    const indices = [];
-                    
-                    for (let i = 0; i < trailPoints.length; i++) {
-                        const point = trailPoints[i];
-                        let perpX, perpZ;
-                        
-                        if (i === 0) {
-                            const next = trailPoints[1];
-                            const dx = next.x - point.x;
-                            const dz = next.z - point.z;
-                            const len = Math.sqrt(dx * dx + dz * dz) || 1;
-                            perpX = -dz / len * mapTrailWidth;
-                            perpZ = dx / len * mapTrailWidth;
-                        } else if (i === trailPoints.length - 1) {
-                            const prev = trailPoints[i - 1];
-                            const dx = point.x - prev.x;
-                            const dz = point.z - prev.z;
-                            const len = Math.sqrt(dx * dx + dz * dz) || 1;
-                            perpX = -dz / len * mapTrailWidth;
-                            perpZ = dx / len * mapTrailWidth;
-                        } else {
-                            const prev = trailPoints[i - 1];
-                            const next = trailPoints[i + 1];
-                            const dx = next.x - prev.x;
-                            const dz = next.z - prev.z;
-                            const len = Math.sqrt(dx * dx + dz * dz) || 1;
-                            perpX = -dz / len * mapTrailWidth;
-                            perpZ = dx / len * mapTrailWidth;
-                        }
-                        
-                        vertices.push(point.x - perpX, 100, point.z - perpZ);
-                        vertices.push(point.x + perpX, 100, point.z + perpZ);
-                        
-                        if (i > 0) {
-                            const base = (i - 1) * 2;
-                            indices.push(base, base + 1, base + 2);
-                            indices.push(base + 1, base + 3, base + 2);
-                        }
-                    }
-                    
-                    const geometry = new THREE.BufferGeometry();
-                    geometry.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3));
-                    geometry.setIndex(indices);
-                    
-                    const mapTrail = new THREE.Mesh(geometry, new THREE.MeshBasicMaterial({
-                        color: MAP_TRAIL_COLOR,
-                        side: THREE.DoubleSide,
-                        depthTest: false
-                    }));
-                    mapTrail.renderOrder = 100;
-                    cachedMapScene.add(mapTrail);
-                }
-            });
-        }
     }
+
+    rebuildMapTrails();
     
     // Remove previous dynamic objects
     dynamicMapObjects.forEach(obj => cachedMapScene.remove(obj));
@@ -578,24 +616,29 @@ function createSmartphoneMapModal() {
         align-items: center;
         z-index: 1000;
         backdrop-filter: blur(8px);
+        padding: 20px;
+        box-sizing: border-box;
     `;
     
     // GPS device frame - Brand styled
     const device = document.createElement('div');
     device.style.cssText = `
         width: 380px;
-        height: min(520px, 85vh);
+        max-width: calc(100vw - 40px);
+        height: auto;
+        max-height: calc(100vh - 40px);
         background: linear-gradient(145deg, #2a2b2f 0%, #1a1b1f 50%, #121315 100%);
         border-radius: 16px;
-        padding: 12px;
+        padding: 12px 12px 14px;
         box-shadow: 
             0 25px 50px rgba(0, 0, 0, 0.6),
             0 0 0 1px rgba(158, 181, 41, 0.2),
             inset 0 1px 0 rgba(190, 181, 163, 0.1);
         position: relative;
         box-sizing: border-box;
-        max-height: 85vh;
-        overflow: hidden;
+        display: flex;
+        flex-direction: column;
+        overflow: visible;
     `;
     
     // Top bar with device info - Brand colors
@@ -609,6 +652,7 @@ function createSmartphoneMapModal() {
         background: linear-gradient(180deg, #5f4d4d 0%, #3d3532 100%);
         border-radius: 8px;
         font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+        flex-shrink: 0;
         border-bottom: 2px solid #9eb529;
     `;
     topBar.innerHTML = `
@@ -635,17 +679,20 @@ function createSmartphoneMapModal() {
         box-shadow: inset 0 2px 8px rgba(0,0,0,0.8);
         margin-bottom: 8px;
         border: 1px solid #3d3e42;
+        flex-shrink: 0;
     `;
     
     const mapContainer = document.createElement('div');
     mapContainer.style.cssText = `
         width: 100%;
-        height: min(340px, calc(85vh - 180px));
+        height: 260px;
+        max-height: min(260px, calc(100vh - 280px));
         background: linear-gradient(180deg, #1a3d2a 0%, #0f2419 100%);
         border-radius: 8px;
         overflow: hidden;
         position: relative;
         box-sizing: border-box;
+        flex: 0 0 auto;
     `;
     
     const mapCanvas = document.createElement('canvas');
@@ -676,6 +723,7 @@ function createSmartphoneMapModal() {
         font-size: 11px;
         color: #beb5a3;
         border-top: 1px solid #5f4d4d;
+        flex-shrink: 0;
     `;
     legendBar.innerHTML = `
         <div style="display: flex; align-items: center; gap: 14px;">
@@ -711,6 +759,7 @@ function createSmartphoneMapModal() {
         align-items: center;
         gap: 12px;
         padding: 8px 0;
+        flex-shrink: 0;
     `;
     
     const closeButton = document.createElement('button');
@@ -750,11 +799,13 @@ function createSmartphoneMapModal() {
     const hint = document.createElement('div');
     hint.style.cssText = `
         text-align: center;
-        color: #6b675f;
+        color: #9a9488;
         font-size: 11px;
         font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
-        margin-top: 4px;
+        margin-top: 6px;
+        margin-bottom: 2px;
         letter-spacing: 0.5px;
+        flex-shrink: 0;
     `;
     hint.textContent = 'Press M or ESC to close';
     

@@ -1727,7 +1727,33 @@ canvas { display: block; }
     margin: 0;
     font-size: 14px;
     line-height: 1.5;
-    color: #beb5a3;
+    color: var(--color-text-secondary);
+}
+
+.graphics-quality-row {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+    margin: 20px 0 8px;
+    color: var(--color-tan);
+    font-size: 14px;
+}
+
+.graphics-quality-row select {
+    background: rgba(20, 25, 20, 0.9);
+    color: var(--color-tan);
+    border: 1px solid rgba(158, 181, 41, 0.4);
+    border-radius: 6px;
+    padding: 8px 12px;
+    font-family: var(--font-main);
+    font-size: 14px;
+    cursor: pointer;
+}
+
+.graphics-quality-row select:focus {
+    outline: 2px solid var(--color-accent);
+    outline-offset: 2px;
 }
 
 /* --- TESTING PANEL (Debug) --- */

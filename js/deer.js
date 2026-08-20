@@ -1,17 +1,17 @@
 import * as THREE from 'three';
 import { gameContext } from './context.js';
 import { updateDeerAudio, triggerDeerBlowSound, triggerDeerSpawnBlowSound } from './spatial-audio.js';
-import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
+import { VEGETATION_COLLISION_LAYER } from './world.js?v=ground-4';
 import { deerConfig } from './deer-config.js';
 import { DeerEffects } from './deer-effects.js';
 import { DeerAnimation } from './deer-animation.js';
-import { DeerHitbox } from './deer-hitbox.js';
+import { DeerHitbox } from './deer-hitbox.js?v=ground-4';
 import { DeerMovement } from './deer-movement.js';
-import { DeerAI } from './deer-ai.js';
-import { Animal } from './animal.js';
-import { applySpookingPenalty, awardScoutingBonus } from './hunting-mechanics.js';
-import { getPlayerNoise } from './player.js';
-import { WoundState, getWoundTypeFromHitbox } from './wound-system.js';
+import { DeerAI } from './deer-ai.js?v=ground-4';
+import { Animal } from './animal.js?v=ground-4';
+import { applySpookingPenalty, awardScoutingBonus } from './hunting-mechanics.js?v=ground-4';
+import { getPlayerNoise } from './player.js?v=ground-4';
+import { WoundState, getWoundTypeFromHitbox } from './wound-system.js?v=ground-4';
 
 // Detection modal tracking
 let lastDetectionModalTime = 0;
@@ -167,9 +167,7 @@ export class Deer extends Animal {
     applyWound(hitZone, hitPoint) {
         if (this.state === 'KILLED') return false;
         
-        const deerPos = this.model.position;
-        const deerRotation = this.model.rotation.y;
-        const woundType = getWoundTypeFromHitbox(hitZone, hitPoint, deerPos, deerRotation);
+        const woundType = getWoundTypeFromHitbox(hitZone);
         
         this.woundCount++;
         
@@ -405,6 +403,7 @@ export class Deer extends Animal {
         this.movement.lastPosition.copy(position);
         this.currentSpeed = 0;
         this.movementSpeed = 0;
+        gameContext.collisionSystem?.updateHitboxVisibility();
     }
 
     createVitals(parent) {
@@ -626,42 +625,51 @@ export class Deer extends Animal {
         
         gameContext.raycaster.set(_deerPos, _direction);
         gameContext.raycaster.far = eyeToEyeDistance;
-        
-        _nearbyObjects.length = 0;
-        const MAX_OBJECTS_TO_CHECK = 16;
-        
-        // Check trees
-        if (gameContext.trees && gameContext.trees.children) {
-            for (const tree of gameContext.trees.children) {
-                const treeDistance = _deerPos.distanceTo(tree.position);
-                if (treeDistance < eyeToEyeDistance + 3) {
-                    _nearbyObjects.push(tree);
-                    if (_nearbyObjects.length >= MAX_OBJECTS_TO_CHECK) break;
-                }
-            }
-        }
-        
-        // Check bushes (only if we haven't hit the limit)
-        if (_nearbyObjects.length < MAX_OBJECTS_TO_CHECK && gameContext.bushes && gameContext.bushes.children) {
-            for (const bush of gameContext.bushes.children) {
-                const bushDistance = _deerPos.distanceTo(bush.position);
-                if (bushDistance < eyeToEyeDistance + 3) {
-                    _nearbyObjects.push(bush);
-                    if (_nearbyObjects.length >= MAX_OBJECTS_TO_CHECK) break;
-                }
-            }
-        }
-        
-        _visIntersects.length = 0;
-        gameContext.raycaster.intersectObjects(_nearbyObjects, true, _visIntersects);
-        // Check for blocking intersects without .filter() allocation
+        // Test only lightweight vegetation proxies. Including layer 0 here
+        // would raycast every triangle of the large InstancedMesh vegetation.
+        gameContext.raycaster.layers.set(VEGETATION_COLLISION_LAYER);
         let hasBlockingIntersect = false;
-        const blockingThreshold = eyeToEyeDistance - 0.5;
-        for (let i = 0; i < _visIntersects.length; i++) {
-            if (_visIntersects[i].distance < blockingThreshold) {
-                hasBlockingIntersect = true;
-                break;
+        try {
+            _nearbyObjects.length = 0;
+
+        // Query the corridor midpoint rather than taking the first group
+        // children, which are neither distance-sorted nor guaranteed nearby.
+        const midpointX = (_deerPos.x + _playerPos.x) * 0.5;
+        const midpointZ = (_deerPos.z + _playerPos.z) * 0.5;
+        const searchRadius = eyeToEyeDistance * 0.5 + 20;
+        const treeCandidates = gameContext.treeHash?.query(
+            midpointX,
+            midpointZ,
+            searchRadius,
+        ) || [];
+        const bushCandidates = gameContext.bushHash?.query(
+            midpointX,
+            midpointZ,
+            searchRadius,
+        ) || [];
+
+        for (let i = 0; i < treeCandidates.length; i++) {
+            if (treeCandidates[i].object) {
+                _nearbyObjects.push(treeCandidates[i].object);
             }
+        }
+        for (let i = 0; i < bushCandidates.length; i++) {
+            if (bushCandidates[i].object) {
+                _nearbyObjects.push(bushCandidates[i].object);
+            }
+        }
+        
+            _visIntersects.length = 0;
+            gameContext.raycaster.intersectObjects(_nearbyObjects, true, _visIntersects);
+            const blockingThreshold = eyeToEyeDistance - 0.5;
+            for (let i = 0; i < _visIntersects.length; i++) {
+                if (_visIntersects[i].distance < blockingThreshold) {
+                    hasBlockingIntersect = true;
+                    break;
+                }
+            }
+        } finally {
+            gameContext.raycaster.layers.set(0);
         }
         
         // Always check terrain occlusion (hills between deer and player)

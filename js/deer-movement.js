@@ -5,7 +5,7 @@
 
 import * as THREE from 'three';
 import { gameContext } from './context.js';
-import { isOnTrail } from './trails.js';
+import { getTrailWaypointToward, getNearestTrailSample } from './trails.js?v=trail-splat-4';
 
 export class DeerMovement {
     constructor(deer, config) {
@@ -57,7 +57,7 @@ export class DeerMovement {
 
     /**
      * Generate a new random wander target within boundaries, avoiding water
-     * Optionally follows trails for more natural forest behavior (30% chance)
+     * Prefers game trails as the easy walking, except while fleeing.
      */
     generateNewWanderTarget() {
         const worldSize = gameContext.terrain ? gameContext.terrain.geometry.parameters.width : 1000;
@@ -66,15 +66,25 @@ export class DeerMovement {
         // If deer is in flee recovery, only generate targets away from player
         const inFleeRecovery = this.deer.fleeRecoveryTime > 0;
         const playerPos = gameContext.player ? gameContext.player.position : null;
-        
-        // 30% chance to try to find a trail target for realistic forest behavior
-        // Deer naturally use trails even if they lead toward the hunter (realistic behavior)
-        // Skip trail following only during flee recovery
-        if (!inFleeRecovery && Math.random() < 0.3 && gameContext.trails && gameContext.trails.children.length > 0) {
-            const trailTarget = this.findTrailTarget(boundary);
+
+        const pond = gameContext.waterBodies && gameContext.waterBodies[0];
+        const pondX = pond ? pond.position.x : this.deer.model.position.x;
+        const pondZ = pond ? pond.position.z : this.deer.model.position.z;
+
+        if (!inFleeRecovery && gameContext.trails && gameContext.trails.children.length > 0
+            && Math.random() < 0.78) {
+            if (this.trailFollowTowardPond === undefined) {
+                this.trailFollowTowardPond = Math.random() < 0.65;
+            } else if (Math.random() < 0.12) {
+                this.trailFollowTowardPond = !this.trailFollowTowardPond;
+            }
+            const destX = this.trailFollowTowardPond ? pondX : this.deer.model.position.x * 2 - pondX;
+            const destZ = this.trailFollowTowardPond ? pondZ : this.deer.model.position.z * 2 - pondZ;
+            const trailTarget = this.findTrailTarget(boundary, destX, destZ);
             if (trailTarget) {
-                // Verify trail target is not in water
-                const inWater = gameContext.isWaterAt ? gameContext.isWaterAt(trailTarget.x, trailTarget.z) : false;
+                const inWater = gameContext.isWaterAt
+                    ? gameContext.isWaterAt(trailTarget.x, trailTarget.z)
+                    : false;
                 if (!inWater) {
                     this.wanderTarget.copy(trailTarget);
                     return;
@@ -185,41 +195,32 @@ export class DeerMovement {
      * @param {number} boundary - World boundary limit
      * @returns {THREE.Vector3|null} Trail point or null if none found
      */
-    findTrailTarget(boundary) {
-        if (!gameContext.trails || gameContext.trails.children.length === 0) {
-            return null;
-        }
-        
-        // Pick a random trail
-        const trails = gameContext.trails.children;
-        const randomTrail = trails[Math.floor(Math.random() * trails.length)];
-        
-        if (!randomTrail || !randomTrail.geometry || !randomTrail.geometry.attributes.position) {
-            return null;
-        }
-        
-        const positions = randomTrail.geometry.attributes.position;
-        const vertexCount = positions.count;
-        
-        if (vertexCount < 4) return null;
-        
-        // Pick a random point along the trail
-        const randomIndex = Math.floor(Math.random() * (vertexCount / 2)) * 2;
-        
-        const x = positions.getX(randomIndex);
-        const z = positions.getZ(randomIndex);
-        
-        // Make sure it's within bounds and a reasonable distance away
-        if (Math.abs(x) < boundary && Math.abs(z) < boundary) {
-            const deerPos = this.deer.model.position;
-            const distance = Math.sqrt((x - deerPos.x) ** 2 + (z - deerPos.z) ** 2);
-            
-            if (distance > 15 && distance < 100) {
-                this._tempVec3.set(x, 0, z);
+    findTrailTarget(boundary, destX, destZ) {
+        const deerPos = this.deer.model.position;
+        const waypoint = getTrailWaypointToward(
+            deerPos.x,
+            deerPos.z,
+            destX,
+            destZ,
+            24 + Math.random() * 18,
+        );
+        if (waypoint && !waypoint.onTrail) {
+            const join = getNearestTrailSample(deerPos.x, deerPos.z, 120);
+            if (join && Math.abs(join.x) < boundary && Math.abs(join.z) < boundary) {
+                this._tempVec3.set(join.x, deerPos.y, join.z);
                 return this._tempVec3;
             }
         }
-        
+        if (waypoint && Math.abs(waypoint.x) < boundary && Math.abs(waypoint.z) < boundary) {
+            this._tempVec3.set(waypoint.x, deerPos.y, waypoint.z);
+            return this._tempVec3;
+        }
+
+        const nearby = getNearestTrailSample(deerPos.x, deerPos.z, 120);
+        if (nearby && Math.abs(nearby.x) < boundary && Math.abs(nearby.z) < boundary) {
+            this._tempVec3.set(nearby.x, deerPos.y, nearby.z);
+            return this._tempVec3;
+        }
         return null;
     }
 

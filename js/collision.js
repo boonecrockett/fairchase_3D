@@ -11,6 +11,36 @@ import * as THREE from 'three';
 // a new Vector3 each call.
 const _rayDirection = new THREE.Vector3();
 
+// Studio offsets stay deer-local. Sizes below are gameplay floors from the
+// pre-studio hunt (deer scale 4.4, vitals ~0.20 local). Studio authored
+// anatomical slivers (lung x=0.04) that do not catch a chest shot.
+const GAMEPLAY_SIZE_FLOOR = {
+    vitals: { x: 0.20, y: 0.20, z: 0.28 },
+    leftLung: { x: 0.20, y: 0.20, z: 0.28 },
+    heart: { x: 0.14, y: 0.12, z: 0.14 },
+    gut: { x: 0.24, y: 0.18, z: 0.24 },
+    liver: { x: 0.14, y: 0.14, z: 0.14 },
+    neck: { x: 0.10, y: 0.16, z: 0.22 },
+    throat: { x: 0.10, y: 0.20, z: 0.12 },
+    spine: { x: 0.08, y: 0.08, z: 0.50 },
+    rear: { x: 0.22, y: 0.20, z: 0.20 },
+    shoulderLeft: { x: 0.12, y: 0.28, z: 0.16 },
+    shoulderRight: { x: 0.12, y: 0.28, z: 0.16 },
+    brain: { x: 0.12, y: 0.12, z: 0.12 },
+    semiVitalBack: { x: 0.14, y: 0.12, z: 0.36 },
+    semiVitalGut: { x: 0.16, y: 0.14, z: 0.40 },
+};
+
+function gameplaySize(zoneName, studioSize) {
+    const floor = GAMEPLAY_SIZE_FLOOR[zoneName];
+    if (!floor) return { ...studioSize };
+    return {
+        x: Math.max(studioSize.x, floor.x),
+        y: Math.max(studioSize.y, floor.y),
+        z: Math.max(studioSize.z, floor.z),
+    };
+}
+
 class CollisionSystem {
     constructor() {
         this.raycaster = null;
@@ -39,8 +69,9 @@ class CollisionSystem {
             const config = deerConfig[zoneName];
             if (!config) return;
 
-            // Use exact values from config (calibrated in hitbox studio)
-            const size = { ...config.size };
+            // Studio offset/rotation stay deer-local. Size uses a gameplay
+            // floor so a chest shot can still hit the lung boxes.
+            const size = gameplaySize(zoneName, config.size);
             const offset = { ...config.offset };
 
             const geometry = new THREE.BoxGeometry(
@@ -86,93 +117,115 @@ class CollisionSystem {
                 );
             }
 
-            // Add to deer model so it inherits position/rotation automatically
+            // Studio coords are deer-local. Parent to the deer so they
+            // inherit its transform the way the old hunt did.
             deer.model.add(hitbox);
             hitboxes[zoneName] = hitbox;
         });
 
         deer.hitboxes = hitboxes;
         deer.hitboxMeshes = Object.values(hitboxes);
-
-        // Hitboxes are now always visible as wireframes - no separate debug system needed
-        // console.log('🔴 DEBUG: Collision hitboxes created as visible wireframes for debugging');
+        this.updateHitboxVisibility();
     }
 
     // Perform raycast and return hit information
     raycast(from, to, deer) {
-        if (!deer || !deer.hitboxMeshes || deer.hitboxMeshes.length === 0) {
+        if (!deer) {
             return { hit: false, hitZone: null, distance: null };
         }
 
-        // Set up raycaster using a shared direction vector
+        this.raycaster.layers.enableAll();
         _rayDirection.subVectors(to, from).normalize();
         const maxDistance = from.distanceTo(to);
         this.raycaster.set(from, _rayDirection);
+        this.raycaster.near = 0;
         this.raycaster.far = maxDistance;
-        
-        // Force update world matrices for all hitboxes before raycasting
-        deer.hitboxMeshes.forEach(hitbox => {
-            hitbox.updateMatrixWorld(true);
-        });
-        
-        const intersections = this.raycaster.intersectObjects(deer.hitboxMeshes, false);
-        
-        if (intersections.length > 0) {
-            // Sort intersections by distance to get the closest hit
-            intersections.sort((a, b) => a.distance - b.distance);
-            
-            // Conservative hit zone selection: trust the closest intersection unless there's a compelling reason not to
-            let selectedIntersection = intersections[0]; // Default to closest
-            
-            const closestDistance = intersections[0].distance;
-            const closestHitZone = intersections[0].object.userData.hitZone || 'unknown';
-            
-            // Case 1: If closest is gut, check if rear is very close behind (anatomical overlap)
-            if (closestHitZone === 'gut') {
-                for (const intersection of intersections) {
-                    const hitZone = intersection.object.userData.hitZone || 'unknown';
-                    const distanceDiff = intersection.distance - closestDistance;
-                    
-                    // Only prioritize rear if it's very close behind gut (≤3 units)
-                    if (hitZone === 'rear' && distanceDiff <= 3) {
-                        selectedIntersection = intersection;
-                        break;
+
+        const hitboxMeshes = deer.hitboxMeshes;
+        if (hitboxMeshes && hitboxMeshes.length > 0) {
+            hitboxMeshes.forEach(hitbox => {
+                hitbox.updateMatrixWorld(true);
+            });
+
+            const intersections = this.raycaster.intersectObjects(hitboxMeshes, false);
+
+            if (intersections.length > 0) {
+                intersections.sort((a, b) => a.distance - b.distance);
+
+                let selectedIntersection = intersections[0];
+                const closestDistance = intersections[0].distance;
+                const closestHitZone = intersections[0].object.userData.hitZone || 'unknown';
+
+                if (closestHitZone === 'gut') {
+                    for (const intersection of intersections) {
+                        const hitZone = intersection.object.userData.hitZone || 'unknown';
+                        const distanceDiff = intersection.distance - closestDistance;
+                        if (hitZone === 'rear' && distanceDiff <= 3) {
+                            selectedIntersection = intersection;
+                            break;
+                        }
                     }
                 }
+
+                // A frontal/quartering ray often clips neck before the chest.
+                // If a lung or heart is on that same ray, that is the shot.
+                const chestZones = ['vitals', 'leftLung', 'heart', 'liver'];
+                if (closestHitZone === 'neck' || closestHitZone === 'throat') {
+                    const chest = intersections.find((item) => (
+                        chestZones.includes(item.object.userData.hitZone)
+                        && item.distance - closestDistance <= 1.2
+                    ));
+                    if (chest) selectedIntersection = chest;
+                }
+
+                return this._hitFromIntersection(selectedIntersection, intersections);
             }
-            
-            const hitbox = selectedIntersection.object;
-            let hitZone = hitbox.userData.hitZone || 'body';
-            
-            // Check for double lung shot - bullet passes through both lungs
-            const hitZones = intersections.map(i => i.object.userData.hitZone);
-            const hasRightLung = hitZones.includes('vitals');
-            const hasLeftLung = hitZones.includes('leftLung');
-            const isDoubleLung = hasRightLung && hasLeftLung;
-            
-            if (isDoubleLung) {
-                hitZone = 'doubleLung';
+        }
+
+        // Named boxes missed, but the posed mesh was hit. Count as body/muscle
+        // so a shot on the hide is not a miss.
+        if (deer.model) {
+            deer.model.updateMatrixWorld(true);
+            const meshHits = this.raycaster.intersectObject(deer.model, true);
+            const visual = meshHits.find((item) => item.object.isMesh && !item.object.userData.isHitbox);
+            if (visual) {
+                return this._hitFromIntersection(visual, []);
             }
-            
-            return {
-                hit: true,
-                hitZone: hitZone,
-                point: {
-                    x: selectedIntersection.point.x,
-                    y: selectedIntersection.point.y,
-                    z: selectedIntersection.point.z
-                },
-                normal: {
-                    x: selectedIntersection.face.normal.x,
-                    y: selectedIntersection.face.normal.y,
-                    z: selectedIntersection.face.normal.z
-                },
-                distance: selectedIntersection.distance,
-                isDoubleLung: isDoubleLung
-            };
         }
 
         return { hit: false };
+    }
+
+    _hitFromIntersection(selectedIntersection, hits) {
+        const hitbox = selectedIntersection.object;
+        let hitZone = hitbox.userData.hitZone || 'body';
+
+        const hitZones = hits.map(i => i.object.userData.hitZone);
+        const hasRightLung = hitZones.includes('vitals');
+        const hasLeftLung = hitZones.includes('leftLung');
+        const isDoubleLung = hasRightLung && hasLeftLung;
+
+        if (isDoubleLung) {
+            hitZone = 'doubleLung';
+        }
+
+        const faceNormal = selectedIntersection.face?.normal;
+        return {
+            hit: true,
+            hitZone: hitZone,
+            point: {
+                x: selectedIntersection.point.x,
+                y: selectedIntersection.point.y,
+                z: selectedIntersection.point.z
+            },
+            normal: {
+                x: faceNormal?.x || 0,
+                y: faceNormal?.y || 1,
+                z: faceNormal?.z || 0
+            },
+            distance: selectedIntersection.distance,
+            isDoubleLung: isDoubleLung
+        };
     }
 
     // Toggle hitbox visibility for debugging
@@ -182,14 +235,16 @@ class CollisionSystem {
         this.updateHitboxVisibility();
     }
     
-    // Update hitbox visibility based on current debug mode
     updateHitboxVisibility() {
-        // Safety check for scene
-        if (!gameContext.scene) {
+        const meshes = gameContext.deer?.hitboxMeshes;
+        if (meshes && meshes.length > 0) {
+            for (let i = 0; i < meshes.length; i++) {
+                meshes[i].visible = this.debugMode;
+            }
             return;
         }
-        
-        // Update visibility for all existing hitboxes
+
+        if (!gameContext.scene) return;
         gameContext.scene.traverse((child) => {
             if (child.userData && child.userData.isHitbox) {
                 child.visible = this.debugMode;
@@ -214,7 +269,7 @@ class CollisionSystem {
         if (deer.hitboxes) {
             // Remove hitboxes from deer model
             Object.values(deer.hitboxes).forEach(hitbox => {
-                deer.model.remove(hitbox);
+                hitbox.removeFromParent();
                 hitbox.geometry.dispose();
                 hitbox.material.dispose();
             });
@@ -231,36 +286,46 @@ class CollisionSystem {
      * @returns {THREE.Object3D|null} - The colliding tree object or null if no collision
      */
     checkTreeCollision(position, radius = 1.0) {
-        // Safety check: ensure trees exist
+        const MAX_CHECK_DISTANCE = 20;
+
+        // Prefer spatial hash when instanced vegetation is active
+        const hash = gameContext.treeHash;
+        if (hash && hash.entries.length > 0) {
+            const candidates = hash.query(position.x, position.z, MAX_CHECK_DISTANCE);
+            for (let i = 0; i < candidates.length; i++) {
+                const entry = candidates[i];
+                const dx = position.x - entry.x;
+                const dz = position.z - entry.z;
+                if (Math.abs(dx) + Math.abs(dz) > MAX_CHECK_DISTANCE) continue;
+                const distance = Math.sqrt(dx * dx + dz * dz);
+                const treeRadius = entry.radius || ((entry.scale || 1.0) * 1.8);
+                if (distance < treeRadius + radius) {
+                    return entry.object || entry;
+                }
+            }
+            return null;
+        }
+
         if (!gameContext.trees || !gameContext.trees.children) {
             return null;
         }
-        
-        // Performance optimization: Manhattan distance pre-filter skips distant trees
-        const MAX_CHECK_DISTANCE = 20; // Only check trees within 20 units (Manhattan)
-        
-        // Check collision with nearby trees only
+
         for (const tree of gameContext.trees.children) {
-            // Quick Manhattan distance check to skip far away trees
             const dx = position.x - tree.position.x;
             const dz = position.z - tree.position.z;
             if (Math.abs(dx) + Math.abs(dz) > MAX_CHECK_DISTANCE) {
                 continue;
             }
-            
-            // Calculate precise 2D distance (ignore Y axis for collision)
+
             const distance = Math.sqrt(dx * dx + dz * dz);
-            
-            // Estimate tree collision radius based on scale
-            const treeRadius = (tree.scale.x || 1.0) * 1.8;
-            
-            // Check if collision occurs
+            const treeRadius = tree.userData?.collisionRadius || ((tree.scale.x || 1.0) * 1.8);
+
             if (distance < treeRadius + radius) {
-                return tree; // Return the colliding tree
+                return tree;
             }
         }
-        
-        return null; // No collision detected
+
+        return null;
     }
 
     /**
@@ -270,45 +335,59 @@ class CollisionSystem {
      * @returns {THREE.Object3D|null} - The colliding bush object or null if no collision
      */
     checkBushCollision(position, radius = 1.0) {
-        // Safety check: ensure bushes exist
+        const MAX_CHECK_DISTANCE = 30;
+        const MAX_BUSHES_TO_CHECK = 15;
+
+        const hash = gameContext.bushHash;
+        if (hash && hash.entries.length > 0) {
+            const candidates = hash.query(position.x, position.z, MAX_CHECK_DISTANCE);
+            let bushesChecked = 0;
+            for (let i = 0; i < candidates.length; i++) {
+                const entry = candidates[i];
+                const roughDistance = Math.abs(position.x - entry.x) + Math.abs(position.z - entry.z);
+                if (roughDistance > MAX_CHECK_DISTANCE) continue;
+                bushesChecked++;
+                const bdx = position.x - entry.x;
+                const bdz = position.z - entry.z;
+                const distance = Math.sqrt(bdx * bdx + bdz * bdz);
+                const bushRadius = entry.radius || ((entry.scale || 1.0) * 1.5);
+                if (distance < bushRadius + radius) {
+                    return entry.object || entry;
+                }
+                if (bushesChecked >= MAX_BUSHES_TO_CHECK) break;
+            }
+            return null;
+        }
+
         if (!gameContext.bushes || !gameContext.bushes.children) {
             return null;
         }
-        
-        // Performance optimization: Use spatial partitioning to only check nearby bushes
-        const MAX_CHECK_DISTANCE = 30; // Only check bushes within 30 units
-        const MAX_BUSHES_TO_CHECK = 15; // Limit to checking at most 15 bushes per call
-        
+
         let bushesChecked = 0;
-        
-        // Check collision with nearby bushes only
+
         for (const bush of gameContext.bushes.children) {
-            // Quick distance check to skip far away bushes
             const roughDistance = Math.abs(position.x - bush.position.x) + Math.abs(position.z - bush.position.z);
             if (roughDistance > MAX_CHECK_DISTANCE) {
-                continue; // Skip bushes that are definitely too far away
+                continue;
             }
-            
+
             bushesChecked++;
-            
-            // Calculate precise 2D distance (ignore Y axis for collision)
+
             const bdx = position.x - bush.position.x;
             const bdz = position.z - bush.position.z;
             const distance = Math.sqrt(bdx * bdx + bdz * bdz);
-            
-            // Estimate bush collision radius - bushes spread out wider than their center
-            const bushRadius = (bush.scale.x || 1.0) * 1.5;
-            
-            // Check if collision occurs
+
+            const bushRadius = bush.userData?.collisionRadius || ((bush.scale.x || 1.0) * 1.5);
+
             if (distance < bushRadius + radius) {
                 return bush;
             }
-            
+
             if (bushesChecked >= MAX_BUSHES_TO_CHECK) {
                 break;
             }
         }
-        
+
         return null;
     }
 }
